@@ -58,7 +58,7 @@
                                             autocomplete="off">
                                     </div>
                                     <input class="otp-value" type="hidden" name="token">
-                                    <input type="hidden" value="{{ $user->id }}" name="id">
+                                    <input type="hidden" value="{{ $user['id'] ?? '' }}" name="id">
                                     <input type="hidden" name="identity" value="{{ request('identity') }}">
                                     <input type="hidden" name="type" value="{{ request('type') }}">
 

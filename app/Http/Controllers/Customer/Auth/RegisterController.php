@@ -262,7 +262,7 @@ class RegisterController extends Controller
 
         $customer = $this->customerRepo->getByIdentity(filters: ['identity' => base64_decode($request['identity'])]);
         $verificationType = base64_decode($request['type']);
-        $identity = $verificationType == 'email_verification' ? $customer['email'] : $customer['phone'];
+        $identity = $customer ? ($verificationType == 'email_verification' ? $customer['email'] : $customer['phone']) : base64_decode($request['identity']);
         $identityType = $verificationType == 'email_verification' ? 'email' : 'phone';
         $getToken = $this->phoneOrEmailVerificationRepo->getFirstWhere(params: ['phone_or_email' => $identity]);
 

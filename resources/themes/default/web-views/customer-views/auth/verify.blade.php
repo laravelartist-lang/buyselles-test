@@ -62,7 +62,7 @@
                                         <input class="otp-value" type="hidden" name="token" required>
                                     </div>
                                 </div>
-                                <input type="hidden" value="{{ $user->id }}" name="id">
+                                <input type="hidden" value="{{ $user['id'] ?? '' }}" name="id">
                                 <input type="hidden" name="identity" value="{{ request('identity') }}">
                                 <input type="hidden" name="type" value="{{ request('type') }}">
 
@@ -120,7 +120,7 @@
 
                                     <span
                                         class="font-weight-bold d-block mt-4 __text-17px text-center">{{ translate('hello') }},
-                                        {{ $user->f_name }}</span>
+                                        {{ $user['f_name'] ?? '' }}</span>
                                     <h5 class="font-black __text-20px text-center my-2">
                                         {{ translate('verification_Successfully_Done!') }}!
                                     </h5>
