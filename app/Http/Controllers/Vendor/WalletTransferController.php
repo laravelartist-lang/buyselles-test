@@ -2,9 +2,11 @@
 
 namespace App\Http\Controllers\Vendor;
 
+use App\Events\AddFundToWalletEvent;
 use App\Http\Controllers\Controller;
 use App\Models\CustomerWallet;
 use App\Models\SellerWallet;
+use App\Models\Shop;
 use App\Models\User;
 use App\Models\WalletTransaction;
 use App\Models\WalletTransfer;
@@ -119,7 +121,9 @@ class WalletTransferController extends Controller
             $walletTransaction = new WalletTransaction;
             $walletTransaction->user_id = $customerId;
             $walletTransaction->transaction_id = Str::uuid();
-            $walletTransaction->reference = $request->reference ?? 'Transfer from vendor';
+            $vendorShop = Shop::where('seller_id', $vendorId)->first();
+            $shopName = $vendorShop?->name ?? translate('vendor');
+            $walletTransaction->reference = $shopName;
             $walletTransaction->transaction_type = 'vendor_transfer_to_customer';
             $walletTransaction->credit = $amount;
             $walletTransaction->debit = 0;
@@ -141,6 +145,22 @@ class WalletTransferController extends Controller
 
             // Send push notification to customer
             $this->sendTransferNotification($customer, $amount);
+
+            // Send email notification to customer
+            try {
+                $emailData = [
+                    'walletTransaction' => $walletTransaction,
+                    'userName' => $customer->f_name,
+                    'userType' => 'customer',
+                    'templateName' => 'add-fund-to-wallet',
+                    'subject' => translate('balance_received'),
+                    'title' => translate('balance_received'),
+                    'shopName' => $shopName,
+                ];
+                event(new AddFundToWalletEvent(email: $customer->email, data: $emailData));
+            } catch (\Exception $e) {
+                \Illuminate\Support\Facades\Log::warning('Failed to send transfer email: '.$e->getMessage());
+            }
 
             ToastMagic::success(translate('balance_transferred_successfully'));
 

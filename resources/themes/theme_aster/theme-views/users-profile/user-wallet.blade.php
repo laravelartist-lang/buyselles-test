@@ -300,6 +300,9 @@
                                                             {{ translate('converted_from_loyalty_point') }}
                                                         @elseif($item['transaction_type'] == 'add_fund')
                                                             {{ translate('added_via_payment_method') }}
+                                                        @elseif($item['transaction_type'] == 'vendor_transfer_to_customer')
+                                                            <span class="text-info">{{ translate('received_from') }}</span>
+                                                            <span class="fw-semibold">{{ $item['reference'] }}</span>
                                                         @else
                                                             {{ ucwords(translate($item['transaction_type'])) }}
                                                         @endif

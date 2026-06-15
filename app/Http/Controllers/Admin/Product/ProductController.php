@@ -1078,6 +1078,21 @@ class ProductController extends BaseController
         ]);
     }
 
+    public function updateSortPriority(Request $request): JsonResponse
+    {
+        $request->validate([
+            'id' => 'required|integer',
+            'sort_priority' => 'required|integer|min:0',
+        ]);
+
+        $this->productRepo->update(id: $request['id'], data: ['sort_priority' => $request['sort_priority']]);
+
+        return response()->json([
+            'status' => true,
+            'message' => translate('Sort_priority_updated_successfully'),
+        ]);
+    }
+
     public function deletePreviewFile(Request $request): JsonResponse
     {
         $product = $this->productRepo->getFirstWhereWithoutGlobalScope(params: ['id' => $request['product_id']]);

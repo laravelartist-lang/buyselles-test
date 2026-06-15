@@ -599,6 +599,7 @@ class ProductService
             'meta_title' => $request['meta_title'],
             'meta_description' => $request['meta_description'],
             'meta_image' => $request->has('meta_image') ? $this->upload(dir: 'product/meta/', format: 'webp', image: $request['meta_image']) : $request->existing_meta_image,
+            'sort_priority' => $request['sort_priority'] ?? 0,
         ];
     }
 
@@ -675,6 +676,7 @@ class ProductService
             'meta_title' => $request['meta_title'],
             'meta_description' => $request['meta_description'],
             'meta_image' => $request->file('meta_image') ? $this->update(dir: 'product/meta/', oldImage: $product['meta_image'], format: 'png', image: $request['meta_image']) : $product['meta_image'],
+            'sort_priority' => $request['sort_priority'] ?? $product['sort_priority'],
             'location_country_id' => $request['location_country_id'] ?: null,
             'location_city_id' => $request['product_type'] === 'physical' ? ($request['location_city_id'] ?: null) : null,
             'location_area_id' => $request['product_type'] === 'physical' ? ($request['location_area_id'] ?: null) : null,

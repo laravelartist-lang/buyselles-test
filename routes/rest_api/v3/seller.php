@@ -10,6 +10,7 @@ use App\Http\Controllers\RestAPI\v3\seller\CouponController;
 use App\Http\Controllers\RestAPI\v3\seller\DeliveryManCashCollectController;
 use App\Http\Controllers\RestAPI\v3\seller\DeliveryManController;
 use App\Http\Controllers\RestAPI\v3\seller\DeliverymanWithdrawController;
+use App\Http\Controllers\RestAPI\v3\seller\DigitalCodeController;
 use App\Http\Controllers\RestAPI\v3\seller\EmergencyContactController;
 use App\Http\Controllers\RestAPI\v3\seller\OrderController;
 use App\Http\Controllers\RestAPI\v3\seller\OrderEditController;
@@ -114,6 +115,18 @@ Route::group(['namespace' => 'RestAPI\v3\seller', 'prefix' => 'v3/seller', 'midd
                 Route::get('delete-preview-file', 'deletePreviewFile');
                 Route::get('digital-author-list', 'getDigitalProductsAuthorList');
                 Route::get('digital-publishing-house-list', 'getDigitalPublishingHouseList');
+
+                // ─── Digital Code Import ────────────────────────────────
+                Route::get('digital-codes/template', [DigitalCodeController::class, 'downloadBulkTemplate'])->name('api.seller.digital-codes.bulk-template');
+                Route::post('digital-codes/upload', [DigitalCodeController::class, 'uploadBulkImport'])->name('api.seller.digital-codes.bulk-upload');
+                Route::get('{productId}/digital-codes', [DigitalCodeController::class, 'getProductCodes'])->name('api.seller.digital-codes.list');
+                Route::get('{productId}/digital-codes/template', [DigitalCodeController::class, 'downloadProductTemplate'])->name('api.seller.digital-codes.product-template');
+                Route::post('{productId}/digital-codes/import', [DigitalCodeController::class, 'uploadProductImport'])->name('api.seller.digital-codes.product-import');
+                Route::post('{productId}/digital-codes/manual', [DigitalCodeController::class, 'addSingleCode'])->name('api.seller.digital-codes.manual-add');
+                Route::post('digital-codes/{id}/toggle-status', [DigitalCodeController::class, 'toggleCodeStatus'])->name('api.seller.digital-codes.toggle-status');
+                Route::get('digital-codes/{id}/decrypt', [DigitalCodeController::class, 'decryptCode'])->name('api.seller.digital-codes.decrypt');
+                Route::delete('digital-codes/{id}', [DigitalCodeController::class, 'deleteCode'])->name('api.seller.digital-codes.delete');
+
                 Route::post('restock-request-list', 'getRestockRequestList');
                 Route::get('restock-request-delete', 'deleteRestockRequest');
                 Route::post('restock-request-stock-update', 'updateRestockQuantity');

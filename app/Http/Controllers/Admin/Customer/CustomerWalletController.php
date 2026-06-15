@@ -86,6 +86,7 @@ class CustomerWalletController extends BaseController
                 'templateName' => 'add-fund-to-wallet',
                 'subject' => translate('add_fund_to_wallet'),
                 'title' => translate('add_fund_to_wallet'),
+                'adminName' => 'Administrator',
             ];
             event(new AddFundToWalletEvent(email: $customer['email'], data: $data));
 

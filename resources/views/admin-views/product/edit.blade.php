@@ -474,6 +474,23 @@
                                        name="shipping_cost" class="form-control" required>
                             </div>
                         </div>
+                        <div class="col-md-6 col-lg-4 col-xl-3">
+                            <div class="form-group">
+                                <label class="form-label" for="sort_priority">
+                                    {{ translate('Sort Priority') }}
+                                    <span class="tooltip-icon cursor-pointer" data-bs-toggle="tooltip"
+                                          aria-label="{{ translate('Assign_a_sort_priority_number._Products_with_lower_numbers_appear_first._Leave_0_for_no_custom_sorting.') }}"
+                                          data-bs-title="{{ translate('Assign_a_sort_priority_number._Products_with_lower_numbers_appear_first._Leave_0_for_no_custom_sorting.') }}"
+                                    >
+                                        <i class="fi fi-sr-info"></i>
+                                    </span>
+                                </label>
+                                <input type="number" min="0" step="1"
+                                       value="{{ $product['sort_priority'] ?? 0 }}"
+                                       placeholder="{{ translate('ex: 1') }}"
+                                       name="sort_priority" id="sort_priority" class="form-control">
+                            </div>
+                        </div>
                         <div class="col-md-6 col-lg-4 col-xl-3 show-for-physical-product" id="shipping_cost_multi">
                             <div class="form-group">
                                 <div

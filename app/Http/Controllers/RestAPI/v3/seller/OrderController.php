@@ -116,7 +116,7 @@ class OrderController extends Controller
     public function details(Request $request, $id): JsonResponse
     {
         $seller = $request->seller;
-        $detailsList = OrderDetail::with(['order.offlinePayments', 'order.customer', 'order.deliveryMan', 'verificationImages', 'latestEditHistory', 'orderEditHistory' => function ($query) {
+        $detailsList = OrderDetail::with(['order.escrow', 'order.offlinePayments', 'order.customer', 'order.deliveryMan', 'verificationImages', 'latestEditHistory', 'orderEditHistory' => function ($query) {
             return $query->orderBy('updated_at', 'desc');
         }])->where(['seller_id' => $seller['id'], 'order_id' => $id])->get();
 

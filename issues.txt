@@ -1,2 +1,0 @@
-this setting is now having one issue if the only this block is toggled on then the system is not fetching Products for this only section it is showing "No content configured for this category
-Not found anything" meanwhile this block is on but if any other section is toggled on too then this section is showing products , this happens only for this block "Mixed Products from All Vendors"

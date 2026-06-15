@@ -406,6 +406,7 @@ class ProductController extends Controller
             $fixedDenoms = $supplierMapping ? $supplierMapping->activeDenominations->where('type', 'fixed') : collect();
             $variableDenom = $supplierMapping ? $supplierMapping->activeDenominations->where('type', 'variable')->first() : null;
 
+            $product['has_active_supplier_mapping'] = $supplierMapping !== null;
             $product['is_customizable'] = (bool) ($supplierMapping && $supplierMapping->is_customizable);
             $product['customizable_min_amount'] = $supplierMapping?->min_amount;
             $product['customizable_max_amount'] = $supplierMapping?->max_amount;

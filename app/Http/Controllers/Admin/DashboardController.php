@@ -14,6 +14,9 @@ use App\Contracts\Repositories\RestockProductRepositoryInterface;
 use App\Contracts\Repositories\VendorRepositoryInterface;
 use App\Contracts\Repositories\VendorWalletRepositoryInterface;
 use App\Http\Controllers\BaseController;
+use App\Models\CustomerWallet;
+use App\Models\Product;
+use App\Models\Seller;
 use App\Services\DashboardService;
 use App\Services\Supplier\SupplierManager;
 use Carbon\Carbon;
@@ -23,6 +26,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\DB;
 
 class DashboardController extends BaseController
 {
@@ -105,9 +109,39 @@ class DashboardController extends BaseController
             'getTotalDeliveryManCount' => $this->deliveryManRepo->getListWhere(filters: ['seller_id' => 0], dataLimit: 'all')->count(),
         ];
 
+        // Total Inventory Stock Value per Vendor (active, approved products only)
+        $vendorInventory = Product::select('user_id', DB::raw('SUM(current_stock * unit_price) as inventory_value'))
+            ->where('added_by', 'seller')
+            ->where('status', 1)
+            ->where('request_status', 1)
+            ->groupBy('user_id')
+            ->pluck('inventory_value', 'user_id');
+
+        $vendorInventoryDetails = [];
+        if ($vendorInventory->isNotEmpty()) {
+            $sellers = Seller::with('shop')->whereIn('id', $vendorInventory->keys())->get()->keyBy('id');
+            foreach ($vendorInventory as $sellerId => $value) {
+                if (isset($sellers[$sellerId])) {
+                    $vendorInventoryDetails[] = [
+                        'seller' => $sellers[$sellerId],
+                        'inventory_value' => (float) $value,
+                    ];
+                }
+            }
+            // Sort descending by inventory value
+            usort($vendorInventoryDetails, fn ($a, $b) => $b['inventory_value'] <=> $a['inventory_value']);
+        }
+
+        // Total Available Users' Wallet Balance
+        $totalUsersWalletBalance = (float) CustomerWallet::sum('balance');
+
         $supplierBalances = $this->supplierManager->getSupplierBalances();
 
-        return view('admin-views.system.dashboard', compact('data', 'inHouseEarning', 'vendorEarning', 'commissionEarn', 'inHouseOrderEarningArray', 'vendorOrderEarningArray', 'label', 'dateType', 'supplierBalances'));
+        return view('admin-views.system.dashboard', compact(
+            'data', 'inHouseEarning', 'vendorEarning', 'commissionEarn',
+            'inHouseOrderEarningArray', 'vendorOrderEarningArray', 'label', 'dateType',
+            'supplierBalances', 'vendorInventoryDetails', 'totalUsersWalletBalance'
+        ));
     }
 
     public function getOrderStatus(Request $request)

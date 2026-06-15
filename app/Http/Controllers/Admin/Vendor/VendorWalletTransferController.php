@@ -26,14 +26,73 @@ class VendorWalletTransferController extends BaseController
             ->approved()
             ->orderBy('f_name')
             ->get();
-
         $transfers = WalletTransfer::where('from_user_type', 'admin')
-            ->where('to_user_type', 'vendor')
-            ->with('toUser.shop')
-            ->latest()
-            ->paginate(getWebConfig(name: 'pagination_limit'));
+        ->where('to_user_type', 'vendor')
+        ->latest()
+        ->paginate(getWebConfig(name: 'pagination_limit'));
+
+        // Manually load toUser (Seller) with shop because WalletTransfer::toUser()
+        // dynamically returns Seller|User based on to_user_type. When called on a
+        // fresh model instance (to_user_type = null) it defaults to User, which has
+        // no shop() relationship — so nested ->with('toUser.shop') would fail.
+        $sellerIds = $transfers->pluck('to_user_id')->unique()->filter()->values()->toArray();
+        if (! empty($sellerIds)) {
+            $sellersWithShops = Seller::with('shop')->whereIn('id', $sellerIds)->get()->keyBy('id');
+            foreach ($transfers as $transfer) {
+                if (isset($sellersWithShops[$transfer->to_user_id])) {
+                    $transfer->setRelation('toUser', $sellersWithShops[$transfer->to_user_id]);
+                }
+            }
+        }
 
         return view('admin-views.vendor.wallet-transfer', compact('vendors', 'transfers'));
+    }
+
+    /**
+     * Show the financial audit log for a specific vendor.
+     * Displays inbound transfers (admin → vendor) and outbound transfers (vendor → customer).
+     */
+    public function financialLog(Request $request, string|int $vendorId): View|RedirectResponse
+    {
+        $vendor = Seller::with('shop', 'wallet')
+            ->where('id', $vendorId)
+            ->first();
+
+        if (! $vendor) {
+            ToastMagic::error(translate('vendor_not_found'));
+
+            return redirect()->route('admin.vendors.wallet-transfer.index');
+        }
+
+        // Inbound: Admin → Vendor
+        $inboundTransfers = WalletTransfer::where('from_user_type', 'admin')
+            ->where('to_user_type', 'vendor')
+            ->where('to_user_id', $vendorId)
+            ->with('fromUser')
+            ->latest()
+            ->paginate(getWebConfig(name: 'pagination_limit'), ['*'], 'inbound_page');
+
+        // Outbound: Vendor → Customer
+        $outboundTransfers = WalletTransfer::where('from_user_type', 'vendor')
+            ->where('from_user_id', $vendorId)
+            ->where('to_user_type', 'customer')
+            ->with('toUser')
+            ->latest()
+            ->paginate(getWebConfig(name: 'pagination_limit'), ['*'], 'outbound_page');
+
+        $inboundTotal = WalletTransfer::where('from_user_type', 'admin')
+            ->where('to_user_type', 'vendor')
+            ->where('to_user_id', $vendorId)
+            ->sum('amount');
+
+        $outboundTotal = WalletTransfer::where('from_user_type', 'vendor')
+            ->where('from_user_id', $vendorId)
+            ->where('to_user_type', 'customer')
+            ->sum('amount');
+
+        return view('admin-views.vendor.wallet-financial-log', compact(
+            'vendor', 'inboundTransfers', 'outboundTransfers', 'inboundTotal', 'outboundTotal'
+        ));
     }
 
     /**

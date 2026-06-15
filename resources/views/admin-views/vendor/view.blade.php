@@ -43,6 +43,13 @@
                             <a class="nav-link"
                                 href="{{ route('admin.vendors.view', ['id' => $seller['id'], 'tab' => 'review']) }}">{{ translate('review') }}</a>
                         </li>
+                        <li class="nav-item">
+                            <a class="nav-link"
+                                href="{{ route('admin.vendors.wallet-transfer.financial-log', $seller['id']) }}">
+                                <i class="fi fi-rr-stats"></i>
+                                {{ translate('financial_log') }}
+                            </a>
+                        </li>
                     @endif
                 </ul>
                 <div class="nav--tab__prev">

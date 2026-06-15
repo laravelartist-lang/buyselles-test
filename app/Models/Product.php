@@ -101,6 +101,7 @@ class Product extends Model
         'attributes',
         'current_stock',
         'minimum_order_qty',
+        'sort_priority',
         'video_provider',
         'video_url',
         'status',
@@ -168,6 +169,7 @@ class Product extends Model
         'featured' => 'integer',
         'flash_deal' => 'integer',
         'seller_id' => 'integer',
+        'sort_priority' => 'integer',
         'purchase_price' => 'float',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
@@ -193,7 +195,12 @@ class Product extends Model
         'digital_file_ready_storage_type' => 'string',
     ];
 
-    protected $appends = ['is_shop_temporary_close', 'thumbnail_full_url', 'preview_file_full_url', 'color_images_full_url', 'meta_image_full_url', 'images_full_url', 'digital_file_ready_full_url'];
+    protected $appends = ['is_shop_temporary_close', 'thumbnail_full_url', 'preview_file_full_url', 'color_images_full_url', 'meta_image_full_url', 'images_full_url', 'digital_file_ready_full_url', 'has_active_supplier_mapping'];
+
+    public function getHasActiveSupplierMappingAttribute(): bool
+    {
+        return \App\Models\SupplierProductMapping::where('product_id', $this->id)->where('is_active', 1)->exists();
+    }
 
     public function translations(): MorphMany
     {

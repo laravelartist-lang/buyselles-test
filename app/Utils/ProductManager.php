@@ -75,6 +75,7 @@ class ProductManager
             ->withCount(['reviews', 'wishList' => function ($query) use ($user) {
                 $query->where('customer_id', $user != 'offline' ? $user->id : '0');
             }])
+            ->orderBy('sort_priority', 'asc')
             ->orderBy('id', 'desc')
             ->paginate($limit, ['*'], 'page', $offset);
 
@@ -1140,6 +1141,8 @@ class ProductManager
                 $query = $query->inStock();
             }
 
+            $query = $query->orderBy('sort_priority', 'asc');
+
             if ($featuredProductSortBy['sort_by'] == 'latest_created') {
                 $query = $query->orderBy('id', 'desc');
             } elseif ($featuredProductSortBy['sort_by'] == 'first_created') {
@@ -1180,13 +1183,13 @@ class ProductManager
             return $query;
         }
 
-        $query = $query->where(['featured' => 1])->orderBy('id', 'desc');
+        $query = $query->where(['featured' => 1])->orderBy('sort_priority', 'asc')->orderBy('id', 'desc');
 
         if ($dataLimit != 'all') {
             return $query->paginate($dataLimit, ['*'], 'page', request()->get('page', $offset));
         }
 
-        return $query->orderBy('id', 'desc')->get();
+        return $query->orderBy('sort_priority', 'asc')->orderBy('id', 'desc')->get();
     }
 
     public static function getPriorityWiseTopRatedProductsQuery($query, $dataLimit = 'all', $offset = 1, $appends = null)
@@ -1202,6 +1205,8 @@ class ProductManager
             if ($topRatedProductSortBy['out_of_stock_product'] == 'hide') {
                 $query = $query->inStock();
             }
+
+            $query = $query->orderBy('sort_priority', 'asc');
 
             if ($topRatedProductSortBy['sort_by'] == 'latest_created') {
                 $query = $query->orderBy('id', 'desc');
@@ -1284,6 +1289,8 @@ class ProductManager
                 $query = $query->inStock();
             }
 
+            $query = $query->orderBy('sort_priority', 'asc');
+
             if ($bestSellingProductSortBy['sort_by'] == 'latest_created') {
                 $query = $query->orderBy('id', 'desc');
             } elseif ($bestSellingProductSortBy['sort_by'] == 'first_created') {
@@ -1360,6 +1367,8 @@ class ProductManager
                 });
             }
 
+            $query = $query->orderBy('sort_priority', 'asc');
+
             if ($newArrivalProductSortBy['sort_by'] == 'latest_created') {
                 $query = $query->orderBy('id', 'desc');
             } elseif ($newArrivalProductSortBy['sort_by'] == 'first_created') {
@@ -1423,6 +1432,8 @@ class ProductManager
                 $query = $query->inStock();
             }
 
+            $query = $query->orderBy('sort_priority', 'asc');
+
             if ($categoryWiseProductSortBy['sort_by'] == 'latest_created') {
                 $query = $query->orderBy('id', 'desc');
             } elseif ($categoryWiseProductSortBy['sort_by'] == 'first_created') {
@@ -1478,7 +1489,7 @@ class ProductManager
             return $query;
         }
 
-        $query = $query->orderBy('order_details_count', 'desc');
+        $query = $query->orderBy('sort_priority', 'asc')->orderBy('id', 'desc');
 
         if ($dataLimit != 'all') {
             return $query->paginate($dataLimit, ['*'], 'page', request()->get('page', $offset));
@@ -1838,6 +1849,10 @@ class ProductManager
 
             $query = $query->get();
 
+            $query = $query->sortBy(function ($product) {
+                return $product['sort_priority'] ?? 0;
+            });
+
             if ($vendorProductListSortBy['sort_by'] == 'latest_created') {
                 $query = $query->sortByDesc('id');
             } elseif ($vendorProductListSortBy['sort_by'] == 'first_created') {
@@ -1861,7 +1876,11 @@ class ProductManager
             return $query;
         }
 
-        return $query->orderBy('id', 'desc')->get();
+        $query = $query->sortBy(function ($product) {
+            return $product['sort_priority'] ?? 0;
+        })->orderBy('id', 'desc');
+
+        return $query->get();
     }
 
     public static function applySellerFilters($query, $request)

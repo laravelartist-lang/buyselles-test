@@ -95,6 +95,7 @@
                                     <th class="text-center">{{ translate('product Type') }}</th>
                                     <th class="text-center">{{ translate('unit_price') }}</th>
                                     <th class="text-center">{{ translate('stock') }}</th>
+                                    <th class="text-center">{{ translate('Sort Priority') }}</th>
                                     @if ($productWiseTax)
                                         <th class="text-center">{{ translate('Vat/Tax') }}</th>
                                     @endif
@@ -192,6 +193,14 @@
                                                     @endif
                                                 @endif
                                             </div>
+                                        </td>
+                                        <td class="text-center">
+                                            <input type="number" min="0" step="1"
+                                                   class="form-control form-control-sm sort-priority-input text-center"
+                                                   style="width: 80px;"
+                                                   data-product-id="{{ $product['id'] }}"
+                                                   data-url="{{ route('admin.products.update-sort-priority') }}"
+                                                   value="{{ $product['sort_priority'] ?? 0 }}">
                                         </td>
 
                                         @if ($productWiseTax)
@@ -319,3 +328,41 @@
 
     @include('admin-views.product.partials.offcanvas._filter-offcanvas')
 @endsection
+
+@push('script')
+<script>
+    "use strict";
+    $(document).ready(function () {
+        $('.sort-priority-input').on('change', function () {
+            let input = $(this);
+            let productId = input.data('product-id');
+            let url = input.data('url');
+            let value = input.val();
+
+            $.ajax({
+                url: url,
+                type: 'POST',
+                data: {
+                    _token: '{{ csrf_token() }}',
+                    id: productId,
+                    sort_priority: value
+                },
+                success: function (response) {
+                    if (response.status) {
+                        toastr.success(response.message, {
+                            CloseButton: true,
+                            ProgressBar: true
+                        });
+                    }
+                },
+                error: function () {
+                    toastr.error('{{ translate("update_failed") }}', {
+                        CloseButton: true,
+                        ProgressBar: true
+                    });
+                }
+            });
+        });
+    });
+</script>
+@endpush

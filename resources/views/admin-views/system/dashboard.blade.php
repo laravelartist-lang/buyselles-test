@@ -69,6 +69,9 @@
                 </div>
             </div>
 
+            {{-- Platform Financial Summary --}}
+            @include('admin-views.partials._dashboard-financial-summary')
+
             @if(!empty($supplierBalances))
             <div class="row g-3 mt-1">
                 <div class="col-12">

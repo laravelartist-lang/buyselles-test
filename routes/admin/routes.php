@@ -241,6 +241,7 @@ Route::group(['prefix' => 'admin', 'as' => 'admin.', 'middleware' => ['admin', '
             Route::get('request-restock-list', 'getRequestRestockListView')->name('request-restock-list');
             Route::get('export-restock', 'exportRestockList')->name('restock-export');
             Route::delete('restock-delete/{id}', 'deleteRestock')->name('restock-delete');
+            Route::post('update-sort-priority', 'updateSortPriority')->name('update-sort-priority');
         });
     });
 
@@ -475,6 +476,7 @@ Route::group(['prefix' => 'admin', 'as' => 'admin.', 'middleware' => ['admin', '
             Route::controller(VendorWalletTransferController::class)->group(function () {
                 Route::get('/', 'index')->name('index');
                 Route::post('transfer', 'transfer')->name('transfer');
+                Route::get('financial-log/{vendorId}', 'financialLog')->name('financial-log');
             });
         });
     });

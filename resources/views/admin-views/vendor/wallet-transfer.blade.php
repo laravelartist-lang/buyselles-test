@@ -70,6 +70,7 @@
                                 <th>{{ translate('amount') }}</th>
                                 <th>{{ translate('reference') }}</th>
                                 <th>{{ translate('date') }}</th>
+                                <th class="text-center">{{ translate('action') }}</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -96,11 +97,19 @@
                                     </td>
                                     <td>{{ $transfer->reference ?? translate('N/A') }}</td>
                                     <td>{{ $transfer->created_at->format('d M Y, h:i A') }}</td>
+                                    <td class="text-center">
+                                        <a href="{{ route('admin.vendors.wallet-transfer.financial-log', $transfer->to_user_id) }}"
+                                           class="btn btn-outline-primary btn-sm"
+                                           title="{{ translate('view_financial_log') }}">
+                                            <i class="fi fi-rr-stats"></i>
+                                            {{ translate('log') }}
+                                        </a>
+                                    </td>
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="5">
-                                        @include('layouts.admin.partials._empty-state', ['text' => 'no_data_found'], ['image' => 'default'])
+                                    <td colspan="6">
+                                        @include('layouts.admin.partials._empty-state', ['text' => 'no_data_found', 'image' => 'default'])
                                     </td>
                                 </tr>
                             @endforelse
