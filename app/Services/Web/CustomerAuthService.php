@@ -2,16 +2,18 @@
 
 namespace App\Services\Web;
 
-use App\Events\EmailVerificationEvent;
+use App\Traits\EmailTemplateTrait;
 use App\Utils\Helpers;
 use App\Utils\SMSModule;
 use Exception;
+use Illuminate\Support\Arr;
 
 class CustomerAuthService
 {
+    use EmailTemplateTrait;
     public function getCustomerVerificationToken(): string
     {
-        return (env('APP_MODE') == 'live') ? rand(100000, 999999) : 123456;
+        return (string) rand(100000, 999999);
     }
 
     public function getCustomerLoginDataReset(): array
@@ -35,39 +37,55 @@ class CustomerAuthService
         ];
     }
 
-    public function sendCustomerEmailVerificationToken($user, $token): array
+    public function sendCustomerEmailVerificationToken(object|array $user, string $token): array
     {
         $emailServicesSmtp = getWebConfig(name: 'mail_config');
         if ($emailServicesSmtp['status'] == 0) {
             $emailServicesSmtp = getWebConfig(name: 'mail_config_sendgrid');
         }
-        if ($emailServicesSmtp['status'] == 1 && $user['email']) {
-            try {
-                $data = [
-                    'userName' => $user['f_name'],
-                    'subject' => translate('registration_Verification_Code'),
-                    'title' => translate('registration_Verification_Code'),
-                    'verificationCode' => $token,
-                    'userType' => 'customer',
-                    'templateName' => 'registration-verification',
-                ];
 
-                event(new EmailVerificationEvent(email: $user['email'], data: $data));
-
-                return [
-                    'status' => 'success',
-                    'message' => translate('check_your_email'),
-                ];
-            } catch (Exception $exception) {
-                return [
-                    'status' => 'error',
-                    'message' => translate('email_is_not_configured').'. '.translate('contact_with_the_administrator'),
-                ];
-            }
-        } else {
+        $email = trim((string) (is_array($user) ? ($user['email'] ?? '') : ($user->email ?? '')));
+        if ($emailServicesSmtp['status'] != 1 || $email === '') {
             return [
                 'status' => 'error',
                 'message' => translate('email_failed'),
+            ];
+        }
+
+        try {
+            $data = [
+                'userName' => Arr::get(is_array($user) ? $user : $user->toArray(), 'f_name')
+                    ?: Arr::get(is_array($user) ? $user : $user->toArray(), 'name', ''),
+                'subject' => translate('registration_Verification_Code'),
+                'title' => translate('registration_Verification_Code'),
+                'verificationCode' => $token,
+                'userType' => 'customer',
+                'templateName' => 'registration-verification',
+            ];
+
+            $sent = $this->sendingMail(
+                sendMailTo: $email,
+                userType: 'customer',
+                templateName: 'registration-verification',
+                data: $data,
+                sendSync: true,
+            );
+
+            if (! $sent) {
+                return [
+                    'status' => 'error',
+                    'message' => translate('email_failed'),
+                ];
+            }
+
+            return [
+                'status' => 'success',
+                'message' => translate('check_your_email'),
+            ];
+        } catch (Exception $exception) {
+            return [
+                'status' => 'error',
+                'message' => translate('email_is_not_configured').'. '.translate('contact_with_the_administrator'),
             ];
         }
     }

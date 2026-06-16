@@ -282,16 +282,135 @@ $("#inputChecked").change(function () {
     }
 });
 
-$(".submitVerifyForm").on("click", function () {
-    let formElement = $(this).closest("form");
-    formElement.attr("action", formElement.data("verify"));
-    $(this).closest("form").submit();
+function syncOtpFields(formElement) {
+    const otpFields = formElement.find(".otp-field");
+    let otpValue = "";
+
+    otpFields.each(function () {
+        otpValue += $(this).val().toString().replace(/[^0-9]/g, "");
+    });
+
+    formElement.find(".otp-value").val(otpValue);
+
+    return otpValue;
+}
+
+$(".submitVerifyForm").on("click", function (e) {
+    e.preventDefault();
+    const formElement = $(this).closest("form");
+    const otpValue = syncOtpFields(formElement);
+
+    if (otpValue.length !== 6) {
+        toastr.error(
+            formElement.data("otp-error") ||
+                "Please enter the 6-digit verification code."
+        );
+        formElement.find(".otp-field").first().focus();
+
+        return;
+    }
+
+    formElement.attr(
+        "action",
+        formElement.data("verify") || formElement.attr("action")
+    );
+    formElement[0].submit();
 });
 
-$(".resendVerifyForm").on("click", function () {
-    let formElement = $(this).closest("form");
-    formElement.attr("action", formElement.data("resend"));
-    $(this).closest("form").submit();
+function startOtpResendCountdown(seconds) {
+    const counter = $(".verifyCounter");
+    let remainingSeconds = parseInt(seconds, 10) || 0;
+
+    function tick() {
+        const minutes = Math.floor(remainingSeconds / 60);
+        const secs = remainingSeconds % 60;
+        counter.html(
+            minutes + ":" + (secs < 10 ? "0" : "") + String(secs)
+        );
+
+        if (remainingSeconds > 0) {
+            remainingSeconds--;
+            setTimeout(tick, 1000);
+            $(".resend-otp-button, .resendVerifyForm").attr("disabled", true);
+            $(".resend_otp_custom, .resend-otp-custom").removeClass("d--none").slideDown();
+        } else {
+            $(".resend-otp-button, .resendVerifyForm").removeAttr("disabled");
+            counter.html("0:00");
+            $(".resend_otp_custom, .resend-otp-custom").slideUp();
+        }
+    }
+
+    if (remainingSeconds > 0) {
+        tick();
+    }
+}
+
+$(".resendVerifyForm").on("click", function (e) {
+    e.preventDefault();
+    const formElement = $(this).closest("form");
+    const captchaInput = formElement.find('[name="default_captcha_value"]');
+
+    if (captchaInput.length && !String(captchaInput.val() || "").trim()) {
+        toastr.error(formElement.data("captcha-error") || "Please solve the captcha.");
+        captchaInput.focus();
+
+        return;
+    }
+
+    const resendUrl =
+        formElement.data("resend") ||
+        formElement.data("url") ||
+        formElement.attr("action");
+
+    $.ajax({
+        type: "POST",
+        url: resendUrl,
+        data: formElement.serialize(),
+        headers: {
+            "X-Requested-With": "XMLHttpRequest",
+        },
+        beforeSend: function () {
+            $("#loading").addClass("d-grid");
+            $(".resendVerifyForm, .resend-otp-button").attr("disabled", true);
+        },
+        success: function (response) {
+            if (response.status === 1) {
+                formElement.find(".otp-field").val("");
+                formElement.find(".otp-value").val("");
+                toastr.success(
+                    response.message ||
+                        "OTP sent successfully. Please check your email."
+                );
+
+                if (response.new_time) {
+                    startOtpResendCountdown(response.new_time);
+                }
+
+                setTimeout(function () {
+                    window.location.reload();
+                }, 1200);
+            } else {
+                toastr.error(
+                    response.message ||
+                        response.error ||
+                        "Failed to resend OTP. Please try again."
+                );
+                $(".resendVerifyForm, .resend-otp-button").removeAttr("disabled");
+            }
+        },
+        error: function (xhr) {
+            const response = xhr.responseJSON || {};
+            toastr.error(
+                response.message ||
+                    response.error ||
+                    "Failed to resend OTP. Please try again."
+            );
+            $(".resendVerifyForm, .resend-otp-button").removeAttr("disabled");
+        },
+        complete: function () {
+            $("#loading").removeClass("d-grid");
+        },
+    });
 });
 
 // $(".resendVerifyForm").on('click', function () {
@@ -719,7 +838,7 @@ $("#customer-register-form").on("submit", function (e) {
     e.preventDefault();
     $.ajax({
         type: "POST",
-        url: $(this).data("action"),
+        url: $(this).data("action") || $(this).attr("action"),
         data: $(this).serialize(),
         beforeSend: function () {
             $("#loading").addClass("d-grid");

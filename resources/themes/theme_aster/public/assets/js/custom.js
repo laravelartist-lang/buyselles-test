@@ -2002,16 +2002,51 @@ $('.clean-phone-input-value').on("input", function () {
     $(this).val($(this).val().replace(/\s/g, ""));
 });
 
-$(".submitVerifyForm").on('click', function () {
-    let formElement = $(this).closest('form');
-    formElement.attr('action', formElement.data('verify'));
-    $(this).closest('form').submit();
+function syncOtpFields(formElement) {
+    const otpFields = formElement.find(".otp-field");
+    let otpValue = "";
+
+    otpFields.each(function () {
+        otpValue += $(this).val().toString().replace(/[^0-9]/g, "");
+    });
+
+    formElement.find(".otp-value").val(otpValue);
+
+    return otpValue;
+}
+
+$(".submitVerifyForm").on('click', function (e) {
+    e.preventDefault();
+    const formElement = $(this).closest('form');
+    const otpValue = syncOtpFields(formElement);
+
+    if (otpValue.length !== 6) {
+        toastr.error(
+            formElement.data("otp-error") ||
+                "Please enter the 6-digit verification code."
+        );
+        formElement.find(".otp-field").first().focus();
+
+        return;
+    }
+
+    formElement.attr(
+        'action',
+        formElement.data('verify') || formElement.attr('action')
+    );
+    formElement[0].submit();
 });
 
-$(".resendVerifyForm").on('click', function () {
-    let formElement = $(this).closest('form');
-    formElement.attr('action', formElement.data('resend'));
-    $(this).closest('form').submit();
+$(".resendVerifyForm").on('click', function (e) {
+    e.preventDefault();
+    const formElement = $(this).closest('form');
+    formElement.attr(
+        'action',
+        formElement.data('resend') ||
+            formElement.data('url') ||
+            formElement.attr('action')
+    );
+    formElement[0].submit();
 });
 
 $(document).ready(function () {

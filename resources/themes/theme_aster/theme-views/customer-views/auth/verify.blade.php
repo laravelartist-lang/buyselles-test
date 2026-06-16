@@ -36,12 +36,14 @@
                                     <p class="text-primary mb-2">{{ translate('resend_code_within') }}</p>
                                     <h6 class="text-primary mb-5 verifyTimer">
                                         <span class="verifyCounter"
-                                            data-second="{{ $get_time }}"></span>{{ translate('s') }}
+                                            data-second="{{ $get_time }}">{{ sprintf('%d:%02d', intdiv($get_time, 60), $get_time % 60) }}</span>
                                     </h6>
                                 </div>
                                 <form action="{{ route('customer.auth.verify') }}"
                                     data-verify="{{ route('customer.auth.verify') }}"
-                                    data-resend="{{ route('customer.auth.resend_otp') }}" class="otp-form" method="POST">
+                                    data-resend="{{ route('customer.auth.resend_otp') }}"
+                                    data-otp-error="{{ translate('code_must_be_minimum_6_digits!') }}"
+                                    class="otp-form" method="POST">
                                     @csrf
                                     <div class="d-flex gap-2 gap-sm-3 align-items-end justify-content-center">
                                         <input class="otp-field" type="text" name="opt-field[]" maxlength="1"
@@ -101,7 +103,7 @@
                                             {{ translate('resend_OTP') }}
                                         </button>
                                         <button class="btn btn-primary px-sm-5 button-type-submit submitVerifyForm"
-                                            type="button" disabled>
+                                            type="button">
                                             {{ translate('verify') }}
                                         </button>
                                     </div>

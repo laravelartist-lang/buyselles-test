@@ -857,11 +857,29 @@ We may release future updates so it will overwrite this file. it's better and sa
                 }
             })
             .on("paste", function (e) {
-                let paste_data = e.originalEvent.clipboardData.getData("text");
-                let paste_data_splitted = paste_data.split("");
-                $.each(paste_data_splitted, function (index, value) {
+                e.preventDefault();
+                let pasteData = (e.originalEvent.clipboardData.getData("text") || "")
+                    .replace(/[^0-9]/g, "")
+                    .slice(0, otp_fields.length);
+
+                otp_fields.val("");
+
+                $.each(pasteData.split(""), function (index, value) {
                     otp_fields.eq(index).val(value);
                 });
+
+                let otpValue = "";
+                otp_fields.each(function () {
+                    otpValue += $(this).val().toString().replace(/[^0-9]/g, "");
+                });
+                otp_value_field.val(otpValue);
+
+                if (otpValue.length === 6) {
+                    $(".otp-form button[type=submit]").attr("disabled", false);
+                    $(".otp-form .button-type-submit").attr("disabled", false);
+                }
+
+                otp_fields.eq(Math.min(pasteData.length, otp_fields.length - 1)).focus();
             });
         $(".otp-resend-btn").attr("disabled", false);
     });

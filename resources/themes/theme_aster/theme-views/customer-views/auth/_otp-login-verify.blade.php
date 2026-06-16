@@ -102,7 +102,7 @@
                                             {{ translate('resend_OTP') }}
                                         </button>
                                         <button class="btn btn-primary px-sm-5 button-type-submit submitResetOTpVerifyForm"
-                                            id="submitResetOTpVerifyForm" type="submit" disabled>
+                                            id="submitResetOTpVerifyForm" type="submit">
                                             {{ translate('verify') }}
                                         </button>
                                     </div>

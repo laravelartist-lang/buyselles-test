@@ -43,58 +43,81 @@ trait EmailTemplateTrait
         return $data;
     }
 
-    protected function sendingMail($sendMailTo, $userType, $templateName, $data = null): void
+    protected function sendingMail($sendMailTo, $userType, $templateName, $data = null, $sendSync = false): bool
     {
         $template = EmailTemplate::with('translationCurrentLanguage')->where(['user_type' => $userType, 'template_name' => $templateName])->first();
-        if ($template) {
-            if (count($template['translationCurrentLanguage'])) {
-                foreach ($template?->translationCurrentLanguage ?? [] as $translate) {
-                    $template['title'] = $translate->key == 'title' ? $translate->value : $template['title'];
-                    $template['body'] = $translate->key == 'body' ? $translate->value : $template['body'];
-                    $template['footer_text'] = $translate->key == 'copyright_text' ? $translate->value : $template['footer_text'];
-                    $template['copyright_text'] = $translate->key == 'footer_text' ? $translate->value : $template['copyright_text'];
-                    $template['button_name'] = $translate->key == 'button_name' ? $translate->value : $template['button_name'];
-                }
+        if (! $template) {
+            \Log::warning('Email template not found', [
+                'to' => $sendMailTo,
+                'template' => $templateName,
+                'userType' => $userType,
+            ]);
+
+            return false;
+        }
+
+        if (count($template['translationCurrentLanguage'])) {
+            foreach ($template?->translationCurrentLanguage ?? [] as $translate) {
+                $template['title'] = $translate->key == 'title' ? $translate->value : $template['title'];
+                $template['body'] = $translate->key == 'body' ? $translate->value : $template['body'];
+                $template['footer_text'] = $translate->key == 'copyright_text' ? $translate->value : $template['footer_text'];
+                $template['copyright_text'] = $translate->key == 'footer_text' ? $translate->value : $template['copyright_text'];
+                $template['button_name'] = $translate->key == 'button_name' ? $translate->value : $template['button_name'];
             }
-            $socialMedia = SocialMedia::where(['status' => 1])->get();
-            $template['body'] = $this->textVariableFormat(
-                value: $template['body'],
-                userName: $data['userName'] ?? null,
-                adminName: $data['adminName'] ?? null,
-                vendorName: $data['vendorName'] ?? null,
-                shopName: $data['shopName'] ?? null,
-                shopId: $data['shopId'] ?? null,
-                deliveryManName: $data['deliveryManName'] ?? null,
-                orderId: $data['orderId'] ?? null,
-                emailId: $data['emailId'] ?? null,
-                passwordResetURL: $data['passwordResetURL'] ?? null,
-                disputeId: $data['disputeId'] ?? null,
-            );
-            $template['title'] = $this->textVariableFormat(
-                value: $template['title'],
-                userName: $data['userName'] ?? null,
-                adminName: $data['adminName'] ?? null,
-                vendorName: $data['vendorName'] ?? null,
-                shopName: $data['shopName'] ?? null,
-                deliveryManName: $data['deliveryManName'] ?? null,
-                orderId: $data['orderId'] ?? null,
-                disputeId: $data['disputeId'] ?? null,
-            );
-            $data['send-mail'] = true;
-            if ($template['status'] == 1) {
-                try {
-                    Mail::to($sendMailTo)->queue(new SendMail($data, $template, $socialMedia));
-                } catch (Exception $exception) {
-                    // Log the error for debugging
-                    \Log::error('Email queue failed: '.$exception->getMessage(), [
-                        'to' => $sendMailTo,
-                        'template' => $templateName,
-                        'userType' => $userType,
-                        'exception' => $exception->getTraceAsString(),
-                    ]);
-                    throw $exception;
-                }
+        }
+        $socialMedia = SocialMedia::where(['status' => 1])->get();
+        $template['body'] = $this->textVariableFormat(
+            value: $template['body'],
+            userName: $data['userName'] ?? null,
+            adminName: $data['adminName'] ?? null,
+            vendorName: $data['vendorName'] ?? null,
+            shopName: $data['shopName'] ?? null,
+            shopId: $data['shopId'] ?? null,
+            deliveryManName: $data['deliveryManName'] ?? null,
+            orderId: $data['orderId'] ?? null,
+            emailId: $data['emailId'] ?? null,
+            passwordResetURL: $data['passwordResetURL'] ?? null,
+            disputeId: $data['disputeId'] ?? null,
+        );
+        $template['title'] = $this->textVariableFormat(
+            value: $template['title'],
+            userName: $data['userName'] ?? null,
+            adminName: $data['adminName'] ?? null,
+            vendorName: $data['vendorName'] ?? null,
+            shopName: $data['shopName'] ?? null,
+            deliveryManName: $data['deliveryManName'] ?? null,
+            orderId: $data['orderId'] ?? null,
+            disputeId: $data['disputeId'] ?? null,
+        );
+        $data['send-mail'] = true;
+
+        if ($template['status'] != 1) {
+            \Log::warning('Email template is disabled', [
+                'to' => $sendMailTo,
+                'template' => $templateName,
+                'userType' => $userType,
+            ]);
+
+            return false;
+        }
+
+        try {
+            if ($sendSync) {
+                Mail::to($sendMailTo)->send(new SendMail($data, $template, $socialMedia));
+            } else {
+                Mail::to($sendMailTo)->queue(new SendMail($data, $template, $socialMedia));
             }
+
+            return true;
+        } catch (Exception $exception) {
+            \Log::error('Email send failed: '.$exception->getMessage(), [
+                'to' => $sendMailTo,
+                'template' => $templateName,
+                'userType' => $userType,
+                'exception' => $exception->getTraceAsString(),
+            ]);
+
+            throw $exception;
         }
     }
 

@@ -183,7 +183,7 @@ trait UpdateClass
             }
 
             $this->businessSettingGetOrInsert(type: 'maximum_otp_hit', value: 0);
-            $this->businessSettingGetOrInsert(type: 'otp_resend_time', value: 0);
+            $this->businessSettingGetOrInsert(type: 'otp_resend_time', value: 60);
             $this->businessSettingGetOrInsert(type: 'temporary_block_time', value: 0);
             $this->businessSettingGetOrInsert(type: 'maximum_login_hit', value: 0);
             $this->businessSettingGetOrInsert(type: 'temporary_login_block_time', value: 0);

@@ -17,13 +17,16 @@
                                 class="resend_otp_custom text-center overflow-hidden {{ $get_time <= 0 ? 'd--none' : '' }}">
                                 <p class="text-primary mb-2">{{ translate('resend_code_within') }}</p>
                                 <h6 class="text-primary m-0 pb-4 verifyTimer">
-                                    <span class="verifyCounter" data-second="{{ $get_time }}"></span>s
+                                    <span class="verifyCounter" data-second="{{ $get_time }}">{{ sprintf('%d:%02d', intdiv($get_time, 60), $get_time % 60) }}</span>
                                 </h6>
                             </div>
                             <form class="needs-validation_ otp-form" id="sign-up-form"
                                 action="{{ route('customer.auth.verify') }}"
                                 data-verify="{{ route('customer.auth.verify') }}"
-                                data-resend="{{ route('customer.auth.resend_otp') }}" method="post">
+                                data-resend="{{ route('customer.auth.resend_otp') }}"
+                                data-otp-error="{{ translate('code_must_be_minimum_6_digits!') }}"
+                                data-captcha-error="{{ translate('ReCAPTCHA_failed.') }}"
+                                method="post">
                                 @csrf
                                 <div class="col-sm-12">
                                     <div class="form-group">
@@ -142,38 +145,57 @@
 
 @push('script')
     <script>
+        function syncRegistrationOtpFields(formElement) {
+            const otpFields = formElement.find(".otp-field");
+            let otpValue = "";
+
+            otpFields.each(function() {
+                otpValue += $(this).val().toString().replace(/[^0-9]/g, "");
+            });
+
+            formElement.find(".otp-value").val(otpValue);
+
+            return otpValue;
+        }
+
         $(document).ready(function() {
-            $(".otp-form .otp-value").focus();
-            let otp_fields = $(".otp-form .otp-field"),
-                otp_value_field = $(".otp-form .otp-value");
-            otp_fields
+            const otpForm = $("#sign-up-form");
+            const otpFields = otpForm.find(".otp-field");
+            const otpValueField = otpForm.find(".otp-value");
+
+            otpForm.find(".otp-field").first().focus();
+
+            otpFields
                 .on("input", function(e) {
                     $(this).val(
                         $(this)
                         .val()
                         .replace(/[^0-9]/g, "")
                     );
-                    let opt_value = "";
-                    otp_fields.each(function() {
-                        let field_value = $(this).val();
-                        if (field_value != "") opt_value += field_value;
-                    });
-                    otp_value_field.val(opt_value);
+                    syncRegistrationOtpFields(otpForm);
                 })
                 .on("keyup", function(e) {
                     let key = e.keyCode || e.charCode;
                     if (key == 8 || key == 46 || key == 37 || key == 40) {
-                        $(this).prev().focus();
+                        $(this).prev(".otp-field").focus();
                     } else if (key == 38 || key == 39 || $(this).val() != "") {
-                        $(this).next().focus();
+                        $(this).next(".otp-field").focus();
                     }
                 })
                 .on("paste", function(e) {
-                    let paste_data = e.originalEvent.clipboardData.getData("text");
-                    let paste_data_splitted = paste_data.split("");
-                    $.each(paste_data_splitted, function(index, value) {
-                        otp_fields.eq(index).val(value);
+                    e.preventDefault();
+                    let pasteData = (e.originalEvent.clipboardData.getData("text") || "")
+                        .replace(/[^0-9]/g, "")
+                        .slice(0, otpFields.length);
+
+                    otpFields.val("");
+
+                    $.each(pasteData.split(""), function(index, value) {
+                        otpFields.eq(index).val(value);
                     });
+
+                    syncRegistrationOtpFields(otpForm);
+                    otpFields.eq(Math.min(pasteData.length, otpFields.length - 1)).focus();
                 });
         });
     </script>

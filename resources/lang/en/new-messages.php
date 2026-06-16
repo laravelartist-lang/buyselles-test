@@ -11423,4 +11423,5 @@ return [
 	"update_failed" => "Update failed",
 	"Sort_priority_updated_successfully" => "Sort priority updated successfully",
 	"Sort_Priority" => "Sort Priority",
+	"Email_already_has_been_taken" => "Email already has been taken",
 ];

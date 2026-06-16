@@ -102,14 +102,24 @@ class RegisterController extends Controller
             if ($request->ajax()) {
                 if ($phoneVerification) {
                     $this->phoneOrEmailVerificationRepo->delete(params: ['phone_or_email' => $user->phone]);
-                    $this->getCustomerVerificationCheck((array) $user, 'phone');
+                    $verificationResult = $this->getCustomerVerificationCheck((array) $user, 'phone');
+                    if (($verificationResult['status'] ?? '') !== 'success') {
+                        return response()->json([
+                            'error' => $verificationResult['message'] ?? translate('email_failed'),
+                        ]);
+                    }
 
                     return response()->json([
                         'redirect_url' => route('customer.auth.check-verification', ['identity' => base64_encode($user->phone), 'type' => base64_encode('phone_verification')]),
                     ]);
                 } elseif ($emailVerification) {
                     $this->phoneOrEmailVerificationRepo->delete(params: ['phone_or_email' => $user->email]);
-                    $this->getCustomerVerificationCheck((array) $user, 'email');
+                    $verificationResult = $this->getCustomerVerificationCheck((array) $user, 'email');
+                    if (($verificationResult['status'] ?? '') !== 'success') {
+                        return response()->json([
+                            'error' => $verificationResult['message'] ?? translate('email_failed'),
+                        ]);
+                    }
 
                     return response()->json([
                         'redirect_url' => route('customer.auth.check-verification', ['identity' => base64_encode($user->email), 'type' => base64_encode('email_verification')]),
@@ -118,13 +128,23 @@ class RegisterController extends Controller
             } else {
                 if ($phoneVerification) {
                     $this->phoneOrEmailVerificationRepo->delete(params: ['phone_or_email' => $user->phone]);
-                    $this->getCustomerVerificationCheck((array) $user, 'phone');
+                    $verificationResult = $this->getCustomerVerificationCheck((array) $user, 'phone');
+                    if (($verificationResult['status'] ?? '') !== 'success') {
+                        Toastr::error($verificationResult['message'] ?? translate('email_failed'));
+
+                        return back()->withInput();
+                    }
 
                     return redirect(route('customer.auth.check-verification', ['identity' => base64_encode($user->phone), 'type' => base64_encode('phone_verification')]));
                 }
                 if ($emailVerification) {
                     $this->phoneOrEmailVerificationRepo->delete(params: ['phone_or_email' => $user->email]);
-                    $this->getCustomerVerificationCheck((array) $user, 'email');
+                    $verificationResult = $this->getCustomerVerificationCheck((array) $user, 'email');
+                    if (($verificationResult['status'] ?? '') !== 'success') {
+                        Toastr::error($verificationResult['message'] ?? translate('email_failed'));
+
+                        return back()->withInput();
+                    }
 
                     return redirect(route('customer.auth.check-verification', ['identity' => base64_encode($user->email), 'type' => base64_encode('email_verification')]));
                 }
@@ -151,7 +171,7 @@ class RegisterController extends Controller
         return redirect($this->customerAuthService->getCustomerAuthReturnURL());
     }
 
-    public function getCustomerVerificationCheck($user, $type, $config = []): array|RedirectResponse|string|null
+    public function getCustomerVerificationCheck($user, $type, $config = []): array
     {
         $token = $this->customerAuthService->getCustomerVerificationToken();
         $phoneVerification = getLoginConfig(key: 'phone_verification');
@@ -164,33 +184,50 @@ class RegisterController extends Controller
         }
         $firebaseOTPVerification = getWebConfig(name: 'firebase_otp_verification') ?? [];
 
-        if ($phoneVerification && ! $user['is_phone_verified'] && $firebaseOTPVerification && $firebaseOTPVerification['status']) {
-            $response = $this->firebaseService->sendOtp($user['phone']);
-            if ($response['status'] == 'error') {
-                Toastr::error(translate(strtolower($response['errors'])));
+        $response = [
+            'status' => 'error',
+            'message' => translate('email_failed'),
+        ];
 
-                return back();
+        if ($type === 'phone' && $phoneVerification && empty($user['is_phone_verified'])) {
+            if ($firebaseOTPVerification && ($firebaseOTPVerification['status'] ?? 0)) {
+                $response = $this->firebaseService->sendOtp($user['phone']);
+                if (($response['status'] ?? '') === 'error') {
+                    return [
+                        'status' => 'error',
+                        'message' => translate(strtolower($response['errors'] ?? 'failed')),
+                    ];
+                }
+                $token = $response['sessionInfo'];
+                $response = [
+                    'status' => 'success',
+                    'message' => translate('please_check_your_SMS_for_OTP'),
+                ];
+            } else {
+                $response = $this->customerAuthService->sendCustomerPhoneVerificationToken($user['phone'], $token);
+                if (($response['status'] ?? '') === 'success') {
+                    Toastr::success($response['message']);
+                }
             }
-            $token = $response['sessionInfo'];
-        } elseif ($phoneVerification && ! $user['is_phone_verified']) {
-            $response = $this->customerAuthService->sendCustomerPhoneVerificationToken($user['phone'], $token);
-            Toastr::success($response['message']);
-        } elseif ($emailVerification && ! $user['is_email_verified']) {
+        } elseif ($type === 'email' && $emailVerification && empty($user['is_email_verified'])) {
             $response = $this->customerAuthService->sendCustomerEmailVerificationToken($user, $token);
-            if ($response['status'] == 'error') {
-                Toastr::error($response['message']);
-
-                return back();
-            }
         }
+
+        if (($response['status'] ?? '') !== 'success') {
+            return [
+                'status' => 'error',
+                'message' => $response['message'] ?? translate('email_failed'),
+            ];
+        }
+
         $this->phoneOrEmailVerificationRepo->add(data: [
-            'phone_or_email' => $type == 'email' ? $user['email'] : $user['phone'],
+            'phone_or_email' => $type === 'email' ? $user['email'] : $user['phone'],
             'token' => $token,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
 
-        return $response ?? [];
+        return $response;
     }
 
     public function verificationCheckView(Request $request): View
@@ -237,9 +274,13 @@ class RegisterController extends Controller
     // Customer Default Verify
     public function verifyRegistration(Request $request): RedirectResponse|JsonResponse
     {
-        Validator::make($request->all(), [
-            'token' => 'required',
+        $request->merge([
+            'token' => trim((string) $request->input('token', '')),
         ]);
+
+        Validator::make($request->all(), [
+            'token' => 'required|digits:6',
+        ])->validate();
 
         $result = RecaptchaService::verificationStatus(request: $request, session: 'default_recaptcha_id_customer_auth', action: 'customer_auth', firebase: true);
         if ($result && ! $result['status']) {
@@ -257,7 +298,6 @@ class RegisterController extends Controller
         $maxOTPHit = getWebConfig(name: 'maximum_otp_hit') ?? 5;
         $maxOTPHitTime = getWebConfig(name: 'otp_resend_time') ?? 60; // seconds
         $tempBlockTime = getWebConfig(name: 'temporary_block_time') ?? 600; // seconds
-        $tempBlockTime = getWebConfig(name: 'temporary_block_time') ?? 5;
         $firebaseOTPVerification = getWebConfig(name: 'firebase_otp_verification') ?? [];
 
         $customer = $this->customerRepo->getByIdentity(filters: ['identity' => base64_decode($request['identity'])]);
@@ -315,7 +355,10 @@ class RegisterController extends Controller
                     return back();
                 }
             } else {
-                $tokenVerify = $this->phoneOrEmailVerificationRepo->getFirstWhere(params: ['phone_or_email' => $identity, 'token' => $request['token']]);
+                $tokenVerify = $this->phoneOrEmailVerificationRepo->getFirstWhere(params: [
+                    'phone_or_email' => $identity,
+                    'token' => (string) $request['token'],
+                ]);
                 $tokenVerifyStatus = (bool) $tokenVerify;
             }
 
@@ -462,7 +505,7 @@ class RegisterController extends Controller
     {
         Validator::make($request->all(), [
             'token' => 'required',
-        ]);
+        ])->validate();
 
         $email_status = getLoginConfig(key: 'email_verification');
         $phone_status = getLoginConfig(key: 'phone_verification');
@@ -565,33 +608,15 @@ class RegisterController extends Controller
             return back();
         }
 
-        $maxOTPHit = getWebConfig(name: 'maximum_otp_hit') ?? 5;
         $maxOTPHitTime = getWebConfig(name: 'otp_resend_time') ?? 60; // seconds
-        $tempBlockTime = getWebConfig(name: 'temporary_block_time') ?? 600; // seconds
-        $tempBlockTime = getWebConfig(name: 'temporary_block_time') ?? 5;
-        $phoneVerification = getLoginConfig(key: 'phone_verification');
-        $emailVerification = getLoginConfig(key: 'email_verification');
+        $verificationType = base64_decode($request['type']);
+        $resolvedCustomer = $this->resolveCustomerForOtpResend($request, $verificationType);
+        $customer = $resolvedCustomer['customer'];
+        $identity = $resolvedCustomer['identity'];
+        $identityType = $resolvedCustomer['identityType'];
+        $getToken = $this->phoneOrEmailVerificationRepo->getFirstWhere(params: ['phone_or_email' => $identity]);
 
         $timeDifferance = 0;
-        $verificationType = base64_decode($request['type']);
-        $customer = $this->customerRepo->getByIdentity(filters: ['identity' => base64_decode($request['identity'])]);
-        if ($customer) {
-            $identity = $verificationType == 'email_verification' ? $customer['email'] : $customer['phone'];
-            $getToken = $this->phoneOrEmailVerificationRepo->getFirstWhere(params: ['phone_or_email' => $identity]);
-            $identityType = $verificationType == 'email_verification' ? 'email' : 'phone';
-        } else {
-            $identity = base64_decode($request['identity']);
-            $getToken = $this->phoneOrEmailVerificationRepo->getFirstWhere(params: ['phone_or_email' => $identity]);
-            $identityType = 'phone';
-            $phoneVerification = 1;
-            $customer = [
-                'phone' => $identity,
-                'email' => $identity,
-                'is_phone_verified' => 0,
-                'is_email_verified' => 0,
-            ];
-        }
-
         if ($getToken) {
             $tokenTime = Carbon::parse($getToken['created_at']);
             $addTime = $tokenTime->addSeconds((int) $maxOTPHitTime);
@@ -599,25 +624,102 @@ class RegisterController extends Controller
         }
 
         if ($timeDifferance > 0) {
-            Toastr::error(translate('please_try_again_after_').CarbonInterval::seconds($timeDifferance)->cascade()->forHumans());
+            $message = translate('please_try_again_after_').CarbonInterval::seconds($timeDifferance)->cascade()->forHumans();
+            if ($request->ajax()) {
+                return response()->json([
+                    'status' => 0,
+                    'message' => $message,
+                ]);
+            }
+
+            Toastr::error($message);
 
             return redirect()->back();
+        }
+
+        $this->phoneOrEmailVerificationRepo->delete(params: ['phone_or_email' => $identity]);
+
+        if ($identityType === 'phone') {
+            $phoneVerification = $verificationType === 'phone_verification' ? 1 : getLoginConfig(key: 'phone_verification');
+            $verificationResult = $this->getCustomerVerificationCheck($customer, 'phone', ['phone_verification' => $phoneVerification]);
+        } elseif ($identityType === 'email') {
+            $verificationResult = $this->getCustomerVerificationCheck($customer, 'email', ['email_verification' => 1]);
         } else {
-            $this->phoneOrEmailVerificationRepo->delete(params: ['phone_or_email' => $identity]);
-            if ($identityType == 'phone') {
-                $this->getCustomerVerificationCheck($customer, 'phone', ['phone_verification' => $phoneVerification]);
-                Toastr::success(translate('OTP_sent_successfully'));
-
-                return redirect()->back();
-            } elseif ($identityType == 'email') {
-                $this->getCustomerVerificationCheck($customer, 'email');
-                Toastr::success(translate('OTP_sent_successfully'));
-
-                return redirect()->back();
-            }
             Toastr::success(translate('registration_success_login_now'));
 
             return redirect(route('customer.auth.login'));
         }
+
+        if (($verificationResult['status'] ?? '') !== 'success') {
+            $errorMessage = $verificationResult['message'] ?? translate('email_failed');
+            if ($request->ajax()) {
+                return response()->json([
+                    'status' => 0,
+                    'message' => $errorMessage,
+                ]);
+            }
+
+            Toastr::error($errorMessage);
+
+            return redirect()->back();
+        }
+
+        $otpResendTime = getWebConfig(name: 'otp_resend_time') > 0 ? getWebConfig(name: 'otp_resend_time') : 0;
+        if ($request->ajax()) {
+            return response()->json([
+                'status' => 1,
+                'message' => translate('OTP_sent_successfully'),
+                'new_time' => $otpResendTime,
+            ]);
+        }
+
+        Toastr::success(translate('OTP_sent_successfully'));
+
+        return redirect()->back();
+    }
+
+    private function resolveCustomerForOtpResend(Request $request, string $verificationType): array
+    {
+        $identity = base64_decode($request['identity']);
+        $cachedData = cache()->get('registration_data_'.$identity);
+
+        if ($cachedData) {
+            $regData = $cachedData['reg_data'];
+            $regData['is_phone_verified'] = $regData['is_phone_verified'] ?? 0;
+            $regData['is_email_verified'] = $regData['is_email_verified'] ?? 0;
+
+            if ($verificationType === 'email_verification') {
+                $regData['email'] = $regData['email'] ?? $identity;
+            } elseif ($verificationType === 'phone_verification') {
+                $regData['phone'] = $regData['phone'] ?? $identity;
+            }
+
+            return [
+                'customer' => $regData,
+                'identity' => $identity,
+                'identityType' => $verificationType === 'email_verification' ? 'email' : 'phone',
+            ];
+        }
+
+        $customer = $this->customerRepo->getByIdentity(filters: ['identity' => $identity]);
+        if ($customer) {
+            return [
+                'customer' => $customer,
+                'identity' => $verificationType === 'email_verification' ? $customer['email'] : $customer['phone'],
+                'identityType' => $verificationType === 'email_verification' ? 'email' : 'phone',
+            ];
+        }
+
+        return [
+            'customer' => [
+                'phone' => $identity,
+                'email' => $identity,
+                'f_name' => '',
+                'is_phone_verified' => 0,
+                'is_email_verified' => 0,
+            ],
+            'identity' => $identity,
+            'identityType' => $verificationType === 'email_verification' ? 'email' : 'phone',
+        ];
     }
 }

@@ -81,20 +81,21 @@ class RecaptchaService
                     'message' => $e->validator->errors()->first('g-recaptcha-response'),
                 ];
             }
-        } elseif (strtolower(session($session)) != strtolower($request['default_captcha_value'])) {
+        } else {
+            $submittedCaptcha = trim((string) ($request['default_captcha_value'] ?? ''));
+            $expectedCaptcha = trim((string) (session($session) ?? ''));
+
+            if ($submittedCaptcha === '' || $expectedCaptcha === '' || $submittedCaptcha !== $expectedCaptcha) {
+                session()->forget($session);
+
+                return [
+                    'status' => false,
+                    'message' => translate('ReCAPTCHA_failed.'),
+                ];
+            }
+
             session()->forget($session);
-
-            return [
-                'status' => false,
-                'message' => translate('ReCAPTCHA_failed.'),
-            ];
         }
-
-        if (isset($request['default_captcha_value']) && strtolower(session($session)) == strtolower($request['default_captcha_value'])) {
-            session()->forget($session);
-        }
-
-        session()->forget($session);
 
         return [
             'status' => true,

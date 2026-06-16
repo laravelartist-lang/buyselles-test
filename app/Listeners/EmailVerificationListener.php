@@ -29,6 +29,6 @@ class EmailVerificationListener
     {
         $email = $event->email;
         $data = $event->data;
-        $this->sendingMail(sendMailTo: $email, userType: $data['userType'], templateName: $data['templateName'], data: $data);
+        $this->sendingMail(sendMailTo: $email, userType: $data['userType'], templateName: $data['templateName'], data: $data, sendSync: true);
     }
 }
