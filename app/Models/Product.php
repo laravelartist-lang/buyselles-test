@@ -217,7 +217,10 @@ class Product extends Model
      */
     public function scopeInStock(Builder $query): Builder
     {
-        return $query->where('current_stock', '>', 0);
+        return $query->where(function (Builder $stockQuery) {
+            $stockQuery->where('product_type', 'digital')
+                ->orWhere('current_stock', '>', 0);
+        });
     }
 
     /**
@@ -226,7 +229,7 @@ class Product extends Model
      */
     public static function isInStockItem(self $product): bool
     {
-        return $product->current_stock > 0;
+        return $product->product_type === 'digital' || $product->current_stock > 0;
     }
 
     public function scopeActive($query)

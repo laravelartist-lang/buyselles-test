@@ -1,0 +1,12 @@
+Website Pagination Bug (Page 2 Redirects to Step 1)
+The Issue: On the website, inside any product list (e.g., Products in Sub-Sub Category), when we click on "Page 2" at the bottom, the system completely breaks. Instead of opening the second page of products, it drops all URL parameters (vendor_id, category_id, etc.) and redirects the user all the way back to Step 1 (Shops list).
+
+
+
+The Cause: Your pagination links are losing the active query request context.
+
+
+
+The Fix: You must append the current query parameters to the pagination links in your backend controller. In Laravel, make sure to use ->withQueryString() or ->appends(request()->query()) on your paginated collection so that the active filters and IDs are preserved when navigating between pages.
+
+

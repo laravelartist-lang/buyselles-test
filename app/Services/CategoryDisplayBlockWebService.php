@@ -725,7 +725,7 @@ class CategoryDisplayBlockWebService
         $scopedRequest = $this->requestWithContext($request, $context);
         $scopedRequest->merge([
             'limit' => $limit,
-            'offset' => $request->integer('page', 1),
+            'offset' => max(1, $request->integer('offset', $request->integer('page', 1))),
             'filter_by' => 'direct_sub_category',
         ]);
 
@@ -743,7 +743,7 @@ class CategoryDisplayBlockWebService
         $scopedRequest = $this->requestWithContext($request, $context);
         $scopedRequest->merge([
             'limit' => $limit,
-            'offset' => $request->integer('page', 1),
+            'offset' => max(1, $request->integer('offset', $request->integer('page', 1))),
             'filter_by' => 'direct_sub_sub_category',
         ]);
 

@@ -165,6 +165,7 @@ class CategoryController extends Controller
         }
 
         $limit = max(1, min((int) ($request['limit'] ?? CategoryDisplayBlockWebService::PREVIEW_LIMIT), 50));
+        $offset = max(1, (int) ($request['offset'] ?? $request['page'] ?? 1));
 
         $context = [];
         if ($request->filled('parent_id')) {
@@ -180,19 +181,35 @@ class CategoryController extends Controller
 
         $groups = [];
         foreach ($groupedProducts as $groupedProduct) {
-            $products = Helpers::product_data_formatting($groupedProduct['products'], true);
+            $products = $groupedProduct['products'];
+            $items = $products instanceof \Illuminate\Contracts\Pagination\LengthAwarePaginator
+                ? $products->items()
+                : $products;
+            $formattedProducts = Helpers::product_data_formatting($items, true);
 
-            $groups[] = [
+            $groupPayload = [
                 'category_id' => $groupedProduct['category']->id,
                 'category_name' => $groupedProduct['category']->name,
-                'products' => $products,
+                'products' => $formattedProducts,
+                'limit' => $limit,
+                'offset' => $offset,
             ];
+
+            if ($products instanceof \Illuminate\Contracts\Pagination\LengthAwarePaginator) {
+                $groupPayload['total_size'] = $products->total();
+            } else {
+                $groupPayload['total_size'] = count($formattedProducts);
+            }
+
+            $groups[] = $groupPayload;
         }
 
         return response()->json([
             'group_level' => $groupLevel,
             'main_category_id' => (int) $category->id,
             'parent_id' => $context['parent_id'] ?? null,
+            'limit' => $limit,
+            'offset' => $offset,
             'groups' => $groups,
         ]);
     }

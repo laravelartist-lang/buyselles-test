@@ -108,9 +108,7 @@ class CategoryManager
             'mixed_all' => self::applyMainCategoryAllProductsScope($query, $categoryId),
             'sub_categories' => self::applyMainCategorySubCategoryProductsScope($query, $categoryId),
             'sub_sub_categories' => self::applyMainCategorySubSubCategoryProductsScope($query, $categoryId),
-            'direct_sub_category' => $query
-                ->where('sub_category_id', $categoryId)
-                ->where(fn (Builder $subQuery) => self::applyWithoutSubSubCategoryScope($subQuery)),
+            'direct_sub_category' => $query->where('sub_category_id', $categoryId),
             'direct_sub_sub_category' => $query->where('sub_sub_category_id', $categoryId),
             default => $query->where('category_ids', 'like', '%"'.$categoryId.'"%'),
         };
