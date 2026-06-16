@@ -58,7 +58,7 @@
         @endforeach
     </div>
     @if ($vendors->hasPages())
-        <div class="mt-3 d-flex justify-content-center">{!! $vendors->links() !!}</div>
+        <div class="mt-3 d-flex justify-content-center">{!! $vendors->withQueryString()->links() !!}</div>
     @endif
 @else
     @include('category-display-blocks._empty-placeholder', [

@@ -459,6 +459,55 @@ class CategoryDisplayBlockWebService
     }
 
     /**
+     * @param  LengthAwarePaginator<int, Product>|Collection<int, Product>  $products
+     * @param  array{parent_id?: int, parent_name?: string, vendor_id?: int, vendor_name?: string}  $context
+     * @return LengthAwarePaginator<int, Product>|Collection<int, Product>
+     */
+    private function applyCategoryDisplayProductPagination(
+        LengthAwarePaginator|Collection $products,
+        Request $request,
+        Category $mainCategory,
+        array $context = [],
+    ): LengthAwarePaginator|Collection {
+        if (! $products instanceof LengthAwarePaginator) {
+            return $products;
+        }
+
+        return $products
+            ->withPath(route('category-products', ['slug' => $mainCategory->slug]))
+            ->appends($this->categoryDisplayPaginationAppends($request, $context));
+    }
+
+    /**
+     * @param  array{parent_id?: int, parent_name?: string, vendor_id?: int, vendor_name?: string}  $context
+     * @return array<string, mixed>
+     */
+    private function categoryDisplayPaginationAppends(Request $request, array $context = []): array
+    {
+        $appends = $request->only([
+            'step',
+            'parent_id',
+            'parent_name',
+            'vendor_id',
+            'vendor_name',
+            'search',
+            'product_name',
+            'country_id',
+            'city_id',
+            'area_id',
+            'direction',
+        ]);
+
+        foreach (['parent_id', 'parent_name', 'vendor_id', 'vendor_name'] as $key) {
+            if ((! isset($appends[$key]) || $appends[$key] === '') && isset($context[$key])) {
+                $appends[$key] = $context[$key];
+            }
+        }
+
+        return array_filter($appends, static fn ($value) => $value !== null && $value !== '');
+    }
+
+    /**
      * @param  Collection<int, Product>  $products
      * @return Collection<int, Product>
      */
@@ -1168,7 +1217,12 @@ class CategoryDisplayBlockWebService
             if (! $subCategory) {
                 return [];
             }
-            $products = $this->getProductsForSubCategoryOnly($subCategory->id, $request, $limit, $context);
+            $products = $this->applyCategoryDisplayProductPagination(
+                $this->getProductsForSubCategoryOnly($subCategory->id, $request, $limit, $context),
+                $request,
+                $category,
+                $context,
+            );
             if ($products->isNotEmpty()) {
                 return [['category' => $subCategory, 'products' => $products]];
             }
@@ -1180,7 +1234,12 @@ class CategoryDisplayBlockWebService
         $groupedProducts = [];
 
         foreach ($subCategories as $subCategory) {
-            $products = $this->getProductsForSubCategoryOnly($subCategory->id, $request, $limit, $context);
+            $products = $this->applyCategoryDisplayProductPagination(
+                $this->getProductsForSubCategoryOnly($subCategory->id, $request, $limit, $context),
+                $request,
+                $category,
+                $context,
+            );
             if ($products->isNotEmpty()) {
                 $groupedProducts[] = [
                     'category' => $subCategory,
@@ -1208,7 +1267,12 @@ class CategoryDisplayBlockWebService
             }
 
             if ((int) $selectedCategory->position === 2) {
-                $products = $this->getProductsForSubSubCategoryOnly($selectedCategory->id, $request, $limit, $context);
+                $products = $this->applyCategoryDisplayProductPagination(
+                    $this->getProductsForSubSubCategoryOnly($selectedCategory->id, $request, $limit, $context),
+                    $request,
+                    $category,
+                    $context,
+                );
                 if ($products->isNotEmpty()) {
                     $groupedProducts[] = [
                         'category' => $selectedCategory,
@@ -1221,7 +1285,12 @@ class CategoryDisplayBlockWebService
 
             $subSubCategories = $this->subSubCategoriesForParent($selectedCategory, $category, $context);
             foreach ($subSubCategories as $subSubCategory) {
-                $products = $this->getProductsForSubSubCategoryOnly($subSubCategory->id, $request, $limit, $context);
+                $products = $this->applyCategoryDisplayProductPagination(
+                    $this->getProductsForSubSubCategoryOnly($subSubCategory->id, $request, $limit, $context),
+                    $request,
+                    $category,
+                    $context,
+                );
                 if ($products->isNotEmpty()) {
                     $groupedProducts[] = [
                         'category' => $subSubCategory,
@@ -1235,7 +1304,12 @@ class CategoryDisplayBlockWebService
 
         foreach ($this->getSubCategories($category, $context) as $subCategory) {
             foreach ($this->subSubCategoriesForParent($subCategory, $category, $context) as $subSubCategory) {
-                $products = $this->getProductsForSubSubCategoryOnly($subSubCategory->id, $request, $limit, $context);
+                $products = $this->applyCategoryDisplayProductPagination(
+                    $this->getProductsForSubSubCategoryOnly($subSubCategory->id, $request, $limit, $context),
+                    $request,
+                    $category,
+                    $context,
+                );
                 if ($products->isNotEmpty()) {
                     $groupedProducts[] = [
                         'category' => $subSubCategory,

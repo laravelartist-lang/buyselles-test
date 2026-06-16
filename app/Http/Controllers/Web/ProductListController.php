@@ -275,7 +275,7 @@ class ProductListController extends Controller
             }
         }
 
-        if (! $hasNoContent && $step === 0 && $direction !== 'back' && ! isset($context['parent_id']) && ! isset($context['vendor_id'])) {
+        if (! $hasNoContent && $step === 0 && $direction !== 'back' && ! isset($context['parent_id']) && ! isset($context['vendor_id']) && ! $request->has('page')) {
             $initialStep = $this->categoryDisplayBlockWebService->resolveInitialStep($blocks, $category, $context);
 
             if ($initialStep['shouldExitToCategories']) {
@@ -283,6 +283,16 @@ class ProductListController extends Controller
             } else {
                 $step = $initialStep['stepIndex'] ?? 0;
             }
+        }
+
+        if (! $hasNoContent) {
+            $request->merge(array_filter([
+                'step' => $step,
+                'parent_id' => $context['parent_id'] ?? null,
+                'parent_name' => $context['parent_name'] ?? null,
+                'vendor_id' => $context['vendor_id'] ?? null,
+                'vendor_name' => $context['vendor_name'] ?? null,
+            ], static fn ($value) => $value !== null && $value !== ''));
         }
 
         $stepData = $hasNoContent

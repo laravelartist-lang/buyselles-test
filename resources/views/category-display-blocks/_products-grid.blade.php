@@ -17,7 +17,7 @@
             @endforeach
         </div>
         @if ($products->hasPages())
-            <div class="mt-3">{!! $products->links() !!}</div>
+            <div class="mt-3">{!! $products->withQueryString()->links() !!}</div>
         @endif
     @else
         <div class="row">
@@ -31,7 +31,7 @@
             @endforeach
             @if ($products->hasPages())
                 <div class="col-12">
-                    <nav class="d-flex justify-content-center pt-3">{!! $products->links() !!}</nav>
+                    <nav class="d-flex justify-content-center pt-3">{!! $products->withQueryString()->links() !!}</nav>
                 </div>
             @endif
         </div>
