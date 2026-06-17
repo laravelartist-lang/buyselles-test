@@ -30,7 +30,11 @@ class DisputeController extends Controller
             ->latest();
 
         if ($status && $status !== 'all') {
-            $query->where('status', $status);
+            match ($status) {
+                'resolved' => $query->whereIn('status', [DisputeStatus::RESOLVED_REFUND, DisputeStatus::RESOLVED_RELEASE]),
+                'closed' => $query->whereIn('status', [DisputeStatus::CLOSED, DisputeStatus::AUTO_CLOSED]),
+                default => $query->where('status', $status),
+            };
         }
 
         $disputes = $query->paginate(15);
