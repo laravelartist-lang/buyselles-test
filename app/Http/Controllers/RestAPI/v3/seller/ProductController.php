@@ -78,7 +78,7 @@ class ProductController extends Controller
             return $query->active();
         }])
             ->withCount('reviews')
-            ->where(['added_by' => 'seller', 'user_id' => $seller['id']])
+            ->where('user_id', $seller['id'])
             ->when(isset($request['filter_category_ids']) && ! empty($request['filter_category_ids']) && is_array($request['filter_category_ids']) && count($request['filter_category_ids']) > 0,
                 function ($query) use ($request) {
                     return \App\Utils\ProductManager::filterQueryForCategoryWithSubCategories(
@@ -205,7 +205,7 @@ class ProductController extends Controller
             });
         }])
             ->withCount('reviews')
-            ->where(['user_id' => $seller_id, 'added_by' => 'seller'])
+            ->where('user_id', $seller_id)
             ->when($request['search'], function ($query) use ($request) {
                 $key = explode(' ', $request['search']);
                 foreach ($key as $value) {
@@ -453,7 +453,7 @@ class ProductController extends Controller
             });
         }])
             ->withCount('reviews')
-            ->where(['user_id' => $seller_id, 'added_by' => 'seller'])
+            ->where('user_id', $seller_id)
             ->when($request['search'], function ($query) use ($request) {
                 $key = explode(' ', $request['search']);
                 foreach ($key as $value) {

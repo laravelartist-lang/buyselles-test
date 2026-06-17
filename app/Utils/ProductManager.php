@@ -959,7 +959,7 @@ class ProductManager
     public static function get_seller_all_products($seller_id, $limit = 10, $offset = 1)
     {
         $paginator = Product::with(['rating', 'tags'])
-            ->where(['user_id' => $seller_id, 'added_by' => 'seller'])
+            ->where('user_id', $seller_id)
             ->orderBy('id', 'desc')
             ->paginate($limit, ['*'], 'page', $offset);
 
