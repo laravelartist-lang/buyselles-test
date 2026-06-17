@@ -11,6 +11,7 @@ use App\Http\Controllers\RestAPI\v3\seller\DeliveryManCashCollectController;
 use App\Http\Controllers\RestAPI\v3\seller\DeliveryManController;
 use App\Http\Controllers\RestAPI\v3\seller\DeliverymanWithdrawController;
 use App\Http\Controllers\RestAPI\v3\seller\DigitalCodeController;
+use App\Http\Controllers\RestAPI\v3\seller\DisputeController;
 use App\Http\Controllers\RestAPI\v3\seller\EmergencyContactController;
 use App\Http\Controllers\RestAPI\v3\seller\OrderController;
 use App\Http\Controllers\RestAPI\v3\seller\OrderEditController;
@@ -175,6 +176,16 @@ Route::group(['namespace' => 'RestAPI\v3\seller', 'prefix' => 'v3/seller', 'midd
                 Route::get('single-item', 'getSingleItem');
                 Route::get('refund-details', 'refund_details');
                 Route::post('refund-status-update', 'refund_status_update');
+            });
+        });
+
+        Route::group(['prefix' => 'disputes'], function () {
+            Route::controller(DisputeController::class)->group(function () {
+                Route::get('/', 'index');
+                Route::get('{id}', 'show');
+                Route::post('{id}/message', 'respond');
+                Route::post('{id}/evidence', 'uploadEvidence');
+                Route::post('{id}/escalate', 'escalate');
             });
         });
 

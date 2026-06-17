@@ -581,6 +581,8 @@ class CategoryDisplayBlockWebService
      */
     public function getVendors(int $categoryId, Request $request, int $perPage = self::PREVIEW_LIMIT): LengthAwarePaginator
     {
+        $mainCategory = Category::query()->findOrFail($categoryId);
+
         $vendors = Seller::approved()
             ->with(['shop'])
             ->whereHas('shop', function ($query) use ($request) {
@@ -605,7 +607,8 @@ class CategoryDisplayBlockWebService
                 $query->active();
             }])
             ->paginate($perPage)
-            ->appends($request->only(['search', 'country_id', 'city_id', 'area_id', 'page']));
+            ->withPath(route('category-products', ['slug' => $mainCategory->slug]))
+            ->appends($this->categoryDisplayPaginationAppends($request));
 
         $vendors->getCollection()->transform(function ($seller) {
             $seller['average_rating'] = Review::active()->whereHas('product', function ($query) use ($seller) {

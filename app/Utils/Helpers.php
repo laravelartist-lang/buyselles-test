@@ -485,6 +485,11 @@ class Helpers
             $data['order_id'] = null;
         }
 
+        $data['title'] = $data['title'] ?? '';
+        $data['description'] = $data['description'] ?? '';
+        $data['image'] = $data['image'] ?? '';
+        $data['type'] = $data['type'] ?? '';
+
         $postdata = '{
             "to" : "'.$fcm_token.'",
             "data" : {
