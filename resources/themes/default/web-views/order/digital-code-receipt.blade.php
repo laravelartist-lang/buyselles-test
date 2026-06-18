@@ -214,7 +214,11 @@ $direction = session('direction', 'ltr');
                 <div class="code-product">{{ $item['productName'] }}</div>
                 <div class="code-value">{{ $item['code'] }}</div>
                 <div class="code-meta">
+                    @if (!empty($item['pin']))
+                        <strong>{{ translate('PIN') }}:</strong> {{ $item['pin'] }}
+                    @endif
                     @if (!empty($item['serial']))
+                        @if (!empty($item['pin'])) &nbsp; @endif
                         {{ translate('S/N') }}: {{ $item['serial'] }}
                     @endif
                     @if (!empty($item['expiry']))

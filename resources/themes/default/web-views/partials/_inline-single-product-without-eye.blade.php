@@ -1,6 +1,6 @@
 @php($overallRating = getOverallRating($product?->reviews))
 
-<div class="product-single-hover style--card">
+<div class="product-single-hover style--card get-view-by-onclick cursor-pointer" data-link="{{ route('product', $product->slug) }}">
     <div class="overflow-hidden position-relative">
         <div class=" inline_product clickable d-flex justify-content-center">
             @if(getProductPriceByType(product: $product, type: 'discount', result: 'value') > 0)

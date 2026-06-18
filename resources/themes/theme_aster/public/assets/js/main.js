@@ -1,8 +1,7 @@
 /*---------------------------------------------
-	Template name:  6valley Grocery
+	Template name:  BuySelles
 	Version:        1.0
-	Author:         6amtech
-	Author url:     https://6amtech.com/
+	Author:         BuySelles
 
 NOTE:
 ------

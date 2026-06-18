@@ -33,6 +33,7 @@ use App\Models\SupplierOrder;
 use App\Models\User;
 use App\Models\Wishlist;
 use App\Services\CustomerServiceFeeService;
+use App\Services\DigitalCodeCustomerExportService;
 use App\Services\ProductService;
 use App\Services\RecaptchaService;
 use App\Services\ShopService;
@@ -59,9 +60,11 @@ use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Session;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 use function App\Utils\payment_gateways;
 
@@ -800,46 +803,28 @@ class WebController extends Controller
         ]);
     }
 
-    public function printDigitalCodes(Request $request): View
+    public function printDigitalCodes(Request $request, DigitalCodeCustomerExportService $exportService): View
     {
         $orderIds = (array) $request->input('orderIds', []);
-        $codes = [];
-        $orderId = implode(', ', $orderIds);
-        $orderDate = now()->format('Y-m-d H:i');
-        $customerName = '';
+        $receiptData = $exportService->getReceiptData($orderIds, auth('customer')->id());
 
-        if (! empty($orderIds)) {
-            $records = DigitalProductCode::query()
-                ->whereIn('order_id', $orderIds)
-                ->where('status', 'sold')
-                ->with(['product', 'order.customer'])
-                ->get();
-
-            foreach ($records as $record) {
-                $codes[] = [
-                    'productName' => $record->product?->name ?? translate('Digital Product'),
-                    'code' => $record->decryptCode(),
-                    'pin' => $record->decryptPin(),
-                    'serial' => $record->serial_number,
-                    'expiry' => $record->expiry_date?->format('Y-m-d'),
-                ];
-
-                if (empty($customerName) && $record->order) {
-                    $order = $record->order;
-                    if ($order->customer) {
-                        $customerName = $order->customer->name ?? $order->customer->f_name.' '.$order->customer->l_name;
-                    } else {
-                        $billingAddress = is_object($order->billing_address_data)
-                            ? $order->billing_address_data
-                            : json_decode($order->billing_address_data ?? '{}');
-                        $customerName = $billingAddress->contact_person_name ?? '';
-                    }
-                    $orderDate = $order->created_at?->format('Y-m-d H:i') ?? $orderDate;
-                }
-            }
+        if (empty($receiptData['codes'])) {
+            abort(404);
         }
 
-        return view('web-views.order.digital-code-receipt', compact('codes', 'orderId', 'orderDate', 'customerName'));
+        return view('web-views.order.digital-code-receipt', $receiptData);
+    }
+
+    public function exportDigitalCodes(Request $request, string $format, DigitalCodeCustomerExportService $exportService): Response|StreamedResponse
+    {
+        $orderIds = (array) $request->input('orderIds', []);
+
+        return match ($format) {
+            'pdf' => $exportService->downloadPdf($orderIds, auth('customer')->id()),
+            'excel' => $exportService->downloadExcel($orderIds, auth('customer')->id()),
+            'word' => $exportService->downloadWord($orderIds, auth('customer')->id()),
+            default => abort(404),
+        };
     }
 
     /**

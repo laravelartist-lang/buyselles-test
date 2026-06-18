@@ -82,10 +82,12 @@
                             </h6>
                             <small style="opacity:.85;">{{ translate('Codes_have_been_emailed_to_you_too._Keep_them_safe.') }}</small>
                         </div>
-                        <button type="button" class="btn btn-sm btn-light"
-                            data-bs-toggle="modal" data-bs-target="#orderSuccessModal">
-                            <i class="fa fa-print me-1"></i>{{ translate('Print_Receipt') }}
-                        </button>
+                        @include('web-views.partials._digital-code-delivery-actions', [
+                            'orderIds' => $order_ids ?? [],
+                            'viewTarget' => 'codes-card-container',
+                            'codesContainer' => 'codes-card-container',
+                            'compact' => true,
+                        ])
                     </div>
                     <div class="card-body d-flex flex-column gap-3">
                         <div id="codes-card-loading" class="text-center py-4" style="{{ $hasDigitalCodes ? 'display:none;' : '' }}">
@@ -253,10 +255,18 @@
                 </div>
 
                 {{-- Footer --}}
-                <div class="modal-footer border-0 pt-1 flex-wrap gap-2">
-                    <button type="button" id="asterPrintBtn" class="btn btn-outline-secondary">
-                        <i class="fa fa-print me-1"></i>{{ translate('Print_Receipt') }}
-                    </button>
+                <div class="modal-footer border-0 pt-1 flex-wrap gap-2 justify-content-between">
+                    @if ($showDigitalCodesSection)
+                        @include('web-views.partials._digital-code-delivery-actions', [
+                            'orderIds' => $order_ids ?? [],
+                            'viewTarget' => 'codes-modal-container',
+                            'codesContainer' => 'codes-modal-container',
+                        ])
+                    @else
+                        <button type="button" id="asterPrintBtn" class="btn btn-outline-secondary">
+                            <i class="fa fa-print me-1"></i>{{ translate('Print_Receipt') }}
+                        </button>
+                    @endif
                     @if (!$showDigitalCodesSection)
                         <a href="{{ route('track-order.index') }}" class="btn btn-outline-primary">
                             <i class="fa fa-map-marker me-1"></i>{{ translate('Track_Order') }}
@@ -534,4 +544,5 @@
     });
 }());
 </script>
+    @include('web-views.partials._digital-code-delivery-script')
 @endpush

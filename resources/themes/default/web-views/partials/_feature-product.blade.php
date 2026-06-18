@@ -1,6 +1,6 @@
 @if(isset($product))
     @php($overallRating = getOverallRating($product?->reviews))
-    <div class="product-single-hover shadow-none rtl">
+    <div class="product-single-hover shadow-none rtl get-view-by-onclick cursor-pointer" data-link="{{ route('product', $product->slug) }}">
         @if(getProductPriceByType(product: $product, type: 'discount', result: 'value') > 0)
             <span class="for-discount-value p-1 pl-2 pr-2 font-bold fs-13">
            <span class="direction-ltr d-block">

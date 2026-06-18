@@ -13,14 +13,8 @@
         <div class="container">
             <div class="wrapper">
                 <div class="txt">
-                    This is a demo website - Buy genuine 6Valley using our official link !
+                    {{ translate('This_is_a_demo_website') }}
                 </div>
-                <a href="https://codecanyon.net/item/6valley-multivendor-ecommerce-complete-ecommerce-mobile-app-web-and-admin-panel/31448597?s_rank=19"
-                    class="click" target="_blank">Click Now <img src="{{ asset('public/assets/arrowww.png') }}"
-                        alt=""></a>
-                <a href="https://codecanyon.net/item/6valley-multivendor-ecommerce-complete-ecommerce-mobile-app-web-and-admin-panel/31448597?s_rank=19"
-                    class="px-3 py-1 rounded" style="background-color: #FF7500; color:#ffffff" target="_blank">Buy
-                    Now</a>
             </div>
         </div>
     </div>

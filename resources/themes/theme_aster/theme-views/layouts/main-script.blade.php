@@ -137,18 +137,18 @@ data-value="{{ isset($recaptcha) && $recaptcha['status'] == 1 ? $recaptcha['site
         </div>
         `;
     $(document).on('click', '#cookie-accept', function () {
-        document.cookie = '6valley_cookie_consent=accepted; max-age=' + 60 * 60 * 24 * 30;
+        document.cookie = 'buyselles_cookie_consent=accepted; max-age=' + 60 * 60 * 24 * 30;
         cookieSection.hide();
     });
     $(document).on('click', '#cookie-reject', function () {
-        document.cookie = '6valley_cookie_consent=reject; max-age=' + 60 * 60 * 24;
+        document.cookie = 'buyselles_cookie_consent=reject; max-age=' + 60 * 60 * 24;
         cookieSection.hide();
     });
 
     $(document).ready(function () {
-        if (document.cookie.indexOf("6valley_cookie_consent=accepted") !== -1) {
+        if (document.cookie.indexOf('buyselles_cookie_consent=accepted') !== -1 || document.cookie.indexOf('6valley_cookie_consent=accepted') !== -1) {
             cookieSection.hide();
-        } else if (document.cookie.indexOf("6valley_cookie_consent=reject") !== -1) {
+        } else if (document.cookie.indexOf('buyselles_cookie_consent=reject') !== -1 || document.cookie.indexOf('6valley_cookie_consent=reject') !== -1) {
             cookieSection.hide();
         } else {
             cookieSection.html(cookie_content).show();

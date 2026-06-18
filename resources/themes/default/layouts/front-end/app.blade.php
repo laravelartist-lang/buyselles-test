@@ -134,26 +134,6 @@
     @include('layouts.front-end.partials._header')
     @include('layouts.front-end.partials._alert-message')
 
-    @if (isset($isMobile) && $isMobile)
-        <div id="app-banner" class="app-download-popup" style="--bottom: 30px;">
-            <div class="d-flex gap-3 align-items-center">
-                <button type="button"
-                    class="btn p-0 px-1 bg-transparent text-dark border-0 shadow-none app-banner-close">
-                    <i class="fi fi-sr-cross fs-14"></i>
-                </button>
-                <img width="44" class="img-fit aspect-1 w-40px flex-shrink-0"
-                    src="{{ getStorageImages(path: $web_config['mob_logo'], type: 'logo') }}" alt="6Valley">
-                <div class="flex-grow-1">
-                    <h5 class="fs-14 mb-1">6Valley {{ translate('Mobile_App') }}</h5>
-                    <div class="fs-11 opacity-70">{{ translate('For_better_experience_download') }}</div>
-                    <button type="button" id="install-btn"
-                        class="btn btn--primary fs-12 fw-semibold px-2 py-1 mt-2">
-                        {{ translate('Download') }}
-                    </button>
-                </div>
-            </div>
-        </div>
-    @endif
     <span id="authentication-status" data-auth="{{ auth('customer')->check() ? 'true' : 'false' }}"></span>
 
     <div class="row">
@@ -320,33 +300,6 @@
         <script src="https://www.google.com/recaptcha/api.js?render={{ $recaptcha['site_key'] }}"></script>
     @endif
 
-    @if (isset($isMobile) && $isMobile)
-        <script>
-            const banner = document.getElementById('app-banner');
-            const closeBtn = document.querySelector('.app-banner-close');
-            const installBtn = document.getElementById('install-btn');
-
-            const STORE_URL =
-                '{{ $isAndroid
-                    ? getWebConfig(name: 'app_deep_link')['playstore_redirect_url'] ?? ''
-                    : getWebConfig(name: 'app_deep_link')['app_store_redirect_url'] ?? '' }}';
-
-            setTimeout(() => {
-                if (!document.hidden) {
-                    banner.style.display = 'block';
-                }
-            }, 3000);
-
-            closeBtn.addEventListener('click', () => {
-                banner.style.display = 'none';
-            });
-
-            installBtn.addEventListener('click', () => {
-                window.location.href = STORE_URL;
-            });
-        </script>
-    @endif
-
     <script src="{{ dynamicAsset(path: 'public/assets/backend/libs/google-recaptcha/google-recaptcha-init.js') }}">
     </script>
 
@@ -406,18 +359,18 @@
         </div>
     `;
         $(document).on('click', '#cookie-accept', function() {
-            document.cookie = '6valley_cookie_consent=accepted; max-age=' + 60 * 60 * 24 * 30;
+            document.cookie = 'buyselles_cookie_consent=accepted; max-age=' + 60 * 60 * 24 * 30;
             $('#cookie-section').hide();
         });
         $(document).on('click', '#cookie-reject', function() {
-            document.cookie = '6valley_cookie_consent=reject; max-age=' + 60 * 60 * 24;
+            document.cookie = 'buyselles_cookie_consent=reject; max-age=' + 60 * 60 * 24;
             $('#cookie-section').hide();
         });
 
         $(document).ready(function() {
-            if (document.cookie.indexOf("6valley_cookie_consent=accepted") !== -1) {
+            if (document.cookie.indexOf('buyselles_cookie_consent=accepted') !== -1 || document.cookie.indexOf('6valley_cookie_consent=accepted') !== -1) {
                 $('#cookie-section').hide();
-            } else if (document.cookie.indexOf("6valley_cookie_consent=reject") !== -1) {
+            } else if (document.cookie.indexOf('buyselles_cookie_consent=reject') !== -1 || document.cookie.indexOf('6valley_cookie_consent=reject') !== -1) {
                 $('#cookie-section').hide();
             } else {
                 $('#cookie-section').html(cookie_content).show();

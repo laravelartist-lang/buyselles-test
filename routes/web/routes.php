@@ -115,7 +115,8 @@ Route::group(['namespace' => 'Web', 'middleware' => ['maintenance_mode', 'guestC
         Route::get('order-placed', 'order_placed')->name('order-placed');
         Route::get('order-placed-success', 'getOrderPlaceView')->name('order-placed-success');
         Route::get('check-digital-codes-status', 'checkDigitalCodesStatus')->name('check-digital-codes-status');
-        Route::get('order/digital-codes/receipt', 'printDigitalCodes')->name('order.digital-codes.receipt');
+        Route::get('order/digital-codes/receipt', 'printDigitalCodes')->name('order.digital-codes.receipt')->middleware('customer');
+        Route::get('order/digital-codes/export/{format}', 'exportDigitalCodes')->name('order.digital-codes.export')->middleware('customer');
         Route::get('shop-cart', 'shop_cart')->name('shop-cart');
         Route::post('order_note', 'order_note')->name('order_note');
         Route::get('digital-product-download/{id}', 'getDigitalProductDownload')->name('digital-product-download');

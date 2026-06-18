@@ -696,16 +696,17 @@
                         @endphp
                         @if ($soldCodes->isNotEmpty())
                             <div class="card __card mt-3" id="digitalCodesSection">
-                                <div class="card-header d-flex align-items-center justify-content-between gap-2 py-2">
+                                <div class="card-header d-flex align-items-center justify-content-between gap-2 py-2 flex-wrap">
                                     <h6 class="mb-0 fs-14 fw-semibold">
                                         <i class="fi fi-rr-key me-2 web-text-primary"></i>
                                         {{ translate('Digital Codes') }}
                                     </h6>
-                                    <button type="button" onclick="printDigitalCodes()"
-                                        class="btn btn-sm btn-outline-secondary">
-                                        <i class="fi fi-rr-print gap-2"
-                                            style="margin-right: 3px"></i>{{ translate('Print') }}
-                                    </button>
+                                    @include('web-views.partials._digital-code-delivery-actions', [
+                                        'orderIds' => [$order->id],
+                                        'viewTarget' => 'digitalCodesSection',
+                                        'codesContainer' => 'digitalCodesPrintArea',
+                                        'compact' => true,
+                                    ])
                                 </div>
                                 <div class="card-body p-3" id="digitalCodesPrintArea">
                                     <div class="alert alert-info py-2 px-3 fs-13 mb-3">
@@ -713,7 +714,7 @@
                                         {{ translate('Keep these codes safe. Each code is unique and tied to your order.') }}
                                     </div>
                                     @foreach ($soldCodes as $idx => $dc)
-                                        <div class="border rounded p-3 mb-2 bg-light">
+                                        <div class="border rounded p-3 mb-2 bg-light digital-code-item">
                                             <p class="text-muted mb-1 fw-semibold fs-13">
                                                 <i class="fi fi-rr-box me-1"></i>
                                                 {{ $dc->product?->name ?? translate('Digital Product') }}
@@ -751,7 +752,7 @@
                                     @endforeach
                                 </div>
                             </div>
-                            {{-- Hidden print area --}}
+                            {{-- Hidden print area (legacy fallback) --}}
                             <div id="digitalCodesPrintReceipt" style="display:none;">
                                 <div
                                     style="text-align:center;border-bottom:1px dashed #000;padding-bottom:5px;margin-bottom:5px;">
@@ -1389,45 +1390,13 @@
             });
         });
 
-        function printDigitalCodes() {
-            var receipt = document.getElementById('digitalCodesPrintReceipt');
-            if (!receipt) return;
-
-            // Remember original position so we can put it back after print
-            var originalParent = receipt.parentNode;
-            var originalNext = receipt.nextSibling;
-
-            // Move receipt to be a direct child of <body> so the CSS
-            // body.printing-codes > *:not(#digitalCodesPrintReceipt) works correctly
-            document.body.appendChild(receipt);
-            document.body.classList.add('printing-codes');
-            receipt.style.display = 'block';
-
-            window.print();
-
-            window.addEventListener('afterprint', function cleanup() {
-                document.body.classList.remove('printing-codes');
-                receipt.style.display = 'none';
-                // Move receipt back to its original DOM position
-                if (originalNext) {
-                    originalParent.insertBefore(receipt, originalNext);
-                } else {
-                    originalParent.appendChild(receipt);
-                }
-                window.removeEventListener('afterprint', cleanup);
-            });
-        }
-
         function printOrder() {
             var section = document.getElementById('orderMainContent');
             if (!section) return;
 
-            // Remember original position so we can put it back after print
             var originalParent = section.parentNode;
             var originalNext = section.nextSibling;
 
-            // Move section to be a direct child of <body> so the CSS
-            // body.printing-order > *:not(#orderMainContent) works correctly
             document.body.appendChild(section);
             document.body.classList.add('printing-order');
 
@@ -1435,7 +1404,6 @@
 
             window.addEventListener('afterprint', function cleanup() {
                 document.body.classList.remove('printing-order');
-                // Move section back to its original DOM position
                 if (originalNext) {
                     originalParent.insertBefore(section, originalNext);
                 } else {
@@ -1445,4 +1413,5 @@
             });
         }
     </script>
+    @include('web-views.partials._digital-code-delivery-script')
 @endpush

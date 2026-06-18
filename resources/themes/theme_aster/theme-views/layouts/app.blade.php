@@ -148,25 +148,6 @@
             </div>
         @endif
     </div>
-    @if (isset($isMobile) && $isMobile)
-        <div id="app-banner" class="app-download-popup" style="--bottom: 80px;">
-            <div class="d-flex gap-3 align-items-center">
-                <button type="button"
-                    class="btn p-0 px-1 bg-transparent text-dark border-0 shadow-none app-banner-close">
-                    <i class="fi fi-sr-cross fs-14"></i>
-                </button>
-                <img width="44" class="img-fit aspect-1 w-40px flex-shrink-0"
-                    src="{{ getStorageImages(path: $web_config['mob_logo'], type: 'logo') }}" alt="6Valley">
-                <div class="flex-grow-1">
-                    <h5 class="fs-14 mb-1">6Valley {{ translate('Mobile_App') }}</h5>
-                    <div class="fs-11">{{ translate('For_better_experience_download') }}</div>
-                    <button type="button" id="install-btn" class="btn btn-primary fs-12 fw-semibold px-2 py-1 mt-2">
-                        {{ translate('Download') }}
-                    </button>
-                </div>
-            </div>
-        </div>
-    @endif
     @include('theme-views.layouts.partials._translate-text-for-js')
     @include('theme-views.layouts.partials._route-for-js')
     @include('theme-views.layouts.main-script')
@@ -180,32 +161,6 @@
         data-password-validation="{{ translate('password_must_be_8+_chars_with_upper,_lower,_number_&_symbol') }}"
         data-file-type-not-allowed="{{ translate('Invalid_file_type_selected') }}"></span>
     <span id="imageUploadMaxSize" data-max-size="{{ getFileUploadMaxSize() }}"></span>
-    @if (isset($isMobile) && $isMobile)
-        <script>
-            const banner = document.getElementById('app-banner');
-            const closeBtn = document.querySelector('.app-banner-close');
-            const installBtn = document.getElementById('install-btn');
-
-            const STORE_URL =
-                '{{ $isAndroid
-                    ? getWebConfig(name: 'app_deep_link')['playstore_redirect_url'] ?? ''
-                    : getWebConfig(name: 'app_deep_link')['app_store_redirect_url'] ?? '' }}';
-
-            setTimeout(() => {
-                if (!document.hidden) {
-                    banner.style.display = 'block';
-                }
-            }, 3000);
-
-            closeBtn.addEventListener('click', () => {
-                banner.style.display = 'none';
-            });
-
-            installBtn.addEventListener('click', () => {
-                window.location.href = STORE_URL;
-            });
-        </script>
-    @endif
     {!! Toastr::message() !!}
     <script>
         function route_alert(route, message) {
