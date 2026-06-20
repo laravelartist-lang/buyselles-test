@@ -819,10 +819,16 @@ class WebController extends Controller
     {
         $orderIds = (array) $request->input('orderIds', []);
 
+        $customerId = auth('customer')->id();
+
+        if ($format === 'pdf' && $request->boolean('inline')) {
+            return $exportService->streamPdf($orderIds, $customerId);
+        }
+
         return match ($format) {
-            'pdf' => $exportService->downloadPdf($orderIds, auth('customer')->id()),
-            'excel' => $exportService->downloadExcel($orderIds, auth('customer')->id()),
-            'word' => $exportService->downloadWord($orderIds, auth('customer')->id()),
+            'pdf' => $exportService->downloadPdf($orderIds, $customerId),
+            'excel' => $exportService->downloadExcel($orderIds, $customerId),
+            'word' => $exportService->downloadWord($orderIds, $customerId),
             default => abort(404),
         };
     }

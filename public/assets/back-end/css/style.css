@@ -9567,6 +9567,19 @@ input[type=radio] {
   bottom: 30px;
   width: 220px;
   inset-inline-start: 20px;
+  touch-action: none;
+}
+
+.setup-guide.is-dragging {
+  z-index: 1055;
+}
+
+.setup-guide.is-dragging .setup-guide__button {
+  cursor: grabbing;
+}
+
+.setup-guide__button {
+  cursor: grab;
 }
 
 .translate-middle {
@@ -9584,18 +9597,11 @@ input[type=radio] {
 
 @media (max-width: 991px) {
   .setup-guide {
-    width: 52px;
-    opacity: 0;
-    visibility: hidden;
-    transition: opacity 0.25s ease-in-out, visibility 0.25s ease-in-out;
+    display: none !important;
   }
 
-  .setup-guide.show {
-    opacity: 1;
-    visibility: visible;
-    animation: fadeInUp 0.3s;
-    -webkit-animation: fadeInUp 0.3s;
-    -moz-animation: fadeInUp 0.3s;
+  .view-guideline-btn {
+    display: none !important;
   }
 }
 

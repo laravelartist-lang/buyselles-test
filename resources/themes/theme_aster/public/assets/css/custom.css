@@ -1723,6 +1723,12 @@ body *::-webkit-scrollbar-thumb {
         display: block;
     }
 }
+
+@media screen and (max-width: 1199px) {
+    .profile-dropdown .dropdown-menu.show {
+        display: block;
+    }
+}
 .p-2px {
     padding: 2px;
 }

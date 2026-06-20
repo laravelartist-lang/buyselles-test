@@ -777,17 +777,27 @@ document.addEventListener("DOMContentLoaded", function() {
 });
 
 
-// ---- Setup guide scroll animation ----
+// ---- Setup guide scroll animation + desktop drag ----
+function isSetupGuideMobileView() {
+    return window.matchMedia("(max-width: 991px)").matches;
+}
+
 function handleSetupGuideVisibility() {
     const setupGuideElement = document.querySelector(".setup-guide");
 
-    if (!setupGuideElement) return;
+    if (!setupGuideElement || isSetupGuideMobileView()) {
+        return;
+    }
 
     let lastScrollY = window.pageYOffset + 100;
 
     setupGuideElement.classList.add("show");
 
     window.addEventListener("scroll", () => {
+        if (isSetupGuideMobileView()) {
+            return;
+        }
+
         const currentScrollY = window.pageYOffset;
 
         if (currentScrollY > lastScrollY) {
@@ -796,10 +806,124 @@ function handleSetupGuideVisibility() {
             setupGuideElement.classList.add("show");
         }
 
+        lastScrollY = currentScrollY;
     });
 }
 
-document.addEventListener("DOMContentLoaded", handleSetupGuideVisibility);
+function initSetupGuideDraggable() {
+    const setupGuideElement = document.querySelector(".setup-guide");
+    const setupGuideButton = setupGuideElement?.querySelector(".setup-guide__button");
+
+    if (!setupGuideElement || !setupGuideButton || isSetupGuideMobileView()) {
+        return;
+    }
+
+    const storageKey = "vendorSetupGuidePosition";
+    const savedPosition = localStorage.getItem(storageKey);
+
+    if (savedPosition) {
+        try {
+            const position = JSON.parse(savedPosition);
+            if (typeof position.left === "number") {
+                setupGuideElement.style.left = `${position.left}px`;
+                setupGuideElement.style.insetInlineStart = `${position.left}px`;
+            }
+            if (typeof position.bottom === "number") {
+                setupGuideElement.style.bottom = `${position.bottom}px`;
+            }
+        } catch (error) {
+            localStorage.removeItem(storageKey);
+        }
+    }
+
+    let isPointerDown = false;
+    let hasMoved = false;
+    let startX = 0;
+    let startY = 0;
+    let startLeft = 0;
+    let startBottom = 0;
+
+    const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
+
+    const onPointerMove = (event) => {
+        if (!isPointerDown) {
+            return;
+        }
+
+        const deltaX = event.clientX - startX;
+        const deltaY = event.clientY - startY;
+
+        if (!hasMoved && Math.abs(deltaX) < 5 && Math.abs(deltaY) < 5) {
+            return;
+        }
+
+        hasMoved = true;
+        setupGuideElement.classList.add("is-dragging");
+
+        const maxLeft = Math.max(0, window.innerWidth - setupGuideElement.offsetWidth - 8);
+        const maxBottom = Math.max(0, window.innerHeight - setupGuideElement.offsetHeight - 8);
+        const nextLeft = clamp(startLeft + deltaX, 0, maxLeft);
+        const nextBottom = clamp(startBottom - deltaY, 0, maxBottom);
+
+        setupGuideElement.style.left = `${nextLeft}px`;
+        setupGuideElement.style.insetInlineStart = `${nextLeft}px`;
+        setupGuideElement.style.bottom = `${nextBottom}px`;
+    };
+
+    const onPointerUp = () => {
+        if (!isPointerDown) {
+            return;
+        }
+
+        isPointerDown = false;
+        setupGuideElement.classList.remove("is-dragging");
+        document.removeEventListener("pointermove", onPointerMove);
+        document.removeEventListener("pointerup", onPointerUp);
+
+        if (hasMoved) {
+            localStorage.setItem(
+                storageKey,
+                JSON.stringify({
+                    left: parseFloat(setupGuideElement.style.left) || 20,
+                    bottom: parseFloat(setupGuideElement.style.bottom) || 30,
+                })
+            );
+        }
+
+        setTimeout(() => {
+            hasMoved = false;
+        }, 0);
+    };
+
+    setupGuideButton.addEventListener("pointerdown", (event) => {
+        if (isSetupGuideMobileView() || event.button !== 0) {
+            return;
+        }
+
+        isPointerDown = true;
+        hasMoved = false;
+        startX = event.clientX;
+        startY = event.clientY;
+        startLeft = setupGuideElement.offsetLeft;
+        startBottom = window.innerHeight - setupGuideElement.getBoundingClientRect().bottom;
+
+        document.addEventListener("pointermove", onPointerMove);
+        document.addEventListener("pointerup", onPointerUp);
+    });
+
+    setupGuideButton.addEventListener("click", (event) => {
+        if (hasMoved) {
+            event.preventDefault();
+            event.stopPropagation();
+            event.stopImmediatePropagation();
+        }
+    }, true);
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+    handleSetupGuideVisibility();
+    initSetupGuideDraggable();
+});
 
 // ---- offcanvas slider
  document.addEventListener("DOMContentLoaded", () => {

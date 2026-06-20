@@ -101,6 +101,22 @@ class DigitalCodeCustomerExportService
         return $pdf->download($filename);
     }
 
+    public function streamPdf(array $orderIds, ?int $customerId = null): Response
+    {
+        $data = $this->getReceiptData($orderIds, $customerId);
+
+        if (empty($data['codes'])) {
+            abort(404);
+        }
+
+        $pdf = Pdf::loadView('web-views.order.digital-code-export-pdf', $data)
+            ->setPaper('a4');
+
+        $filename = 'digital-codes-'.str_replace(', ', '-', $data['orderId']).'.pdf';
+
+        return $pdf->stream($filename);
+    }
+
     public function downloadExcel(array $orderIds, ?int $customerId = null): StreamedResponse
     {
         $codes = $this->getCodesForOrders($orderIds, $customerId);

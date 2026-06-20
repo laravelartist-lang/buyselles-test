@@ -173,7 +173,7 @@ $direction = session('direction', 'ltr');
 
     {{-- On-screen actions (hidden at print time) --}}
     <div class="screen-actions">
-        <button onclick="window.print()">🖨 {{ translate('Print_/_Save_as_PDF') }}</button>
+        <button onclick="window.print()">🖨 {{ translate('Print') }}</button>
         <button class="btn-close-tab" onclick="window.close()">✕ {{ translate('Close') }}</button>
     </div>
 
@@ -242,9 +242,9 @@ $direction = session('direction', 'ltr');
     </div>
 
     <script>
-        // Auto-print when opened in a new tab
-        if (window.opener || document.referrer) {
-            window.onload = function() {
+        // Open print dialog only when explicitly requested (?print=1)
+        if (new URLSearchParams(window.location.search).get('print') === '1') {
+            window.onload = function () {
                 window.print();
             };
         }

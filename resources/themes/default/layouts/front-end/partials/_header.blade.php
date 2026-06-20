@@ -21,6 +21,22 @@
         }
     }
 
+    @media (max-width: 767px) {
+        .navbar-expand-md .__auth-hover {
+            position: relative;
+        }
+
+        .navbar-expand-md .__auth-hover > .dropdown-menu.__hover-visible,
+        .navbar-expand-md .__auth-hover .dropdown-menu.__hover-visible {
+            display: block !important;
+            position: absolute;
+            top: calc(100% + 0.25rem);
+            inset-inline-end: 0;
+            z-index: 1050;
+            min-width: 10rem;
+        }
+    }
+
     /* Cart: JS controls hover — disable all CSS hover for cart */
     @media (min-width: 768px) {
         #cart_items .navbar-tool.dropdown:hover>.dropdown-menu {
@@ -693,28 +709,71 @@
     <script>
         "use strict";
 
-        // Auth dropdown — JS-controlled hover, same pattern as cart
+        // Auth dropdown — JS-controlled hover on desktop, tap toggle on mobile
         (function() {
             var $authWrappers = $('.__auth-hover');
+            var mobileAuthQuery = window.matchMedia('(max-width: 767px)');
+
             $authWrappers.each(function() {
                 var $wrapper = $(this);
                 var $menu = $wrapper.find('.dropdown-menu');
+                var $trigger = $wrapper.find('> a').first();
                 var hideTimer;
+
                 $wrapper.on('mouseenter', function() {
+                    if (mobileAuthQuery.matches) {
+                        return;
+                    }
+
                     clearTimeout(hideTimer);
                     $menu.addClass('__hover-visible');
                 }).on('mouseleave', function() {
+                    if (mobileAuthQuery.matches) {
+                        return;
+                    }
+
                     hideTimer = setTimeout(function() {
                         $menu.removeClass('__hover-visible');
                     }, 300);
                 });
+
                 $menu.on('mouseenter', function() {
                     clearTimeout(hideTimer);
                 }).on('mouseleave', function() {
+                    if (mobileAuthQuery.matches) {
+                        return;
+                    }
+
                     hideTimer = setTimeout(function() {
                         $menu.removeClass('__hover-visible');
                     }, 300);
                 });
+
+                $trigger.on('click', function(event) {
+                    if (!mobileAuthQuery.matches) {
+                        return;
+                    }
+
+                    event.preventDefault();
+                    event.stopPropagation();
+
+                    var isOpen = $menu.hasClass('__hover-visible');
+                    $('.__auth-hover .dropdown-menu').removeClass('__hover-visible');
+
+                    if (!isOpen) {
+                        $menu.addClass('__hover-visible');
+                    }
+                });
+            });
+
+            $(document).on('click touchstart', function(event) {
+                if (!mobileAuthQuery.matches) {
+                    return;
+                }
+
+                if (!$(event.target).closest('.__auth-hover').length) {
+                    $('.__auth-hover .dropdown-menu').removeClass('__hover-visible');
+                }
             });
         })();
 

@@ -208,4 +208,46 @@ data-value="{{ isset($recaptcha) && $recaptcha['status'] == 1 ? $recaptcha['site
         });
     });
 </script>
+<script>
+    "use strict";
+
+    (function () {
+        const openLoginModal = function (event) {
+            const loginModalEl = document.getElementById('loginModal');
+            if (!loginModalEl) {
+                return;
+            }
+
+            event.preventDefault();
+
+            if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                bootstrap.Modal.getOrCreateInstance(loginModalEl).show();
+                return;
+            }
+
+            if (typeof $ !== 'undefined') {
+                $('#loginModal').modal('show');
+            }
+        };
+
+        document.querySelectorAll('[data-bs-target="#loginModal"], [data-target="#loginModal"]').forEach(function (element) {
+            element.addEventListener('click', openLoginModal);
+        });
+
+        document.querySelectorAll('.profile-dropdown > button[data-bs-toggle="dropdown"]').forEach(function (button) {
+            button.addEventListener('click', function (event) {
+                if (window.matchMedia('(min-width: 1200px)').matches) {
+                    return;
+                }
+
+                event.preventDefault();
+                event.stopPropagation();
+
+                if (typeof bootstrap !== 'undefined' && bootstrap.Dropdown) {
+                    bootstrap.Dropdown.getOrCreateInstance(button).toggle();
+                }
+            });
+        });
+    })();
+</script>
 <script src="{{ theme_asset('assets/js/custom.js') }}"></script>

@@ -454,7 +454,7 @@
                     </div>
                 @else
                     <div class="d-flex justify-content-center mb-5 pb-5 mt-auto px-4">
-                        <a href="" data-bs-toggle="modal" data-bs-target="#loginModal"
+                        <a href="javascript:void(0)" data-bs-toggle="modal" data-bs-target="#loginModal"
                             class="btn btn-primary w-100"
                             aria-label="{{ translate('login') . '/' . translate('register') }}">
                             {{ translate('login') . '/' . translate('register') }}
@@ -739,7 +739,7 @@
                             <div class="menu-btn d-xl-none search">
                                 <i class="bi bi-search fs-18"></i>
                             </div>
-                            <button
+                            <button type="button"
                                 class="media gap-2 align-items-center text-uppercase fs-12 bg-transparent border-0 p-0"
                                 data-bs-toggle="modal" data-bs-target="#loginModal">
                                 <span class="avatar header-avatar rounded-circle d-xl-none size-1-5rem">

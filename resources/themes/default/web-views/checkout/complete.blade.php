@@ -92,7 +92,7 @@
             <div class="row d-flex justify-content-center">
                 <div class="col-md-10 col-lg-10">
                     <div class="card border-success">
-                        <div class="card-header bg-success text-white d-flex align-items-center justify-content-between flex-wrap gap-2">
+                        <div class="card-header bg-success text-white">
                             <div>
                                 <h6 class="mb-0">
                                     <i class="fa fa-key me-2"></i>
@@ -100,14 +100,15 @@
                                 </h6>
                                 <small>{{ translate('Codes_have_been_emailed_to_you_too._Keep_them_safe.') }}</small>
                             </div>
+                        </div>
+                        <div class="card-body">
                             @include('web-views.partials._digital-code-delivery-actions', [
                                 'orderIds' => $order_ids ?? [],
                                 'viewTarget' => 'codes-card-container',
                                 'codesContainer' => 'codes-card-container',
-                                'compact' => true,
+                                'layout' => 'cards',
                             ])
-                        </div>
-                        <div class="card-body">
+                            <hr class="my-4">
                             <div id="codes-card-container">
                                 @foreach ($digitalCodes as $item)
                                     <div class="border rounded p-3 mb-3">
@@ -229,6 +230,15 @@
                             {{ translate('Copy_or_print_your_codes_below._They_are_also_sent_to_your_email.') }}
                         </div>
 
+                        @include('web-views.partials._digital-code-delivery-actions', [
+                            'orderIds' => $order_ids ?? [],
+                            'viewTarget' => 'codes-modal-container',
+                            'codesContainer' => 'codes-modal-container',
+                            'layout' => 'cards',
+                        ])
+
+                        <hr class="my-3">
+
                         <div id="codes-modal-container">
                             @foreach ($digitalCodes as $idx => $item)
                                 <div class="border rounded p-3 mb-3 bg-light">
@@ -321,20 +331,7 @@
                 </div>
 
                 {{-- Footer --}}
-                <div class="modal-footer border-0 pt-1 flex-wrap gap-2 justify-content-between">
-                    @if ($showDigitalCodesSection)
-                        @include('web-views.partials._digital-code-delivery-actions', [
-                            'orderIds' => $order_ids ?? [],
-                            'viewTarget' => 'codes-modal-container',
-                            'codesContainer' => 'codes-modal-container',
-                        ])
-                    @else
-                        <button type="button" id="modalPrintBtn"
-                            class="btn btn-outline-secondary">
-                            <i class="fa fa-print me-1"></i>
-                            {{ translate('Print_Receipt') }}
-                        </button>
-                    @endif
+                <div class="modal-footer border-0 pt-1 flex-wrap gap-2 justify-content-end">
                     @if (!$showDigitalCodesSection)
                         <a href="{{ route('track-order.index') }}" class="btn btn-outline-primary">
                             <i class="fa fa-map-marker me-1"></i> {{ translate('Track_Order') }}
@@ -353,69 +350,6 @@
                 </div>
 
             </div>
-        </div>
-    </div>
-
-    {{-- ═══════════════════════════════════════════════════════════════ --}}
-    {{-- Hidden printable receipt (rendered by window.print())          --}}
-    {{-- ═══════════════════════════════════════════════════════════════ --}}
-    <div id="printableReceipt" style="display:none;">
-        <style id="printReceiptStyle">
-            @media print {
-                body > *:not(#printableReceipt) { display: none !important; }
-                #printableReceipt {
-                    display: block !important;
-                    position: fixed;
-                    top: 0; left: 0;
-                    width: 80mm;
-                    font-family: 'Courier New', monospace;
-                    font-size: 9pt;
-                    color: #000;
-                    background: #fff;
-                    padding: 6mm;
-                }
-            }
-        </style>
-        <div style="text-align:center;border-bottom:1px dashed #000;padding-bottom:5px;margin-bottom:5px;">
-            <div style="font-size:13pt;font-weight:bold;letter-spacing:1px;">{{ $shopName }}</div>
-            @if ($shopPhone)
-                <div style="font-size:8pt;">{{ $shopPhone }}</div>
-            @endif
-        </div>
-        <div style="font-size:8pt;margin-bottom:5px;">
-            <div><strong>{{ translate('Date') }}:</strong> {{ now()->format('d/m/Y H:i') }}</div>
-            @if ($orderIdsStr)
-                <div><strong>{{ translate('Order') }}:</strong> {{ $orderIdsStr }}</div>
-            @endif
-        </div>
-        @if ($showDigitalCodesSection)
-            <div style="border-top:1px dashed #000;padding-top:5px;margin-top:3px;">
-                <div style="text-align:center;font-weight:bold;font-size:9pt;margin-bottom:4px;">
-                    ── {{ translate('Digital_Codes') }} ──
-                </div>
-                <div id="codes-receipt-container">
-                    @foreach ($digitalCodes as $item)
-                        <div style="margin-bottom:8px;padding-bottom:5px;border-bottom:1px dotted #ccc;">
-                            <div style="font-size:8pt;color:#555;">{{ $item['productName'] }}</div>
-                            <div style="font-size:13pt;font-weight:bold;letter-spacing:2px;word-break:break-all;margin:3px 0;">
-                                {{ $item['code'] }}
-                            </div>
-                            @if (!empty($item['pin']))
-                                <div style="font-size:7pt;">PIN: {{ $item['pin'] }}</div>
-                            @endif
-                            @if (!empty($item['serial']))
-                                <div style="font-size:7pt;">S/N: {{ $item['serial'] }}</div>
-                            @endif
-                            @if (!empty($item['expiry']))
-                                <div style="font-size:7pt;">Exp: {{ $item['expiry'] }}</div>
-                            @endif
-                        </div>
-                    @endforeach
-                </div>
-            </div>
-        @endif
-        <div style="text-align:center;margin-top:8px;font-size:7pt;border-top:1px dashed #000;padding-top:5px;">
-            {{ translate('Thank_You_For_Your_Purchase') }}!<br>{{ $shopName }}
         </div>
     </div>
 
@@ -497,12 +431,10 @@
 
         var cardContainer = document.getElementById('codes-card-container');
         var modalContainer = document.getElementById('codes-modal-container');
-        var receiptContainer = document.getElementById('codes-receipt-container');
 
         // Clear existing content (replace with fresh from server)
         if (cardContainer) cardContainer.innerHTML = '';
         if (modalContainer) modalContainer.innerHTML = '';
-        if (receiptContainer) receiptContainer.innerHTML = '';
 
         codes.forEach(function(item, idx) {
             var cardId = 'dyn-code-' + idx;
@@ -549,17 +481,6 @@
                 );
             }
 
-            // Receipt HTML
-            if (receiptContainer) {
-                var receiptParts = '<div style="margin-bottom:8px;padding-bottom:5px;border-bottom:1px dotted #ccc;">'
-                    + '<div style="font-size:8pt;color:#555;">' + esc(item.productName) + '</div>'
-                    + '<div style="font-size:13pt;font-weight:bold;letter-spacing:2px;word-break:break-all;margin:3px 0;">' + esc(item.code) + '</div>';
-                if (item.pin) receiptParts += '<div style="font-size:7pt;">PIN: ' + esc(item.pin) + '</div>';
-                if (item.serial) receiptParts += '<div style="font-size:7pt;">S/N: ' + esc(item.serial) + '</div>';
-                if (item.expiry) receiptParts += '<div style="font-size:7pt;">Exp: ' + esc(item.expiry) + '</div>';
-                receiptParts += '</div>';
-                receiptContainer.insertAdjacentHTML('beforeend', receiptParts);
-            }
         });
 
         hasDigitalCodes = true;
@@ -644,16 +565,6 @@
             closeBtn.classList.add('disabled');
             closeBtn.setAttribute('disabled', 'disabled');
             closeBtn.textContent = '{{ translate("Close_(save_codes_first)") }}';
-        }
-    });
-
-    // ── Print Receipt button ──────────────────────────────────────
-    document.addEventListener('click', function (e) {
-        if (e.target.closest('#modalPrintBtn')) {
-            var el = document.getElementById('printableReceipt');
-            el.style.display = 'block';
-            window.print();
-            el.style.display = 'none';
         }
     });
 

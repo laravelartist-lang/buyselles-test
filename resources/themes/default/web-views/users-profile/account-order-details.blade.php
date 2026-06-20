@@ -696,23 +696,25 @@
                         @endphp
                         @if ($soldCodes->isNotEmpty())
                             <div class="card __card mt-3" id="digitalCodesSection">
-                                <div class="card-header d-flex align-items-center justify-content-between gap-2 py-2 flex-wrap">
+                                <div class="card-header py-2">
                                     <h6 class="mb-0 fs-14 fw-semibold">
                                         <i class="fi fi-rr-key me-2 web-text-primary"></i>
                                         {{ translate('Digital Codes') }}
                                     </h6>
+                                </div>
+                                <div class="card-body p-3">
                                     @include('web-views.partials._digital-code-delivery-actions', [
                                         'orderIds' => [$order->id],
-                                        'viewTarget' => 'digitalCodesSection',
+                                        'viewTarget' => 'digitalCodesPrintArea',
                                         'codesContainer' => 'digitalCodesPrintArea',
-                                        'compact' => true,
+                                        'layout' => 'cards',
                                     ])
-                                </div>
-                                <div class="card-body p-3" id="digitalCodesPrintArea">
+                                    <hr class="my-3">
                                     <div class="alert alert-info py-2 px-3 fs-13 mb-3">
                                         <i class="fi fi-rr-shield-check me-1"></i>
                                         {{ translate('Keep these codes safe. Each code is unique and tied to your order.') }}
                                     </div>
+                                    <div id="digitalCodesPrintArea">
                                     @foreach ($soldCodes as $idx => $dc)
                                         <div class="border rounded p-3 mb-2 bg-light digital-code-item">
                                             <p class="text-muted mb-1 fw-semibold fs-13">
@@ -750,6 +752,7 @@
                                             @endif
                                         </div>
                                     @endforeach
+                                    </div>
                                 </div>
                             </div>
                             {{-- Hidden print area (legacy fallback) --}}

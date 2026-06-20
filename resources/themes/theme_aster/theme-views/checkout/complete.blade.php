@@ -74,22 +74,20 @@
         @if ($showDigitalCodesSection)
             <div class="container">
                 <div class="card border-success">
-                    <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2"
-                        style="background:#0f9d58; color:#fff;">
-                        <div>
-                            <h6 class="mb-0">
-                                <i class="fa fa-key me-2"></i>{{ translate('Your_Digital_Codes') }}
-                            </h6>
-                            <small style="opacity:.85;">{{ translate('Codes_have_been_emailed_to_you_too._Keep_them_safe.') }}</small>
-                        </div>
+                    <div class="card-header" style="background:#0f9d58; color:#fff;">
+                        <h6 class="mb-0">
+                            <i class="fa fa-key me-2"></i>{{ translate('Your_Digital_Codes') }}
+                        </h6>
+                        <small style="opacity:.85;">{{ translate('Codes_have_been_emailed_to_you_too._Keep_them_safe.') }}</small>
+                    </div>
+                    <div class="card-body d-flex flex-column gap-3">
                         @include('web-views.partials._digital-code-delivery-actions', [
                             'orderIds' => $order_ids ?? [],
                             'viewTarget' => 'codes-card-container',
                             'codesContainer' => 'codes-card-container',
-                            'compact' => true,
+                            'layout' => 'cards',
                         ])
-                    </div>
-                    <div class="card-body d-flex flex-column gap-3">
+                        <hr class="my-1">
                         <div id="codes-card-loading" class="text-center py-4" style="{{ $hasDigitalCodes ? 'display:none;' : '' }}">
                             <div class="spinner-border text-success" role="status"></div>
                             <p class="text-muted mt-2 mb-0" style="font-size:.85rem;">
@@ -186,6 +184,15 @@
                             {{ translate('Copy_or_print_your_codes_below._They_are_also_sent_to_your_email.') }}
                         </div>
 
+                        @include('web-views.partials._digital-code-delivery-actions', [
+                            'orderIds' => $order_ids ?? [],
+                            'viewTarget' => 'codes-modal-container',
+                            'codesContainer' => 'codes-modal-container',
+                            'layout' => 'cards',
+                        ])
+
+                        <hr class="my-3">
+
                         <div id="codes-modal-loading" class="text-center py-4" style="{{ $hasDigitalCodes ? 'display:none;' : '' }}">
                             <div class="spinner-border text-success" role="status"></div>
                             <p class="text-muted mt-2 mb-0" style="font-size:.85rem;">
@@ -255,18 +262,7 @@
                 </div>
 
                 {{-- Footer --}}
-                <div class="modal-footer border-0 pt-1 flex-wrap gap-2 justify-content-between">
-                    @if ($showDigitalCodesSection)
-                        @include('web-views.partials._digital-code-delivery-actions', [
-                            'orderIds' => $order_ids ?? [],
-                            'viewTarget' => 'codes-modal-container',
-                            'codesContainer' => 'codes-modal-container',
-                        ])
-                    @else
-                        <button type="button" id="asterPrintBtn" class="btn btn-outline-secondary">
-                            <i class="fa fa-print me-1"></i>{{ translate('Print_Receipt') }}
-                        </button>
-                    @endif
+                <div class="modal-footer border-0 pt-1 flex-wrap gap-2 justify-content-end">
                     @if (!$showDigitalCodesSection)
                         <a href="{{ route('track-order.index') }}" class="btn btn-outline-primary">
                             <i class="fa fa-map-marker me-1"></i>{{ translate('Track_Order') }}
@@ -281,48 +277,6 @@
                 </div>
 
             </div>
-        </div>
-    </div>
-
-    {{-- Hidden Printable Receipt --}}
-    <div id="asterPrintableReceipt" style="display:none;">
-        <style>
-            @media print {
-                body > *:not(#asterPrintableReceipt) { display: none !important; }
-                #asterPrintableReceipt {
-                    display: block !important;
-                    position: fixed; top: 0; left: 0;
-                    width: 80mm; font-family: 'Courier New', monospace;
-                    font-size: 9pt; color: #000; background: #fff; padding: 6mm;
-                }
-            }
-        </style>
-        <div style="text-align:center;border-bottom:1px dashed #000;padding-bottom:5px;margin-bottom:5px;">
-            <div style="font-size:13pt;font-weight:bold;">{{ $shopName }}</div>
-            @if ($shopPhone) <div style="font-size:8pt;">{{ $shopPhone }}</div> @endif
-        </div>
-        <div style="font-size:8pt;margin-bottom:5px;">
-            <div><strong>{{ translate('Date') }}:</strong> {{ now()->format('d/m/Y H:i') }}</div>
-            @if ($orderIdsStr) <div><strong>{{ translate('Order') }}:</strong> {{ $orderIdsStr }}</div> @endif
-        </div>
-        @if ($showDigitalCodesSection)
-            <div style="border-top:1px dashed #000;padding-top:5px;">
-                <div style="text-align:center;font-weight:bold;margin-bottom:4px;">── {{ translate('Digital_Codes') }} ──</div>
-                <div id="codes-receipt-container">
-                    @foreach ($digitalCodes as $item)
-                        <div style="margin-bottom:8px;padding-bottom:5px;border-bottom:1px dotted #ccc;">
-                            <div style="font-size:8pt;color:#555;">{{ $item['productName'] }}</div>
-                            <div style="font-size:13pt;font-weight:bold;letter-spacing:2px;word-break:break-all;margin:3px 0;">{{ $item['code'] }}</div>
-                            @if (!empty($item['pin'])) <div style="font-size:7pt;">PIN: {{ $item['pin'] }}</div> @endif
-                            @if (!empty($item['serial'])) <div style="font-size:7pt;">S/N: {{ $item['serial'] }}</div> @endif
-                            @if (!empty($item['expiry'])) <div style="font-size:7pt;">Exp: {{ $item['expiry'] }}</div> @endif
-                        </div>
-                    @endforeach
-                </div>
-            </div>
-        @endif
-        <div style="text-align:center;margin-top:8px;font-size:7pt;border-top:1px dashed #000;padding-top:5px;">
-            {{ translate('Thank_You_For_Your_Purchase') }}!<br>{{ $shopName }}
         </div>
     </div>
 
@@ -402,11 +356,9 @@
 
         var cardContainer    = document.getElementById('codes-card-container');
         var modalContainer   = document.getElementById('codes-modal-container');
-        var receiptContainer = document.getElementById('codes-receipt-container');
 
         if (cardContainer)    cardContainer.innerHTML = '';
         if (modalContainer)   modalContainer.innerHTML = '';
-        if (receiptContainer) receiptContainer.innerHTML = '';
 
         codes.forEach(function(item) {
             var codeId      = 'aster-code-dyn-' + dynamicCodeIndex;
@@ -453,18 +405,6 @@
                 );
             }
 
-            // Receipt
-            if (receiptContainer) {
-                receiptContainer.insertAdjacentHTML('beforeend',
-                    '<div style="margin-bottom:8px;padding-bottom:5px;border-bottom:1px dotted #ccc;">' +
-                        '<div style="font-size:8pt;color:#555;">' + esc(item.productName) + '</div>' +
-                        '<div style="font-size:13pt;font-weight:bold;letter-spacing:2px;word-break:break-all;margin:3px 0;">' + esc(item.code) + '</div>' +
-                        (item.pin ? '<div style="font-size:7pt;">PIN: ' + esc(item.pin) + '</div>' : '') +
-                        (item.serial ? '<div style="font-size:7pt;">S/N: ' + esc(item.serial) + '</div>' : '') +
-                        (item.expiry ? '<div style="font-size:7pt;">Exp: ' + esc(item.expiry) + '</div>' : '') +
-                    '</div>'
-                );
-            }
         });
 
         hasDigitalCodes = true;
@@ -533,15 +473,6 @@
         });
     }
 
-    // Print button
-    document.addEventListener('click', function (e) {
-        if (e.target.closest('#asterPrintBtn')) {
-            var el = document.getElementById('asterPrintableReceipt');
-            el.style.display = 'block';
-            window.print();
-            el.style.display = 'none';
-        }
-    });
 }());
 </script>
     @include('web-views.partials._digital-code-delivery-script')
