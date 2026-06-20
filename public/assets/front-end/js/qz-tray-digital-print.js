@@ -23,6 +23,22 @@
         alert(message);
     }
 
+    function withTimeout(promise, ms) {
+        return new Promise(function (resolve, reject) {
+            var timer = setTimeout(function () {
+                reject(new Error('Connection timed out.'));
+            }, ms);
+
+            promise.then(function (value) {
+                clearTimeout(timer);
+                resolve(value);
+            }).catch(function (error) {
+                clearTimeout(timer);
+                reject(error);
+            });
+        });
+    }
+
     function fetchText(url) {
         return fetch(url, {
             credentials: 'same-origin',
@@ -55,10 +71,6 @@
 
         var config = getConfig();
 
-        if (!config.enabled) {
-            return Promise.reject(new Error('QZ Tray is disabled.'));
-        }
-
         return ensureQzLoaded().then(function (qz) {
             qz.security.setSignatureAlgorithm('SHA512');
 
@@ -81,15 +93,21 @@
     }
 
     function connect() {
-        return initSecurity().then(function (qz) {
-            if (qz.websocket.isActive()) {
-                return qz;
-            }
+        var config = getConfig();
+        var timeoutMs = config.connectTimeoutMs || 4000;
 
-            return qz.websocket.connect({ retries: 2, delay: 1 }).then(function () {
-                return qz;
-            });
-        });
+        return withTimeout(
+            initSecurity().then(function (qz) {
+                if (qz.websocket.isActive()) {
+                    return qz;
+                }
+
+                return qz.websocket.connect({ retries: 1, delay: 1 }).then(function () {
+                    return qz;
+                });
+            }),
+            timeoutMs
+        );
     }
 
     function getSavedPrinter() {
@@ -192,6 +210,10 @@
         var modal = showModal('qzTrayPrinterModal');
 
         if (!modal) {
+            if (typeof onPreviewFallback === 'function') {
+                onPreviewFallback();
+            }
+
             return Promise.reject(new Error('Printer modal unavailable.'));
         }
 
@@ -261,38 +283,42 @@
                     confirmBtn.disabled = false;
                 }
             }
-        }).catch(function (error) {
+        }).catch(function () {
             if (loadingEl) {
                 loadingEl.style.display = 'none';
             }
 
             modal.hide();
-            openSetupModal(onPreviewFallback);
 
-            return Promise.reject(error);
+            if (getConfig().mode === 'qz') {
+                openSetupModal(onPreviewFallback);
+            } else if (typeof onPreviewFallback === 'function') {
+                onPreviewFallback();
+            }
+
+            return Promise.reject(new Error('QZ Tray unavailable.'));
+        });
+    }
+
+    function printWithSavedPrinter(orderIds) {
+        var savedPrinter = getSavedPrinter();
+
+        if (!savedPrinter) {
+            return Promise.reject(new Error('No saved printer.'));
+        }
+
+        return fetchEscPosJobs(orderIds).then(function (payload) {
+            return printHexJobs(savedPrinter, payload.jobs || []);
         });
     }
 
     function runThermalPrint(orderIds, onPreviewFallback) {
-        var config = getConfig();
-
-        if (!config.enabled) {
-            if (typeof onPreviewFallback === 'function') {
-                onPreviewFallback();
-            }
-
-            return Promise.resolve();
-        }
-
         var savedPrinter = getSavedPrinter();
 
         if (savedPrinter) {
-            return fetchEscPosJobs(orderIds)
-                .then(function (payload) {
-                    return printHexJobs(savedPrinter, payload.jobs || []);
-                })
+            return printWithSavedPrinter(orderIds)
                 .then(function () {
-                    showToast(config.messages?.printSuccess || 'Sent to thermal printer.');
+                    showToast(getConfig().messages?.printSuccess || 'Sent to thermal printer.');
                 })
                 .catch(function () {
                     return openPrinterModal(orderIds, onPreviewFallback);
@@ -300,6 +326,28 @@
         }
 
         return openPrinterModal(orderIds, onPreviewFallback);
+    }
+
+    function tryAutoPrint(orderIds, onPreviewFallback) {
+        var savedPrinter = getSavedPrinter();
+
+        if (!savedPrinter) {
+            if (typeof onPreviewFallback === 'function') {
+                onPreviewFallback();
+            }
+
+            return Promise.resolve();
+        }
+
+        return printWithSavedPrinter(orderIds)
+            .then(function () {
+                showToast(getConfig().messages?.printSuccess || 'Sent to thermal printer.');
+            })
+            .catch(function () {
+                if (typeof onPreviewFallback === 'function') {
+                    onPreviewFallback();
+                }
+            });
     }
 
     function bindPrinterModalConfirm() {
@@ -355,6 +403,7 @@
         connect: connect,
         listPrinters: listPrinters,
         printDigitalCodes: runThermalPrint,
+        tryAutoPrint: tryAutoPrint,
         openPrinterPicker: openPrinterModal,
     };
 }(window));

@@ -10408,7 +10408,9 @@ return [
     'digital_delivery_options' => 'Delivery Options',
     'select_delivery_method' => 'How would you like to receive your digital products?',
     'thermal_print' => 'Thermal Print',
-    'thermal_print_subtitle' => 'Print via QZ Tray to your thermal printer',
+    'thermal_print_subtitle' => 'Open 80mm receipt — print or save (no extra software needed)',
+    'thermal_preview_hint' => 'Select your thermal printer in the print dialog. Paper size: 80mm or narrowest available.',
+    'opened_thermal_print_preview' => 'Opened thermal print preview.',
     'print_receipt_a4' => 'Print (A4 PDF)',
     'generate_a4_pdf_receipt' => 'Generate A4 PDF receipt',
     'view_code_on_screen' => 'View Code on Screen',
@@ -11464,4 +11466,5 @@ return [
     'No_codes_found_for_this_order.' => 'No codes found for this order.',
     'Download_Excel' => 'Download Excel',
     'Word' => 'Word',
+    'Printing...' => 'Printing...',
 ];

@@ -173,9 +173,12 @@ $direction = session('direction', 'ltr');
 
     {{-- On-screen actions (hidden at print time) --}}
     <div class="screen-actions">
-        <button onclick="window.print()">🖨 {{ translate('Print') }}</button>
-        <button class="btn-close-tab" onclick="window.close()">✕ {{ translate('Close') }}</button>
+        <button type="button" onclick="window.print()">🖨 {{ translate('Print') }}</button>
+        <button type="button" class="btn-close-tab" onclick="window.close()">✕ {{ translate('Close') }}</button>
     </div>
+    <p class="screen-actions" style="width:80mm;font-size:11px;color:#666;text-align:center;margin:-6px 0 10px;">
+        {{ translate('thermal_preview_hint') ?: 'Select your thermal printer in the print dialog. Paper size: 80mm or narrowest available.' }}
+    </p>
 
     <div class="receipt-wrapper" id="receipt-content">
 

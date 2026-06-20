@@ -1,26 +1,43 @@
-@include('web-views.partials._qz-tray-printer-modal')
-
 @php
-    $qzTrayEnabled = (bool) config('qz-tray.enabled');
+    use App\Services\QzTraySigningService;
+
+    $qzSigningService = app(QzTraySigningService::class);
+    $qzTrayConfigured = $qzSigningService->isConfigured();
+    $qzTrayMode = config('qz-tray.mode', 'preview');
+    $qzTrayActive = config('qz-tray.enabled') && $qzTrayConfigured && in_array($qzTrayMode, ['qz', 'auto'], true);
 @endphp
 
-<script src="https://cdn.jsdelivr.net/npm/qz-tray@2.2.4/qz-tray.js"></script>
+@if ($qzTrayActive)
+    @include('web-views.partials._qz-tray-printer-modal')
+
+    <script src="https://cdn.jsdelivr.net/npm/qz-tray@2.2.4/qz-tray.js"></script>
+    <script>
+        window.BuysellesQzTrayConfig = {
+            enabled: true,
+            mode: @json($qzTrayMode),
+            certificateUrl: @json(route('qz-tray.certificate')),
+            signUrl: @json(route('qz-tray.sign')),
+            escPosUrl: @json(route('order.digital-codes.thermal-escpos')),
+            defaultPrinter: @json(config('qz-tray.default_printer')),
+            connectTimeoutMs: @json((int) config('qz-tray.connect_timeout_seconds', 4) * 1000),
+            messages: {
+                printSuccess: @json(translate('sent_to_thermal_printer') ?: 'Sent to thermal printer.'),
+                printNow: @json(translate('print_now') ?: 'Print Now'),
+                printing: @json(translate('Printing...') ?: 'Printing...'),
+                noPrinters: @json(translate('no_printers_found') ?: 'No printers found on this computer.'),
+                previewFallback: @json(translate('opened_thermal_print_preview') ?: 'Opened thermal print preview.'),
+            },
+        };
+    </script>
+    <script src="{{ dynamicAsset(path: 'public/assets/front-end/js/qz-tray-digital-print.js') }}"></script>
+@endif
+
 <script>
-    window.BuysellesQzTrayConfig = {
-        enabled: @json($qzTrayEnabled),
-        certificateUrl: @json(route('qz-tray.certificate')),
-        signUrl: @json(route('qz-tray.sign')),
-        escPosUrl: @json(route('order.digital-codes.thermal-escpos')),
-        defaultPrinter: @json(config('qz-tray.default_printer')),
-        messages: {
-            printSuccess: @json(translate('sent_to_thermal_printer') ?: 'Sent to thermal printer.'),
-            printNow: @json(translate('print_now') ?: 'Print Now'),
-            printing: @json(translate('Printing...') ?: 'Printing...'),
-            noPrinters: @json(translate('no_printers_found') ?: 'No printers found on this computer.'),
-        },
+    window.BuysellesThermalConfig = {
+        mode: @json($qzTrayActive ? $qzTrayMode : 'preview'),
+        receiptUrlBase: @json(route('order.digital-codes.receipt')),
     };
 </script>
-<script src="{{ dynamicAsset(path: 'public/assets/front-end/js/qz-tray-digital-print.js') }}"></script>
 
 <script>
 (function () {
@@ -41,17 +58,51 @@
         return url + (url.indexOf('?') >= 0 ? '&' : '?') + params.join('&');
     }
 
-    function buildReceiptUrl(receiptUrl, orderIds) {
+    function buildReceiptUrl(receiptUrl, orderIds, extraParams) {
         var params = (orderIds || []).map(function (id) {
             return 'orderIds[]=' + encodeURIComponent(id);
         });
         params.push('preview=1');
+
+        if (extraParams) {
+            Object.keys(extraParams).forEach(function (key) {
+                params.push(encodeURIComponent(key) + '=' + encodeURIComponent(extraParams[key]));
+            });
+        }
 
         return receiptUrl + '?' + params.join('&');
     }
 
     function openThermalPreview(receiptUrl, orderIds) {
         window.open(buildReceiptUrl(receiptUrl, orderIds), '_blank', 'noopener,noreferrer');
+    }
+
+    function showToast(message) {
+        if (typeof toastr !== 'undefined') {
+            toastr.info(message);
+            return;
+        }
+
+        alert(message);
+    }
+
+    function handleThermalPrint(receiptUrl, orderIds) {
+        var mode = (window.BuysellesThermalConfig && window.BuysellesThermalConfig.mode) || 'preview';
+        var previewFallback = function () {
+            openThermalPreview(receiptUrl, orderIds);
+        };
+
+        if (mode === 'preview' || !window.BuysellesQzTray) {
+            previewFallback();
+            return;
+        }
+
+        if (mode === 'auto') {
+            window.BuysellesQzTray.tryAutoPrint(orderIds, previewFallback);
+            return;
+        }
+
+        window.BuysellesQzTray.printDigitalCodes(orderIds, previewFallback);
     }
 
     function collectCodesFromContainer(containerId) {
@@ -117,15 +168,6 @@
         return Promise.resolve();
     }
 
-    function showToast(message) {
-        if (typeof toastr !== 'undefined') {
-            toastr.info(message);
-            return;
-        }
-
-        alert(message);
-    }
-
     function scrollToCodes(viewTarget) {
         var target = document.getElementById(viewTarget);
         if (!target) {
@@ -165,16 +207,7 @@
         var codesContainer = wrapper.getAttribute('data-codes-container');
 
         if (actionEl.classList.contains('digital-code-action-thermal')) {
-            var previewFallback = function () {
-                openThermalPreview(receiptUrl, orderIds);
-            };
-
-            if (window.BuysellesQzTray && window.BuysellesQzTrayConfig && window.BuysellesQzTrayConfig.enabled) {
-                window.BuysellesQzTray.printDigitalCodes(orderIds, previewFallback);
-            } else {
-                previewFallback();
-            }
-
+            handleThermalPrint(receiptUrl, orderIds);
             return;
         }
 
