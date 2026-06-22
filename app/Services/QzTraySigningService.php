@@ -12,6 +12,31 @@ class QzTraySigningService
             && is_readable(config('qz-tray.certificate_path'));
     }
 
+    /**
+     * @return array{
+     *     qzTrayConfigured: bool,
+     *     qzTrayEnabled: bool,
+     *     qzTrayMode: string,
+     *     qzTrayAvailable: bool,
+     *     qzTrayActive: bool
+     * }
+     */
+    public function viewVariables(): array
+    {
+        $configured = $this->isConfigured();
+        $enabled = filter_var(config('qz-tray.enabled'), FILTER_VALIDATE_BOOLEAN);
+        $mode = (string) config('qz-tray.mode', 'preview');
+        $available = $configured && $enabled;
+
+        return [
+            'qzTrayConfigured' => $configured,
+            'qzTrayEnabled' => $enabled,
+            'qzTrayMode' => $mode,
+            'qzTrayAvailable' => $available,
+            'qzTrayActive' => $available && in_array($mode, ['qz', 'auto'], true),
+        ];
+    }
+
     public function getCertificate(): string
     {
         $path = config('qz-tray.certificate_path');

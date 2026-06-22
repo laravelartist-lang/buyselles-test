@@ -1212,43 +1212,8 @@
         }
     }
 
-    function injectSetupLinks() {
-        if (!getConfig().enabled) {
-            return;
-        }
-
-        document.querySelectorAll('.digital-code-delivery-actions').forEach(function (wrapper) {
-            if (wrapper.querySelector('.digital-code-qz-setup-link')) {
-                return;
-            }
-
-            var thermalBtn = wrapper.querySelector('.digital-code-action-thermal');
-            if (!thermalBtn) {
-                return;
-            }
-
-            var content = thermalBtn.querySelector('.digital-code-delivery-option__content');
-            if (!content) {
-                return;
-            }
-
-            var link = document.createElement('button');
-            link.type = 'button';
-            link.className = 'btn btn-link p-0 digital-code-qz-setup-link digital-code-action-qz-setup';
-            link.textContent = getConfig().messages?.setupLink || 'Setup thermal printer (QZ Tray)';
-            link.addEventListener('click', function (event) {
-                event.preventDefault();
-                event.stopPropagation();
-                openWizard({ orderIds: [], onPreviewFallback: null });
-            });
-
-            content.appendChild(link);
-        });
-    }
-
     document.addEventListener('DOMContentLoaded', function () {
         bindWizardEvents();
-        injectSetupLinks();
     });
 
     window.BuysellesQzTray = {

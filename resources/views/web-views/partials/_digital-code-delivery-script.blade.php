@@ -1,12 +1,5 @@
 @php
-    use App\Services\QzTraySigningService;
-
-    $qzSigningService = app(QzTraySigningService::class);
-    $qzTrayConfigured = $qzSigningService->isConfigured();
-    $qzTrayEnabled = (bool) config('qz-tray.enabled', false);
-    $qzTrayMode = config('qz-tray.mode', 'preview');
-    $qzTrayAvailable = $qzTrayConfigured && $qzTrayEnabled;
-    $qzTrayActive = $qzTrayAvailable && in_array($qzTrayMode, ['qz', 'auto'], true);
+    extract(app(\App\Services\QzTraySigningService::class)->viewVariables());
 
     $qzTrayMessages = [
         'printSuccess' => translate('sent_to_thermal_printer') ?: 'Sent to thermal printer.',
@@ -47,9 +40,10 @@
 @endphp
 
 @if ($qzTrayAvailable)
+    {{-- buyselles-qz-tray:enabled mode={{ $qzTrayMode }} --}}
     @include('web-views.partials._qz-tray-printer-modal')
 
-    <script src="https://cdn.jsdelivr.net/npm/qz-tray@2.2.6/qz-tray.js"></script>
+    <script src="{{ dynamicAsset(path: 'public/assets/front-end/js/qz-tray-2.2.6.js') }}"></script>
     <script>
         window.BuysellesQzTrayConfig = {
             enabled: true,
@@ -68,6 +62,8 @@
         };
     </script>
     <script src="{{ dynamicAsset(path: 'public/assets/front-end/js/qz-tray-digital-print.js') }}"></script>
+@else
+    {{-- buyselles-qz-tray:disabled keys={{ $qzTrayConfigured ? 'ok' : 'missing' }} enabled={{ $qzTrayEnabled ? 'yes' : 'no' }} --}}
 @endif
 
 <script>
@@ -126,28 +122,7 @@
     }
 
     function handleThermalPrint(receiptUrl, orderIds) {
-        var thermalConfig = window.BuysellesThermalConfig || {};
-        var mode = thermalConfig.mode || 'preview';
-        var previewFallback = function () {
-            openThermalPreview(receiptUrl, orderIds);
-        };
-
-        if (!thermalConfig.qzAvailable || !window.BuysellesQzTray) {
-            previewFallback();
-            return;
-        }
-
-        if (mode === 'preview') {
-            window.BuysellesQzTray.openThermalChoice(orderIds, previewFallback);
-            return;
-        }
-
-        if (mode === 'auto') {
-            window.BuysellesQzTray.tryAutoPrint(orderIds, previewFallback);
-            return;
-        }
-
-        window.BuysellesQzTray.printDigitalCodes(orderIds, previewFallback);
+        openThermalPreview(receiptUrl, orderIds);
     }
 
     function collectCodesFromContainer(containerId) {
@@ -227,6 +202,10 @@
     }
 
     document.addEventListener('click', function (event) {
+        if (event.target.closest('.digital-code-action-qz-setup')) {
+            return;
+        }
+
         var actionEl = event.target.closest('.digital-code-action');
         if (!actionEl) {
             return;
@@ -295,6 +274,31 @@
                 showToast('{{ translate('Copied_to_clipboard') ?: 'Codes copied — paste into WhatsApp, Telegram, etc.' }}');
             });
         }
+    });
+
+    document.querySelectorAll('.digital-code-action-qz-setup').forEach(function (setupBtn) {
+        setupBtn.addEventListener('click', function (event) {
+            event.preventDefault();
+            event.stopPropagation();
+
+            var wrapper = setupBtn.closest('.digital-code-delivery-actions');
+            var orderIds = [];
+
+            if (wrapper) {
+                try {
+                    orderIds = JSON.parse(wrapper.getAttribute('data-order-ids') || '[]');
+                } catch (e) {
+                    orderIds = [];
+                }
+            }
+
+            if (window.BuysellesQzTray && typeof window.BuysellesQzTray.openSetupWizard === 'function') {
+                window.BuysellesQzTray.openSetupWizard(orderIds, null);
+                return;
+            }
+
+            showToast(@json(translate('qz_tray_script_failed') ?: 'Thermal printer setup failed to load. Hard refresh the page (Ctrl+Shift+R).'));
+        });
     });
 }());
 </script>

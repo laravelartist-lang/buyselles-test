@@ -220,10 +220,4 @@
         color: #6c757d;
         line-height: 1.2;
     }
-
-    .digital-code-qz-setup-link {
-        display: inline-block;
-        margin-top: 6px;
-        font-size: 12px;
-    }
 </style>

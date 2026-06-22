@@ -1,4 +1,6 @@
 @php
+    extract(app(\App\Services\QzTraySigningService::class)->viewVariables());
+
     $orderIds = $orderIds ?? [];
     $viewTarget = $viewTarget ?? 'digitalCodesSection';
     $codesContainer = $codesContainer ?? 'digitalCodesPrintArea';
@@ -26,15 +28,22 @@
 
     @if ($layout === 'cards')
         <div class="digital-code-delivery-actions__grid">
-            <button type="button"
-                    class="digital-code-delivery-option digital-code-action digital-code-action-thermal">
-                <span class="digital-code-delivery-option__icon"><i class="fa fa-print"></i></span>
-                <span class="digital-code-delivery-option__content">
-                    <span class="digital-code-delivery-option__title">{{ translate('thermal_print') ?: 'Thermal Print' }}</span>
-                    <span class="digital-code-delivery-option__subtitle">{{ translate('thermal_print_subtitle') ?: 'Print to your thermal printer or open an 80mm preview' }}</span>
-                </span>
-                <span class="digital-code-delivery-option__arrow"><i class="fa fa-chevron-right"></i></span>
-            </button>
+            <div class="digital-code-delivery-option digital-code-delivery-option--thermal">
+                <button type="button"
+                        class="digital-code-delivery-option__main digital-code-action digital-code-action-thermal">
+                    <span class="digital-code-delivery-option__icon"><i class="fa fa-print"></i></span>
+                    <span class="digital-code-delivery-option__content">
+                        <span class="digital-code-delivery-option__title">{{ translate('thermal_print') ?: 'Thermal Print' }}</span>
+                        <span class="digital-code-delivery-option__subtitle">{{ translate('thermal_print_subtitle') ?: 'Open 80mm receipt preview in your browser' }}</span>
+                    </span>
+                    <span class="digital-code-delivery-option__arrow"><i class="fa fa-chevron-right"></i></span>
+                </button>
+                @if ($qzTrayAvailable)
+                    <button type="button" class="btn btn-sm btn-outline-primary digital-code-action-qz-setup">
+                        <i class="fa fa-cog mr-1"></i>{{ translate('configure_thermal_printer') ?: 'Configure printer' }}
+                    </button>
+                @endif
+            </div>
 
             <button type="button"
                     class="digital-code-delivery-option digital-code-action digital-code-action-a4">
@@ -88,9 +97,16 @@
         </div>
     @else
         <div class="d-flex flex-wrap gap-2 align-items-center">
-            <button type="button" class="btn btn-sm btn-outline-dark digital-code-action digital-code-action-thermal">
-                <i class="fa fa-print"></i> {{ translate('thermal_print') ?: 'Thermal' }}
-            </button>
+            <div class="digital-code-thermal-compact d-flex align-items-center gap-2">
+                <button type="button" class="btn btn-sm btn-outline-dark digital-code-action digital-code-action-thermal">
+                    <i class="fa fa-print"></i> {{ translate('thermal_print') ?: 'Thermal' }}
+                </button>
+                @if ($qzTrayAvailable)
+                    <button type="button" class="btn btn-sm btn-outline-primary digital-code-action-qz-setup">
+                        <i class="fa fa-cog"></i> {{ translate('configure_thermal_printer') ?: 'Configure' }}
+                    </button>
+                @endif
+            </div>
             <button type="button" class="btn btn-sm btn-outline-danger digital-code-action digital-code-action-a4">
                 <i class="fa fa-file-pdf-o"></i> {{ translate('print_receipt_a4') ?: 'A4 PDF' }}
             </button>
@@ -127,11 +143,52 @@
         border-radius: 10px;
         background: #fff;
         text-align: start;
-        cursor: pointer;
         transition: box-shadow .2s ease, border-color .2s ease, transform .2s ease;
     }
 
-    .digital-code-delivery-option:hover {
+    .digital-code-delivery-option--thermal {
+        padding: 8px 10px 8px 8px;
+        gap: 10px;
+    }
+
+    .digital-code-delivery-option--thermal:hover {
+        border-color: rgba(6, 60, 147, .25);
+        box-shadow: 0 4px 14px rgba(0, 0, 0, .08);
+    }
+
+    .digital-code-delivery-option__main {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 6px 8px;
+        border: 0;
+        background: transparent;
+        text-align: start;
+        cursor: pointer;
+    }
+
+    .digital-code-delivery-option__main:hover {
+        background: rgba(6, 60, 147, .03);
+        border-radius: 8px;
+    }
+
+    .digital-code-delivery-option:not(.digital-code-delivery-option--thermal) {
+        cursor: pointer;
+    }
+
+    .digital-code-delivery-option:not(.digital-code-delivery-option--thermal):hover {
+        border-color: rgba(6, 60, 147, .25);
+        box-shadow: 0 4px 14px rgba(0, 0, 0, .08);
+        transform: translateY(-1px);
+    }
+
+    button.digital-code-delivery-option {
+        cursor: pointer;
+    }
+
+    button.digital-code-delivery-option:hover {
         border-color: rgba(6, 60, 147, .25);
         box-shadow: 0 4px 14px rgba(0, 0, 0, .08);
         transform: translateY(-1px);
@@ -177,5 +234,10 @@
 
     .digital-code-delivery-actions--compact .btn i {
         margin-right: 5px;
+    }
+
+    .digital-code-action-qz-setup {
+        white-space: nowrap;
+        flex-shrink: 0;
     }
 </style>

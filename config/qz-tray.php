@@ -13,7 +13,7 @@ return [
     |
     */
 
-    'enabled' => env('QZ_TRAY_ENABLED', false),
+    'enabled' => filter_var(env('QZ_TRAY_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
 
     /*
     |--------------------------------------------------------------------------
@@ -42,7 +42,7 @@ return [
     | QZ Tray. The path must exist on the computer running QZ Tray (client PC).
     |
     */
-    'test_mode' => env('QZ_TRAY_TEST_MODE', false),
+    'test_mode' => filter_var(env('QZ_TRAY_TEST_MODE', false), FILTER_VALIDATE_BOOLEAN),
 
     'test_printer_name' => env('QZ_TRAY_TEST_PRINTER_NAME', 'TEST - Validate ESC/POS (no printer)'),
 
