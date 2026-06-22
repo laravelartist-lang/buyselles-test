@@ -114,7 +114,8 @@ CONF);
 
         file_put_contents($privateKeyPath, $privateKeyExport);
         file_put_contents($certificatePath, $certificateExport);
-        chmod($privateKeyPath, 0600);
+
+        $this->applyWebPermissions($directory, $privateKeyPath, $certificatePath);
 
         $this->info('QZ Tray keys generated successfully.');
         $this->line('Private key: '.$privateKeyPath);
@@ -131,5 +132,41 @@ CONF);
     private function escapeOpenSslConfigValue(string $value): string
     {
         return str_replace(['\\', '"'], ['\\\\', '\\"'], $value);
+    }
+
+    private function applyWebPermissions(string $directory, string $privateKeyPath, string $certificatePath): void
+    {
+        chmod($privateKeyPath, 0600);
+        chmod($certificatePath, 0644);
+        chmod($directory, 0755);
+
+        if (! function_exists('posix_getgrnam')) {
+            $this->warn('Could not set web server group on QZ Tray keys (posix extension unavailable).');
+            $this->warn('Ensure PHP-FPM can read: '.$privateKeyPath);
+
+            return;
+        }
+
+        $group = (string) config('qz-tray.web_group', 'www-data');
+
+        if (posix_getgrnam($group) === false) {
+            $this->warn('Web group "'.$group.'" not found. Set QZ_TRAY_WEB_GROUP or fix key ownership manually.');
+
+            return;
+        }
+
+        if (! @chgrp($directory, $group)) {
+            $this->warn('Could not chgrp directory to '.$group.'. Run as root or fix ownership manually.');
+
+            return;
+        }
+
+        @chgrp($privateKeyPath, $group);
+        @chgrp($certificatePath, $group);
+        chmod($directory, 0750);
+        chmod($privateKeyPath, 0640);
+        chmod($certificatePath, 0644);
+
+        $this->line('Key permissions set for web group: '.$group.' (private key 0640).');
     }
 }

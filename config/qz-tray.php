@@ -58,4 +58,15 @@ return [
 
     'certificate_path' => storage_path('app/qz-tray/digital-certificate.txt'),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Web server group (Unix permissions for generated keys)
+    |--------------------------------------------------------------------------
+    |
+    | Keys must be readable by PHP-FPM (typically www-data) for /qz-tray/sign.
+    | `php artisan qz-tray:generate-keys` assigns this group to key files.
+    |
+    */
+    'web_group' => env('QZ_TRAY_WEB_GROUP', 'www-data'),
+
 ];

@@ -26,14 +26,13 @@ class QzTraySigningService
         $configured = $this->isConfigured();
         $enabled = filter_var(config('qz-tray.enabled'), FILTER_VALIDATE_BOOLEAN);
         $mode = (string) config('qz-tray.mode', 'preview');
-        $available = $configured && $enabled;
 
         return [
             'qzTrayConfigured' => $configured,
             'qzTrayEnabled' => $enabled,
             'qzTrayMode' => $mode,
-            'qzTrayAvailable' => $available,
-            'qzTrayActive' => $available && in_array($mode, ['qz', 'auto'], true),
+            'qzTrayAvailable' => $enabled,
+            'qzTrayActive' => $configured && $enabled && in_array($mode, ['qz', 'auto'], true),
         ];
     }
 
