@@ -2,8 +2,10 @@
     'use strict';
 
     var STORAGE_KEY = 'buyselles_qz_printer';
+    var QZ_MODAL_IDS = ['qzTrayWizardModal', 'qzTrayThermalChoiceModal'];
     var securityInitialized = false;
     var connectPromise = null;
+    var connectionCallbacksRegistered = false;
     var wizardContext = null;
 
     function getConfig() {
@@ -14,6 +16,11 @@
         if (typeof toastr !== 'undefined') {
             if (type === 'error' && typeof toastr.error === 'function') {
                 toastr.error(message);
+                return;
+            }
+
+            if (type === 'success' && typeof toastr.success === 'function') {
+                toastr.success(message);
                 return;
             }
 
@@ -73,25 +80,6 @@
         });
     }
 
-    function verifySigningEndpoints() {
-        var config = getConfig();
-
-        return fetchText(config.certificateUrl)
-            .then(function (certificate) {
-                if ((certificate || '').indexOf('BEGIN CERTIFICATE') < 0) {
-                    throw new Error('Invalid QZ Tray certificate response from server.');
-                }
-            })
-            .then(function () {
-                return signRequest('qz-tray-setup-test');
-            })
-            .then(function (signature) {
-                if (!signature) {
-                    throw new Error('Empty signature response from server.');
-                }
-            });
-    }
-
     function ensureQzLoaded() {
         if (typeof window.qz === 'undefined') {
             return Promise.reject(new Error(getConfig().messages?.libraryMissing || 'QZ Tray library not loaded.'));
@@ -107,7 +95,7 @@
 
         if (lower.indexOf('timed out') >= 0 || lower.indexOf('timeout') >= 0) {
             return config.messages?.trustTimeout
-                || 'Connection timed out. Click Connect again, approve the QZ Tray popup with Allow (try without Remember first), and wait up to 2 minutes.';
+                || 'Connection timed out. Click Connect again, approve the QZ Tray popup with Allow and Remember (check behind this window).';
         }
 
         if (lower.indexOf('failed to sign') >= 0 || lower.indexOf('signing failed') >= 0) {
@@ -116,13 +104,31 @@
         }
 
         if (lower.indexOf('unable to establish connection') >= 0) {
-            return config.messages?.unreachable
+            var unreachableMessage = config.messages?.unreachable
                 || 'Browser cannot reach QZ Tray. Confirm the QZ Tray icon is in your system tray, then click Connect again.';
+            var blockedHint = config.messages?.trustBlockedRetry || '';
+
+            return blockedHint ? unreachableMessage + ' ' + blockedHint : unreachableMessage;
+        }
+
+        if (lower.indexOf('already exists') >= 0) {
+            return config.messages?.alreadyConnected
+                || 'Already connected to QZ Tray. Continue to select your printer.';
         }
 
         if (lower.indexOf('denied') >= 0 || lower.indexOf('blocked') >= 0 || lower.indexOf('untrusted') >= 0) {
             return config.messages?.trustDenied
                 || 'QZ Tray blocked this website. Open QZ Tray, reset allowed sites if needed, then click Connect and choose Allow / Remember.';
+        }
+
+        if (lower.indexOf('refused') >= 0 || lower.indexOf('canceled') >= 0 || lower.indexOf('cancelled') >= 0 || lower.indexOf('rejected') >= 0) {
+            return config.messages?.trustBlockedRetry
+                || config.messages?.trustDenied
+                || 'QZ Tray access was not allowed. Click Connect again and choose Allow in the popup.';
+        }
+
+        if (lower.indexOf('connect failed') >= 0 || lower.indexOf('could not connect') >= 0) {
+            return config.messages?.connectFailed || 'Could not connect to QZ Tray.';
         }
 
         if (message) {
@@ -132,8 +138,10 @@
         return config.messages?.connectFailed || 'Could not connect to QZ Tray.';
     }
 
-    function getConnectOptions() {
-        var usingSecure = window.location.protocol === 'https:';
+    function getConnectOptions(usingSecure) {
+        if (typeof usingSecure === 'undefined') {
+            usingSecure = window.location.protocol === 'https:';
+        }
 
         return {
             host: ['localhost', '127.0.0.1'],
@@ -142,10 +150,191 @@
                 insecure: [8182],
             },
             usingSecure: usingSecure,
-            retries: 0,
-            delay: 0,
-            keepAlive: 30,
+            retries: 1,
+            delay: 0.5,
+            keepAlive: 60,
         };
+    }
+
+    function isConnectionReady(qz) {
+        if (!qz || !qz.websocket || typeof qz.websocket.isActive !== 'function') {
+            return false;
+        }
+
+        return qz.websocket.isActive();
+    }
+
+    function isExistingConnectionError(error) {
+        var message = error && error.message ? String(error.message) : '';
+
+        return message.toLowerCase().indexOf('already exists') >= 0;
+    }
+
+    function reuseExistingConnection(qz, error) {
+        if (isExistingConnectionError(error) && qz.websocket.isActive && qz.websocket.isActive()) {
+            return qz;
+        }
+
+        throw error;
+    }
+
+    function disconnectQz(qz) {
+        if (!qz || !qz.websocket || typeof qz.websocket.disconnect !== 'function') {
+            return Promise.resolve();
+        }
+
+        return qz.websocket.disconnect().catch(function () {});
+    }
+
+    function resetConnectState(qz) {
+        connectPromise = null;
+
+        return disconnectQz(qz || (typeof window.qz !== 'undefined' ? window.qz : null));
+    }
+
+    function connectToQz(qz) {
+        var preferSecure = window.location.protocol === 'https:';
+        var primaryOptions = getConnectOptions(preferSecure);
+        var fallbackOptions = getConnectOptions(!preferSecure);
+
+        function attemptConnect(options) {
+            return qz.websocket.connect(options).then(function () {
+                return qz;
+            });
+        }
+
+        return attemptConnect(primaryOptions)
+            .catch(function (primaryError) {
+                try {
+                    return reuseExistingConnection(qz, primaryError);
+                } catch (ignored) {
+                    // Try alternate socket port.
+                }
+
+                if (isConnectionReady(qz)) {
+                    return qz;
+                }
+
+                if (typeof console !== 'undefined' && getConfig().debug) {
+                    console.warn('[BuysellesQzTray] Primary connect failed, retrying alternate socket', primaryError);
+                }
+
+                return disconnectQz(qz).then(function () {
+                    return attemptConnect(fallbackOptions);
+                }).catch(function (fallbackError) {
+                    try {
+                        return reuseExistingConnection(qz, fallbackError);
+                    } catch (ignoredRetry) {
+                        if (typeof console !== 'undefined' && getConfig().debug) {
+                            console.error('[BuysellesQzTray] Connect failed', fallbackError);
+                        }
+
+                        throw fallbackError;
+                    }
+                });
+            });
+    }
+
+    function appendTestPrinter(printers) {
+        var config = getConfig();
+        var list = printers ? printers.slice() : [];
+
+        if (config.testMode && config.testPrinterName && list.indexOf(config.testPrinterName) < 0) {
+            list.unshift(config.testPrinterName);
+        }
+
+        return list;
+    }
+
+    function createPrintConfig(qz, printerName) {
+        return qz.configs.create(printerName);
+    }
+
+    function isTestPrinter(printerName) {
+        var config = getConfig();
+
+        return !!(config.testMode && printerName === config.testPrinterName);
+    }
+
+    function getTestOutputPath() {
+        var config = getConfig();
+        var path = (config.testOutputFile || 'buyselles-thermal-test.raw').trim();
+
+        if (path.indexOf('/') >= 0 || path.indexOf('\\') >= 0) {
+            var parts = path.split(/[\\/]/);
+
+            return parts[parts.length - 1] || 'buyselles-thermal-test.raw';
+        }
+
+        return path;
+    }
+
+    function validateHexJobs(hexJobs) {
+        if (!hexJobs || !hexJobs.length) {
+            throw new Error('No print jobs were returned from the server.');
+        }
+
+        hexJobs.forEach(function (hex, index) {
+            var normalized = (hex || '').toLowerCase();
+
+            if (!normalized) {
+                throw new Error('Receipt ' + (index + 1) + ' is empty.');
+            }
+
+            if (normalized.slice(-8) !== '1d564200') {
+                throw new Error('Receipt ' + (index + 1) + ' is missing the paper cut command.');
+            }
+        });
+    }
+
+    function printTestJobs(qz, hexJobs) {
+        validateHexJobs(hexJobs);
+
+        var outputPath = getTestOutputPath();
+        var config = getConfig();
+
+        if (!qz.file || typeof qz.file.write !== 'function') {
+            if (config.debug && typeof console !== 'undefined') {
+                console.info('[BuysellesQzTray] Test validation passed for ' + hexJobs.length + ' receipt(s).', hexJobs);
+            }
+
+            return Promise.resolve({
+                testMode: true,
+                dryRun: true,
+                outputFile: outputPath,
+                jobCount: hexJobs.length,
+            });
+        }
+
+        return hexJobs.reduce(function (chain, hexData, index) {
+            return chain.then(function () {
+                return qz.file.write(outputPath, {
+                    data: hexData,
+                    flavor: 'hex',
+                    append: index > 0,
+                    sandbox: true,
+                });
+            });
+        }, Promise.resolve()).then(function () {
+            return {
+                testMode: true,
+                dryRun: false,
+                outputFile: '~/.qz/sandbox/' + outputPath,
+                jobCount: hexJobs.length,
+            };
+        }).catch(function (fileError) {
+            if (config.debug && typeof console !== 'undefined') {
+                console.warn('[BuysellesQzTray] Sandbox file write failed, falling back to validation only.', fileError);
+                console.info('[BuysellesQzTray] Validated jobs:', hexJobs);
+            }
+
+            return {
+                testMode: true,
+                dryRun: true,
+                outputFile: outputPath,
+                jobCount: hexJobs.length,
+            };
+        });
     }
 
     function initSecurity() {
@@ -174,42 +363,37 @@
                     .catch(reject);
             });
 
-            qz.security.setSignaturePromise(function (toSign) {
-                return function (resolve, reject) {
-                    signRequest(toSign)
-                        .then(function (signature) {
-                            resolve((signature || '').trim());
-                        })
-                        .catch(reject);
-                };
+            qz.security.setSignaturePromise(async function (toSign) {
+                var signature = await signRequest(toSign);
+
+                return (signature || '').trim();
             });
 
+            registerConnectionCallbacks(qz);
             securityInitialized = true;
 
             return qz;
         });
     }
 
-    function isConnectionReady(qz) {
-        if (!qz || !qz.websocket || !qz.websocket.connection) {
-            return false;
+    function registerConnectionCallbacks(qz) {
+        if (connectionCallbacksRegistered || !qz || !qz.websocket) {
+            return;
         }
 
-        var connection = qz.websocket.connection;
+        connectionCallbacksRegistered = true;
 
-        return connection.established === true
-            && typeof connection.sendData === 'function'
-            && connection.readyState === 1;
-    }
-
-    function resetConnection(qz) {
-        if (!qz.websocket.connection || isConnectionReady(qz)) {
-            return Promise.resolve();
+        if (typeof qz.websocket.setClosedCallbacks === 'function') {
+            qz.websocket.setClosedCallbacks(function () {
+                connectPromise = null;
+            });
         }
 
-        return qz.websocket.disconnect().catch(function () {
-            // Ignore disconnect errors for half-open connections.
-        });
+        if (typeof qz.websocket.setErrorCallbacks === 'function') {
+            qz.websocket.setErrorCallbacks(function () {
+                connectPromise = null;
+            });
+        }
     }
 
     function getHostnameMismatchMessage() {
@@ -227,7 +411,8 @@
         return template.replace(':host', expectedHost);
     }
 
-    function connectOnce() {
+    function connectOnce(options) {
+        options = options || {};
         var hostnameWarning = getHostnameMismatchMessage();
 
         if (hostnameWarning) {
@@ -236,38 +421,44 @@
 
         return initSecurity()
             .then(function (qz) {
-                return verifySigningEndpoints().then(function () {
-                    return qz;
-                });
-            })
-            .then(function (qz) {
-                if (isConnectionReady(qz)) {
-                    return qz;
-                }
+                var start = options.forceReconnect
+                    ? resetConnectState(qz)
+                    : Promise.resolve();
 
-                return resetConnection(qz).then(function () {
-                    return qz.websocket.connect(getConnectOptions()).then(function () {
-                        if (!isConnectionReady(qz)) {
-                            throw new Error(getConfig().messages?.connectFailed || 'Could not connect to QZ Tray.');
-                        }
-
+                return start.then(function () {
+                    if (!options.forceReconnect && isConnectionReady(qz)) {
                         return qz;
-                    });
+                    }
+
+                    return connectToQz(qz);
                 });
             });
     }
 
-    function connect() {
+    function connect(options) {
+        options = options || {};
         var config = getConfig();
-        var timeoutMs = config.connectTimeoutMs || 120000;
+        var timeoutMs = options.timeoutMs || config.connectTimeoutMs || 30000;
+
+        if (!options.forceReconnect && typeof window.qz !== 'undefined' && isConnectionReady(window.qz)) {
+            return Promise.resolve(window.qz);
+        }
+
+        if (options.forceReconnect) {
+            connectPromise = null;
+        }
 
         if (!connectPromise) {
-            connectPromise = connectOnce().finally(function () {
+            connectPromise = connectOnce(options).catch(function (error) {
                 connectPromise = null;
+                throw error;
             });
         }
 
-        return withTimeout(connectPromise, timeoutMs);
+        return withTimeout(connectPromise, timeoutMs).catch(function (error) {
+            connectPromise = null;
+            throw error;
+        });
     }
 
     function isConnected() {
@@ -298,9 +489,11 @@
         }
     }
 
-    function listPrinters() {
-        return connect().then(function (qz) {
-            return qz.printers.find();
+    function listPrinters(options) {
+        return connect(options).then(function (qz) {
+            return qz.printers.find().then(function (printers) {
+                return appendTestPrinter(printers || []);
+            });
         });
     }
 
@@ -325,9 +518,13 @@
         });
     }
 
-    function printHexJobs(printerName, hexJobs) {
-        return connect().then(function (qz) {
-            var config = qz.configs.create(printerName);
+    function printHexJobs(printerName, hexJobs, options) {
+        return connect(options).then(function (qz) {
+            if (isTestPrinter(printerName)) {
+                return printTestJobs(qz, hexJobs);
+            }
+
+            var config = createPrintConfig(qz, printerName);
 
             return hexJobs.reduce(function (chain, hexData) {
                 return chain.then(function () {
@@ -338,53 +535,192 @@
                         data: hexData,
                     }]);
                 });
-            }, Promise.resolve());
+            }, Promise.resolve()).then(function () {
+                return { testMode: false, jobCount: hexJobs.length };
+            });
+        });
+    }
+
+    function showPrintResult(result) {
+        var config = getConfig();
+        result = result || {};
+
+        if (result.testMode) {
+            var template = result.dryRun
+                ? (config.messages?.testValidateSuccess || 'Test OK: :count receipt(s) validated (cut command present). ESC/POS was not sent to a printer.')
+                : (config.messages?.testPrintSuccess || 'Test print saved :count receipt(s) to :file');
+
+            showToast(
+                template
+                    .replace(':count', String(result.jobCount || 0))
+                    .replace(':file', result.outputFile || ''),
+                'success'
+            );
+
+            return;
+        }
+
+        showToast(config.messages?.printSuccess || 'Sent to thermal printer.', 'success');
+    }
+
+    function showSetupCompleteMessage(printerName) {
+        var config = getConfig();
+        var template = config.messages?.setupComplete
+            || 'Thermal printer saved: :printer. You can print receipts directly next time.';
+
+        showToast(template.replace(':printer', printerName), 'success');
+    }
+
+    function updateTestPrinterHint(printerName) {
+        var hintEl = document.getElementById('qzWizardSavedPrinterHint');
+        var config = getConfig();
+
+        if (!hintEl || !isTestPrinter(printerName)) {
+            return;
+        }
+
+        var template = config.messages?.testPrinterHint
+            || 'Test mode validates ESC/POS output (one cut per code). Optional sandbox file: ~/.qz/sandbox/:file';
+
+        hintEl.textContent = template.replace(':file', getTestOutputPath());
+    }
+
+    function ensureModalInBody(modalId) {
+        var el = document.getElementById(modalId);
+
+        if (el && el.parentElement !== document.body) {
+            document.body.appendChild(el);
+        }
+
+        return el;
+    }
+
+    function isModalVisible(modalId) {
+        var el = document.getElementById(modalId);
+
+        if (!el) {
+            return false;
+        }
+
+        return el.classList.contains('show') || el.getAttribute('aria-hidden') === 'false';
+    }
+
+    function cleanupOrphanModalState() {
+        if (typeof jQuery === 'undefined') {
+            return;
+        }
+
+        var visibleCount = QZ_MODAL_IDS.filter(isModalVisible).length;
+
+        if (visibleCount > 0) {
+            return;
+        }
+
+        jQuery('.modal-backdrop').remove();
+        jQuery('body').removeClass('modal-open').css({
+            paddingRight: '',
+            overflow: '',
         });
     }
 
     function modalShow(modalId) {
-        var el = document.getElementById(modalId);
+        return new Promise(function (resolve) {
+            var el = ensureModalInBody(modalId);
+            var settled = false;
 
-        if (!el) {
-            return;
-        }
+            function finish() {
+                if (settled) {
+                    return;
+                }
 
-        if (typeof jQuery !== 'undefined' && typeof jQuery.fn.modal === 'function') {
-            jQuery(el).modal('show');
-            return;
-        }
+                settled = true;
+                resolve();
+            }
 
-        if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
-            var Modal = bootstrap.Modal;
-            var instance = typeof Modal.getOrCreateInstance === 'function'
-                ? Modal.getOrCreateInstance(el)
-                : new Modal(el);
-            instance.show();
-        }
+            if (!el) {
+                finish();
+                return;
+            }
+
+            if (typeof jQuery !== 'undefined' && typeof jQuery.fn.modal === 'function') {
+                var $el = jQuery(el);
+
+                if ($el.hasClass('show')) {
+                    finish();
+                    return;
+                }
+
+                $el.off('shown.bs.modal.buysellesQz').one('shown.bs.modal.buysellesQz', finish);
+                $el.modal({
+                    backdrop: 'static',
+                    keyboard: true,
+                    show: true,
+                });
+                window.setTimeout(finish, 450);
+
+                return;
+            }
+
+            if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                var Modal = bootstrap.Modal;
+                var instance = typeof Modal.getOrCreateInstance === 'function'
+                    ? Modal.getOrCreateInstance(el)
+                    : new Modal(el);
+                instance.show();
+            }
+
+            finish();
+        });
     }
 
     function modalHide(modalId) {
-        var el = document.getElementById(modalId);
+        return new Promise(function (resolve) {
+            var el = ensureModalInBody(modalId);
+            var settled = false;
 
-        if (!el) {
-            return;
-        }
+            function finish() {
+                if (settled) {
+                    return;
+                }
 
-        if (typeof jQuery !== 'undefined' && typeof jQuery.fn.modal === 'function') {
-            jQuery(el).modal('hide');
-            return;
-        }
-
-        if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
-            var Modal = bootstrap.Modal;
-            var instance = typeof Modal.getInstance === 'function'
-                ? Modal.getInstance(el)
-                : null;
-
-            if (instance) {
-                instance.hide();
+                settled = true;
+                cleanupOrphanModalState();
+                resolve();
             }
-        }
+
+            if (!el) {
+                finish();
+                return;
+            }
+
+            if (typeof jQuery !== 'undefined' && typeof jQuery.fn.modal === 'function') {
+                var $el = jQuery(el);
+
+                if (!$el.hasClass('show') && $el.attr('aria-hidden') !== 'false') {
+                    finish();
+                    return;
+                }
+
+                $el.off('hidden.bs.modal.buysellesQz').one('hidden.bs.modal.buysellesQz', finish);
+                $el.modal('hide');
+                window.setTimeout(finish, 450);
+
+                return;
+            }
+
+            if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                var Modal = bootstrap.Modal;
+                var instance = typeof Modal.getInstance === 'function'
+                    ? Modal.getInstance(el)
+                    : null;
+
+                if (instance) {
+                    instance.hide();
+                }
+            }
+
+            finish();
+        });
     }
 
     function setWizardStep(step) {
@@ -494,7 +830,14 @@
             printBtn.disabled = !selectEl.value;
         }
 
-        if (hintEl) {
+        var doneBtn = document.getElementById('qzWizardDoneBtn');
+        if (doneBtn) {
+            doneBtn.disabled = !selectEl.value;
+        }
+
+        updateTestPrinterHint(selectEl.value);
+
+        if (hintEl && !isTestPrinter(selectEl.value)) {
             hintEl.textContent = saved
                 ? (config.messages?.savedPrinterHint || 'Saved printer on this browser: ') + saved
                 : (config.messages?.savePrinterHint || 'Your printer choice is saved in this browser for next time.');
@@ -511,7 +854,7 @@
 
         setWizardStatus('idle', config.messages?.loadingPrinters || 'Loading printers...');
 
-        return listPrinters()
+        return listPrinters({ forceReconnect: false })
             .then(function (printers) {
                 populatePrinterSelect(printers);
                 setWizardStatus('ok', config.messages?.connectedReady || 'Connected — choose your thermal printer.');
@@ -525,6 +868,52 @@
             .finally(function () {
                 if (loadingEl) {
                     loadingEl.classList.add('d-none');
+                }
+            });
+    }
+
+    function handleWizardConnect() {
+        var connectBtn = document.getElementById('qzWizardConnectBtn');
+        var errorEl = document.getElementById('qzWizardConnectError');
+        var config = getConfig();
+
+        if (connectBtn) {
+            connectBtn.disabled = true;
+        }
+
+        setWizardStatus('idle', config.messages?.connecting || 'Connecting to QZ Tray...');
+
+        return connect({
+            timeoutMs: config.connectTimeoutMs || 60000,
+            forceReconnect: true,
+        })
+            .then(function () {
+                if (errorEl) {
+                    errorEl.classList.add('d-none');
+                    errorEl.textContent = '';
+                }
+
+                return loadWizardPrinters();
+            })
+            .catch(function (error) {
+                var friendlyError = formatConnectionError(error);
+
+                if (errorEl) {
+                    errorEl.classList.remove('d-none');
+                    errorEl.textContent = friendlyError;
+
+                    if ((friendlyError.toLowerCase().indexOf('timed out') >= 0 || friendlyError.toLowerCase().indexOf('timeout') >= 0)
+                        && config.messages?.resetSiteManager) {
+                        errorEl.textContent = friendlyError + ' ' + config.messages.resetSiteManager;
+                    }
+                }
+
+                setWizardStatus('error', friendlyError);
+                setWizardStep(2);
+            })
+            .finally(function () {
+                if (connectBtn) {
+                    connectBtn.disabled = false;
                 }
             });
     }
@@ -552,42 +941,44 @@
             connectError.textContent = '';
         }
 
-        modalShow('qzTrayWizardModal');
-
-        if (options.startStep === 3) {
-            setWizardStep(3);
-            return loadWizardPrinters();
-        }
-
-        if (isConnected()) {
-            setWizardStatus('ok', getConfig().messages?.connectedContinue || 'QZ Tray connected. Continue to select your printer.');
-
-            if (getSavedPrinter()) {
-                setWizardStatus('ok', getConfig().messages?.connectedSaved || 'Connected — saved printer ready.');
+        return modalShow('qzTrayWizardModal').then(function () {
+            if (options.startStep === 3) {
                 setWizardStep(3);
+
                 return loadWizardPrinters();
             }
 
-            setWizardStep(2);
+            if (isConnected()) {
+                setWizardStatus('ok', getConfig().messages?.connectedContinue || 'QZ Tray connected. Continue to select your printer.');
+
+                if (getSavedPrinter()) {
+                    setWizardStatus('ok', getConfig().messages?.connectedSaved || 'Connected — saved printer ready.');
+                    setWizardStep(3);
+
+                    return loadWizardPrinters();
+                }
+
+                setWizardStep(2);
+
+                return Promise.resolve();
+            }
+
+            setWizardStep(options.startStep || 2);
+            setWizardStatus(
+                'warn',
+                getConfig().messages?.clickConnect
+                    || 'QZ Tray is installed? Click "Connect to QZ Tray" below. If a security popup appears, choose Allow and check Remember.'
+            );
+
             return Promise.resolve();
-        }
-
-        setWizardStep(options.startStep || 2);
-        setWizardStatus(
-            'warn',
-            getConfig().messages?.clickConnect
-                || 'QZ Tray is installed? Click "Connect to QZ Tray" below. If a security popup appears, choose Allow / Remember.'
-        );
-
-        return Promise.resolve();
+        });
     }
 
     function openThermalChoiceModal(orderIds, onPreviewFallback) {
         var choiceEl = document.getElementById('qzTrayThermalChoiceModal');
 
         if (!choiceEl) {
-            openWizard({ orderIds: orderIds, onPreviewFallback: onPreviewFallback });
-            return;
+            return openWizard({ orderIds: orderIds, onPreviewFallback: onPreviewFallback });
         }
 
         wizardContext = {
@@ -601,28 +992,31 @@
 
         if (previewBtn) {
             previewBtn.onclick = function () {
-                modalHide('qzTrayThermalChoiceModal');
-                if (typeof onPreviewFallback === 'function') {
-                    onPreviewFallback();
-                }
+                modalHide('qzTrayThermalChoiceModal').then(function () {
+                    if (typeof onPreviewFallback === 'function') {
+                        onPreviewFallback();
+                    }
+                });
             };
         }
 
         if (directBtn) {
             directBtn.onclick = function () {
-                modalHide('qzTrayThermalChoiceModal');
-                runThermalPrint(orderIds, onPreviewFallback);
+                modalHide('qzTrayThermalChoiceModal').then(function () {
+                    runThermalPrint(orderIds, onPreviewFallback);
+                });
             };
         }
 
         if (setupBtn) {
             setupBtn.onclick = function () {
-                modalHide('qzTrayThermalChoiceModal');
-                openWizard({ orderIds: orderIds, onPreviewFallback: onPreviewFallback });
+                modalHide('qzTrayThermalChoiceModal').then(function () {
+                    openWizard({ orderIds: orderIds, onPreviewFallback: onPreviewFallback });
+                });
             };
         }
 
-        modalShow('qzTrayThermalChoiceModal');
+        return modalShow('qzTrayThermalChoiceModal');
     }
 
     function runThermalPrint(orderIds, onPreviewFallback) {
@@ -630,11 +1024,11 @@
 
         if (savedPrinter) {
             return printWithSavedPrinter(orderIds)
-                .then(function () {
-                    showToast(getConfig().messages?.printSuccess || 'Sent to thermal printer.');
+                .then(function (result) {
+                    showPrintResult(result);
                 })
                 .catch(function () {
-                    return openWizard({ orderIds: orderIds, onPreviewFallback: onPreviewFallback, startStep: 1 });
+                    return openWizard({ orderIds: orderIds, onPreviewFallback: onPreviewFallback, startStep: 2 });
                 });
         }
 
@@ -649,7 +1043,7 @@
         }
 
         return fetchEscPosJobs(orderIds).then(function (payload) {
-            return printHexJobs(savedPrinter, payload.jobs || []);
+            return printHexJobs(savedPrinter, payload.jobs || [], { timeoutMs: 20000 });
         });
     }
 
@@ -665,8 +1059,8 @@
         }
 
         return printWithSavedPrinter(orderIds)
-            .then(function () {
-                showToast(getConfig().messages?.printSuccess || 'Sent to thermal printer.');
+            .then(function (result) {
+                showPrintResult(result);
             })
             .catch(function () {
                 openWizard({ orderIds: orderIds, onPreviewFallback: onPreviewFallback });
@@ -680,41 +1074,13 @@
         var refreshBtn = document.getElementById('qzWizardRefreshPrintersBtn');
         var printBtn = document.getElementById('qzWizardPrintBtn');
         var previewBtn = document.getElementById('qzWizardPreviewBtn');
+        var doneBtn = document.getElementById('qzWizardDoneBtn');
         var selectEl = document.getElementById('qzWizardPrinterSelect');
 
         if (connectBtn && connectBtn.dataset.bound !== '1') {
             connectBtn.dataset.bound = '1';
             connectBtn.addEventListener('click', function () {
-                var errorEl = document.getElementById('qzWizardConnectError');
-                connectBtn.disabled = true;
-                setWizardStatus('idle', getConfig().messages?.connecting || 'Connecting to QZ Tray...');
-
-                connect()
-                    .then(function () {
-                        if (errorEl) {
-                            errorEl.classList.add('d-none');
-                        }
-
-                        return loadWizardPrinters();
-                    })
-                    .catch(function (error) {
-                        var friendlyError = formatConnectionError(error);
-
-                        if (errorEl) {
-                            errorEl.classList.remove('d-none');
-                            errorEl.textContent = friendlyError;
-
-                            if ((friendlyError.toLowerCase().indexOf('timed out') >= 0 || friendlyError.toLowerCase().indexOf('timeout') >= 0)
-                                && getConfig().messages?.resetSiteManager) {
-                                errorEl.textContent = friendlyError + ' ' + getConfig().messages.resetSiteManager;
-                            }
-                        }
-
-                        setWizardStatus('error', friendlyError);
-                    })
-                    .finally(function () {
-                        connectBtn.disabled = false;
-                    });
+                handleWizardConnect();
             });
         }
 
@@ -730,7 +1096,7 @@
                 }
 
                 if (step === 2) {
-                    loadWizardPrinters();
+                    handleWizardConnect();
                 }
             });
         }
@@ -755,9 +1121,17 @@
             selectEl.dataset.bound = '1';
             selectEl.addEventListener('change', function () {
                 var printButton = document.getElementById('qzWizardPrintBtn');
+                var doneButton = document.getElementById('qzWizardDoneBtn');
+
                 if (printButton) {
                     printButton.disabled = !selectEl.value;
                 }
+
+                if (doneButton) {
+                    doneButton.disabled = !selectEl.value;
+                }
+
+                updateTestPrinterHint(selectEl.value);
             });
         }
 
@@ -781,10 +1155,10 @@
                     .then(function (payload) {
                         return printHexJobs(printerName, payload.jobs || []);
                     })
-                    .then(function () {
-                        modalHide('qzTrayWizardModal');
-
-                        showToast(config.messages?.printSuccess || 'Sent to thermal printer.');
+                    .then(function (result) {
+                        return modalHide('qzTrayWizardModal').then(function () {
+                            showPrintResult(result);
+                        });
                     })
                     .catch(function (error) {
                         showToast(error.message || (config.messages?.printFailed || 'Printing failed.'), 'error');
@@ -804,6 +1178,36 @@
                 if (wizardContext && typeof wizardContext.onPreviewFallback === 'function') {
                     wizardContext.onPreviewFallback();
                 }
+            });
+        }
+
+        if (doneBtn && doneBtn.dataset.bound !== '1') {
+            doneBtn.dataset.bound = '1';
+            doneBtn.addEventListener('click', function (event) {
+                event.preventDefault();
+
+                var config = getConfig();
+                var printerName = selectEl ? selectEl.value : '';
+
+                if (!printerName) {
+                    showToast(config.messages?.selectPrinterFirst || 'Select a thermal printer before clicking Done.', 'error');
+
+                    return;
+                }
+
+                if (!isConnected()) {
+                    showToast(config.messages?.notConnectedSetup || config.messages?.notConnected || 'QZ Tray is not connected.', 'error');
+                    setWizardStatus('error', config.messages?.notConnectedSetup || config.messages?.notConnected || 'QZ Tray is not connected.');
+                    setWizardStep(2);
+
+                    return;
+                }
+
+                savePrinter(printerName);
+
+                modalHide('qzTrayWizardModal').then(function () {
+                    showSetupCompleteMessage(printerName);
+                });
             });
         }
     }

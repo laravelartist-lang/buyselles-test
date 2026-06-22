@@ -27,11 +27,30 @@ return [
     */
     'mode' => env('QZ_TRAY_MODE', 'qz'),
 
-    'connect_timeout_seconds' => (int) env('QZ_TRAY_CONNECT_TIMEOUT', 120),
+    'connect_timeout_seconds' => (int) env('QZ_TRAY_CONNECT_TIMEOUT', 60),
 
     'default_printer' => env('QZ_TRAY_DEFAULT_PRINTER'),
 
     'paper_width_mm' => (int) env('QZ_TRAY_PAPER_WIDTH', 80),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Local test mode (no physical printer required)
+    |--------------------------------------------------------------------------
+    |
+    | Injects a fake printer that writes raw ESC/POS bytes to a local file via
+    | QZ Tray. The path must exist on the computer running QZ Tray (client PC).
+    |
+    */
+    'test_mode' => env('QZ_TRAY_TEST_MODE', false),
+
+    'test_printer_name' => env('QZ_TRAY_TEST_PRINTER_NAME', 'TEST - Validate ESC/POS (no printer)'),
+
+    /*
+     * Relative filename written inside the QZ Tray sandbox (~/.qz/sandbox/...) via qz.file.write.
+     * Do not use /tmp — legacy print-to-file is blocked by QZ Tray 2.2+.
+     */
+    'test_output_file' => env('QZ_TRAY_TEST_OUTPUT_FILE', 'buyselles-thermal-test.raw'),
 
     'storage_path' => storage_path('app/qz-tray'),
 

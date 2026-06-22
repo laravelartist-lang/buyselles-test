@@ -13,8 +13,14 @@ class ThermalEscPosBuilder
      *
      * @param  array{productName: string, code: string, pin?: string|null, serial?: string|null, expiry?: string|null, orderId?: int|string|null}  $code
      */
-    public function buildSingleCodeReceipt(string $shopName, string $shopTagline, array $code, int $paperWidthMm = 80): string
-    {
+    public function buildSingleCodeReceipt(
+        string $shopName,
+        string $shopTagline,
+        array $code,
+        int $paperWidthMm = 80,
+        ?int $codeIndex = null,
+        ?int $codeTotal = null
+    ): string {
         $bytes = '';
         $bytes .= self::ESC.'@';
         $bytes .= $this->setAlign('center');
@@ -28,6 +34,11 @@ class ThermalEscPosBuilder
         $bytes .= $this->setBold(true);
         $bytes .= $this->line('Digital Product Receipt');
         $bytes .= $this->setBold(false);
+
+        if ($codeIndex !== null && $codeTotal !== null && $codeTotal > 1) {
+            $bytes .= $this->line('Receipt '.$codeIndex.'/'.$codeTotal);
+        }
+
         $bytes .= $this->line('Date: '.now()->format('Y-m-d H:i:s'));
         $bytes .= $this->horizontalRule($paperWidthMm);
 
@@ -70,9 +81,17 @@ class ThermalEscPosBuilder
     public function buildJobs(string $shopName, string $shopTagline, array $codes, int $paperWidthMm = 80): array
     {
         $jobs = [];
+        $total = count($codes);
 
-        foreach ($codes as $code) {
-            $jobs[] = $this->buildSingleCodeReceipt($shopName, $shopTagline, $code, $paperWidthMm);
+        foreach ($codes as $index => $code) {
+            $jobs[] = $this->buildSingleCodeReceipt(
+                $shopName,
+                $shopTagline,
+                $code,
+                $paperWidthMm,
+                $index + 1,
+                $total
+            );
         }
 
         return $jobs;

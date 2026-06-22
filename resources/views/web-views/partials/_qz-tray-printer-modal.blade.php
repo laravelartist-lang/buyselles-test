@@ -1,4 +1,4 @@
-<div class="modal fade" id="qzTrayWizardModal" tabindex="-1" role="dialog" aria-labelledby="qzTrayWizardModalLabel" aria-hidden="true">
+<div class="modal fade qz-tray-modal" id="qzTrayWizardModal" tabindex="-1" role="dialog" aria-labelledby="qzTrayWizardModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
         <div class="modal-content">
             <div class="modal-header border-0 pb-0">
@@ -57,7 +57,7 @@
 
                 <div class="qz-wizard-panel d-none" data-wizard-panel="2">
                     <p class="fs-13 text-muted mb-3">
-                        {{ translate('qz_tray_connect_help') ?: 'Make sure QZ Tray is running (system tray icon), click Connect below, then approve the QZ Tray security popup with Allow. Try Allow without Remember first. The popup may appear behind this window.' }}
+                        {{ translate('qz_tray_connect_help') ?: 'Make sure QZ Tray is running (system tray icon), click Connect below, then approve the QZ Tray security popup. Choose Allow and check Remember. If you blocked access earlier, click Connect again — the popup will reappear (blocked sites are not listed in Site Manager until you allow once). The popup may appear behind this window.' }}
                     </p>
                     <p class="fs-12 text-muted mb-3">
                         {{ translate('qz_tray_reset_site_manager') ?: 'If connection still fails, right-click the QZ Tray icon → Advanced → Site Manager, remove this site, then connect again.' }}
@@ -97,7 +97,7 @@
                 <button type="button" class="btn btn-primary mb-2 mr-2 d-none" id="qzWizardPrintBtn" disabled>
                     {{ translate('print_now') ?: 'Print Now' }}
                 </button>
-                <button type="button" class="btn btn-primary mb-2 d-none" id="qzWizardDoneBtn" data-dismiss="modal">
+                <button type="button" class="btn btn-primary mb-2 d-none" id="qzWizardDoneBtn">
                     {{ translate('done') ?: 'Done' }}
                 </button>
             </div>
@@ -105,7 +105,7 @@
     </div>
 </div>
 
-<div class="modal fade" id="qzTrayThermalChoiceModal" tabindex="-1" role="dialog" aria-hidden="true">
+<div class="modal fade qz-tray-modal" id="qzTrayThermalChoiceModal" tabindex="-1" role="dialog" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered" role="document">
         <div class="modal-content">
             <div class="modal-header">
@@ -137,6 +137,14 @@
 </div>
 
 <style>
+    .qz-tray-modal {
+        z-index: 1060;
+    }
+
+    .modal-backdrop.show {
+        z-index: 1055;
+    }
+
     .qz-wizard-status {
         display: flex;
         align-items: center;
