@@ -38,6 +38,10 @@ class ConfigController extends Controller
             $socialLoginConfig[] = $config;
         }
 
+        if (empty($googleClientId)) {
+            $googleClientId = config('firebase.google_web_client_id');
+        }
+
         foreach (getWebConfig(name: 'apple_login') as $social) {
             $config = [
                 'login_medium' => $social['login_medium'],

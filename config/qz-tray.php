@@ -17,17 +17,17 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Print mode (until client confirms final thermal setup)
+    | Print mode
     |--------------------------------------------------------------------------
     |
-    | preview — open 80mm receipt in new tab (works everywhere; default)
-    | auto    — try QZ if configured + printer saved, else preview (no modals)
-    | qz      — full QZ Tray flow with printer picker (requires QZ on client PC)
+    | preview — ask user: direct thermal (QZ) or browser preview (default)
+    | qz      — guided QZ Tray wizard: install → connect → pick printer → print
+    | auto    — silent QZ print if printer saved, else browser preview
     |
     */
-    'mode' => env('QZ_TRAY_MODE', 'preview'),
+    'mode' => env('QZ_TRAY_MODE', 'qz'),
 
-    'connect_timeout_seconds' => (int) env('QZ_TRAY_CONNECT_TIMEOUT', 4),
+    'connect_timeout_seconds' => (int) env('QZ_TRAY_CONNECT_TIMEOUT', 120),
 
     'default_printer' => env('QZ_TRAY_DEFAULT_PRINTER'),
 

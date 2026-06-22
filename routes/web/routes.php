@@ -90,7 +90,7 @@ Route::group(['namespace' => 'Web', 'middleware' => ['maintenance_mode', 'guestC
 
     Route::controller(QzTrayController::class)->group(function () {
         Route::get('qz-tray/certificate', 'certificate')->name('qz-tray.certificate');
-        Route::get('qz-tray/sign', 'sign')->name('qz-tray.sign');
+        Route::match(['get', 'post'], 'qz-tray/sign', 'sign')->name('qz-tray.sign');
     });
 
     Route::controller(HomeController::class)->group(function () {

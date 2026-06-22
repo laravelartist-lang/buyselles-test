@@ -31,7 +31,7 @@
                 <span class="digital-code-delivery-option__icon"><i class="fa fa-print"></i></span>
                 <span class="digital-code-delivery-option__content">
                     <span class="digital-code-delivery-option__title">{{ translate('thermal_print') ?: 'Thermal Print' }}</span>
-                    <span class="digital-code-delivery-option__subtitle">{{ translate('thermal_print_subtitle') ?: 'Open 80mm receipt — print or save (no extra software needed)' }}</span>
+                    <span class="digital-code-delivery-option__subtitle">{{ translate('thermal_print_subtitle') ?: 'Print to your thermal printer or open an 80mm preview' }}</span>
                 </span>
                 <span class="digital-code-delivery-option__arrow"><i class="fa fa-chevron-right"></i></span>
             </button>

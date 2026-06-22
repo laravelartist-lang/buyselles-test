@@ -3,30 +3,57 @@
 
     $qzSigningService = app(QzTraySigningService::class);
     $qzTrayConfigured = $qzSigningService->isConfigured();
+    $qzTrayEnabled = (bool) config('qz-tray.enabled', false);
     $qzTrayMode = config('qz-tray.mode', 'preview');
-    $qzTrayActive = config('qz-tray.enabled') && $qzTrayConfigured && in_array($qzTrayMode, ['qz', 'auto'], true);
+    $qzTrayAvailable = $qzTrayConfigured && $qzTrayEnabled;
+    $qzTrayActive = $qzTrayAvailable && in_array($qzTrayMode, ['qz', 'auto'], true);
+
+    $qzTrayMessages = [
+        'printSuccess' => translate('sent_to_thermal_printer') ?: 'Sent to thermal printer.',
+        'printNow' => translate('print_now') ?: 'Print Now',
+        'printing' => translate('Printing...') ?: 'Printing...',
+        'printFailed' => translate('printing_failed') ?: 'Printing failed.',
+        'noPrinters' => translate('no_printers_found') ?: 'No printers found on this computer.',
+        'previewFallback' => translate('opened_thermal_print_preview') ?: 'Opened thermal print preview.',
+        'setupLink' => translate('setup_thermal_printer') ?: 'Setup thermal printer (QZ Tray)',
+        'statusChecking' => translate('qz_tray_status_checking') ?: 'Checking connection...',
+        'installRequired' => translate('qz_tray_install_required') ?: 'Install and start QZ Tray to continue.',
+        'clickConnect' => translate('qz_tray_click_connect') ?: 'QZ Tray is installed? Click "Connect to QZ Tray" below. If a security popup appears, choose Allow / Remember.',
+        'notConnected' => translate('qz_tray_not_connected') ?: 'Could not connect to QZ Tray.',
+        'trustTimeout' => translate('qz_tray_trust_timeout') ?: 'Connection timed out. Click Connect again, approve the QZ Tray popup with Allow (try without Remember first), and wait up to 2 minutes.',
+        'signFailed' => translate('qz_tray_sign_failed') ?: 'QZ Tray signing failed on the server. Check /qz-tray/sign returns 200, then try again.',
+        'resetSiteManager' => translate('qz_tray_reset_site_manager') ?: 'If connection still fails, right-click the QZ Tray icon -> Advanced -> Site Manager, remove this site, then connect again.',
+        'trustDenied' => translate('qz_tray_trust_denied') ?: 'QZ Tray blocked this website. Reset allowed sites in QZ Tray if needed, then click Connect and choose Allow / Remember.',
+        'unreachable' => translate('qz_tray_unreachable') ?: 'Browser cannot reach QZ Tray. Confirm the QZ Tray icon is in your system tray, then click Connect again.',
+        'hostnameMismatch' => translate('qz_tray_hostname_mismatch') ?: 'Open this site at :host so QZ Tray can trust the connection.',
+        'connectedContinue' => translate('qz_tray_connected_continue') ?: 'QZ Tray connected. Continue to select your printer.',
+        'connectedSaved' => translate('qz_tray_connected_saved') ?: 'Connected — saved printer ready.',
+        'connectedReady' => translate('qz_tray_connected_ready') ?: 'Connected — choose your thermal printer.',
+        'connecting' => translate('connecting_qz_tray') ?: 'Connecting to QZ Tray...',
+        'connectFailed' => translate('qz_tray_connect_failed') ?: 'Could not connect to QZ Tray.',
+        'loadingPrinters' => translate('loading_printers') ?: 'Loading printers...',
+        'savePrinterHint' => translate('qz_tray_save_printer_hint') ?: 'Your printer choice is saved in this browser for next time.',
+        'savedPrinterHint' => translate('qz_tray_saved_printer_hint') ?: 'Saved printer on this browser:',
+        'connectionTimeout' => translate('qz_tray_connection_timeout') ?: 'Connection timed out.',
+    ];
 @endphp
 
-@if ($qzTrayActive)
+@if ($qzTrayAvailable)
     @include('web-views.partials._qz-tray-printer-modal')
 
-    <script src="https://cdn.jsdelivr.net/npm/qz-tray@2.2.4/qz-tray.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qz-tray@2.2.6/qz-tray.js"></script>
     <script>
         window.BuysellesQzTrayConfig = {
             enabled: true,
             mode: @json($qzTrayMode),
+            debug: @json((bool) config('app.debug')),
             certificateUrl: @json(route('qz-tray.certificate')),
             signUrl: @json(route('qz-tray.sign')),
+            certificateHost: @json(parse_url((string) config('app.url'), PHP_URL_HOST) ?: 'localhost'),
             escPosUrl: @json(route('order.digital-codes.thermal-escpos')),
             defaultPrinter: @json(config('qz-tray.default_printer')),
-            connectTimeoutMs: @json((int) config('qz-tray.connect_timeout_seconds', 4) * 1000),
-            messages: {
-                printSuccess: @json(translate('sent_to_thermal_printer') ?: 'Sent to thermal printer.'),
-                printNow: @json(translate('print_now') ?: 'Print Now'),
-                printing: @json(translate('Printing...') ?: 'Printing...'),
-                noPrinters: @json(translate('no_printers_found') ?: 'No printers found on this computer.'),
-                previewFallback: @json(translate('opened_thermal_print_preview') ?: 'Opened thermal print preview.'),
-            },
+            connectTimeoutMs: @json((int) config('qz-tray.connect_timeout_seconds', 120) * 1000),
+            messages: @json($qzTrayMessages),
         };
     </script>
     <script src="{{ dynamicAsset(path: 'public/assets/front-end/js/qz-tray-digital-print.js') }}"></script>
@@ -34,7 +61,8 @@
 
 <script>
     window.BuysellesThermalConfig = {
-        mode: @json($qzTrayActive ? $qzTrayMode : 'preview'),
+        mode: @json($qzTrayAvailable ? $qzTrayMode : 'preview'),
+        qzAvailable: @json($qzTrayAvailable),
         receiptUrlBase: @json(route('order.digital-codes.receipt')),
     };
 </script>
@@ -87,13 +115,19 @@
     }
 
     function handleThermalPrint(receiptUrl, orderIds) {
-        var mode = (window.BuysellesThermalConfig && window.BuysellesThermalConfig.mode) || 'preview';
+        var thermalConfig = window.BuysellesThermalConfig || {};
+        var mode = thermalConfig.mode || 'preview';
         var previewFallback = function () {
             openThermalPreview(receiptUrl, orderIds);
         };
 
-        if (mode === 'preview' || !window.BuysellesQzTray) {
+        if (!thermalConfig.qzAvailable || !window.BuysellesQzTray) {
             previewFallback();
+            return;
+        }
+
+        if (mode === 'preview') {
+            window.BuysellesQzTray.openThermalChoice(orderIds, previewFallback);
             return;
         }
 

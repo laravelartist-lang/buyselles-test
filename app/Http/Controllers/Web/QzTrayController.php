@@ -37,7 +37,7 @@ class QzTrayController extends Controller
             abort(404);
         }
 
-        $toSign = (string) $request->query('request', '');
+        $toSign = (string) ($request->input('request') ?? $request->query('request', ''));
 
         if ($toSign === '') {
             abort(400, 'Missing request parameter.');

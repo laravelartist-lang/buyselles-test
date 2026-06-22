@@ -45,6 +45,33 @@ class GenerateQzTrayKeys extends Command
             return self::FAILURE;
         }
 
+        $opensslConfigPath = $directory.DIRECTORY_SEPARATOR.'openssl.cnf';
+        $sanHosts = array_values(array_unique(array_filter([$host, 'localhost'])));
+
+        $altNames = '';
+        foreach ($sanHosts as $index => $sanHost) {
+            $altNames .= 'DNS.'.($index + 1).' = '.$sanHost.PHP_EOL;
+        }
+
+        file_put_contents($opensslConfigPath, <<<CONF
+[ req ]
+default_bits = 2048
+prompt = no
+default_md = sha512
+distinguished_name = req_distinguished_name
+req_extensions = v3_req
+
+[ req_distinguished_name ]
+CN = {$host}
+O = {$this->escapeOpenSslConfigValue((string) config('app.name', 'Buyselles'))}
+
+[ v3_req ]
+subjectAltName = @alt_names
+
+[ alt_names ]
+{$altNames}IP.1 = 127.0.0.1
+CONF);
+
         $dn = [
             'commonName' => $host,
             'organizationName' => (string) config('app.name', 'Buyselles'),
@@ -52,6 +79,8 @@ class GenerateQzTrayKeys extends Command
 
         $csr = openssl_csr_new($dn, $privateKey, [
             'digest_alg' => 'sha512',
+            'config' => $opensslConfigPath,
+            'req_extensions' => 'v3_req',
         ]);
 
         if ($csr === false) {
@@ -62,6 +91,8 @@ class GenerateQzTrayKeys extends Command
 
         $certificate = openssl_csr_sign($csr, null, $privateKey, 825, [
             'digest_alg' => 'sha512',
+            'config' => $opensslConfigPath,
+            'x509_extensions' => 'v3_req',
         ]);
 
         if ($certificate === false) {
@@ -95,5 +126,10 @@ class GenerateQzTrayKeys extends Command
         $this->line('3. Trust this site certificate when QZ Tray prompts on first print');
 
         return self::SUCCESS;
+    }
+
+    private function escapeOpenSslConfigValue(string $value): string
+    {
+        return str_replace(['\\', '"'], ['\\\\', '\\"'], $value);
     }
 }

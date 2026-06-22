@@ -20,6 +20,26 @@ We currently have partial credential files, but they are **incomplete, mismatche
 
 > **Recommendation:** Create **one production Firebase project** (example: `buyselles-production`) and register all platforms inside it. Do not mix credentials from different Google accounts or demo projects.
 
+### Flutter apps — one codebase, platform config files still required
+
+Mobile apps are **Flutter** (one Dart codebase per app — not separate native Android/iOS projects). When you run `flutter build apk` or `flutter build ios`, Flutter produces each platform build from the same code.
+
+Firebase still needs **separate registrations and config files per platform**:
+
+| App | Flutter project | Android config | iOS config |
+|-----|-----------------|----------------|------------|
+| Customer | `mobile/User app` | `android/app/google-services.json` | `ios/Runner/GoogleService-Info.plist` |
+| Vendor | `mobile/vendor_app` | `android/app/google-services.json` | `ios/GoogleService-Info.plist` |
+
+**Confirmed identifiers in code:**
+
+| App | Android package | iOS bundle ID |
+|-----|-----------------|---------------|
+| Customer | `com.buyselles.app` | `com.buyselles.app` ✅ |
+| Vendor | `com.buyselles.vendor` ✅ | `com.buyselles.vendor` ✅ |
+
+In Firebase Console, register **5 apps** in one project: **Web**, Customer Android, Customer iOS, Vendor Android, Vendor iOS.
+
 ---
 
 ## 2. Current Issues (Why Existing Files Don't Work)
@@ -107,12 +127,12 @@ We need **separate Firebase app registrations** for each platform.
 
 | App | Platform | Current package/bundle in code | Suggested final ID |
 |-----|----------|-------------------------------|-------------------|
-| **Customer App** | Android | `com.buyselles.app` | `com.buyselles.app` ✅ |
-| **Customer App** | iOS | `com.sixamtech.sixValley` ⚠️ old | `com.buyselles.app` (recommended) |
-| **Vendor App** | Android | `com.sixamtech.sixvalley.seller` ⚠️ old | `com.buyselles.vendor` (recommended) |
-| **Vendor App** | iOS | `com.sixamtech.sixvalley.seller-seller` ⚠️ old | `com.buyselles.vendor` (recommended) |
+| **Customer App** | Android | `com.buyselles.app` ✅ | `com.buyselles.app` ✅ |
+| **Customer App** | iOS | `com.buyselles.app` ✅ | `com.buyselles.app` ✅ |
+| **Vendor App** | Android | `com.buyselles.vendor` ✅ | `com.buyselles.vendor` ✅ |
+| **Vendor App** | iOS | `com.buyselles.vendor` ✅ | `com.buyselles.vendor` ✅ |
 
-> ⚠️ Old 6amTech/SixValley IDs must be replaced. Please confirm the **final** Android package names and iOS bundle IDs before generating files.
+> ⚠️ Old 6amTech/SixValley Firebase config files must still be replaced with new BuySelles project files. App identifiers in code are now unified (see table above).
 
 #### Files to provide per app:
 
@@ -284,7 +304,7 @@ Add these apps under **Project Settings → Your apps**:
 
 1. **Web** — for buyselles.com
 2. **Android** — Customer (`com.buyselles.app` or confirmed ID)
-3. **Android** — Vendor (`com.buyselles.vendor` or confirmed ID)
+3. **Android** — Vendor (`com.buyselles.vendor`)
 4. **iOS** — Customer (confirmed bundle ID)
 5. **iOS** — Vendor (confirmed bundle ID)
 
@@ -394,10 +414,10 @@ Release SHA-256:
 
 Please reply with:
 
-1. ✅ Final **Customer App** Android package name: `________________`
-2. ✅ Final **Customer App** iOS bundle ID: `________________`
-3. ✅ Final **Vendor App** Android package name: `________________`
-4. ✅ Final **Vendor App** iOS bundle ID: `________________`
+1. ✅ Final **Customer App** Android package name: `com.buyselles.app`
+2. ✅ Final **Customer App** iOS bundle ID: `com.buyselles.app`
+3. ✅ Final **Vendor App** Android package name: `com.buyselles.vendor`
+4. ✅ Final **Vendor App** iOS bundle ID: `com.buyselles.vendor`
 5. ✅ Production domain: `https://buyselles.com` (confirm)
 6. ✅ Which login methods do you need?
    - [ ] Google
