@@ -12,19 +12,9 @@
                 @csrf
 
                 <div class="row gy-3">
-                    <div class="col-lg-6">
-                        <div class="form-group">
-                            <label class="form-label">{{ translate('product') }} <span class="text-danger">*</span></label>
-                            <select name="product_id" class="form-control" required>
-                                <option value="">{{ translate('select_product') }}</option>
-                                @foreach($products as $product)
-                                    <option value="{{ $product->id }}" {{ old('product_id') == $product->id ? 'selected' : '' }}>
-                                        {{ $product->name }} (#{{ $product->id }})
-                                    </option>
-                                @endforeach
-                            </select>
-                        </div>
-                    </div>
+                    @include('admin-views.supplier.partials._mapping-product-picker', [
+                        'categories' => $categories,
+                    ])
 
                     <div class="col-lg-6">
                         <div class="form-group">

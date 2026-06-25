@@ -60,10 +60,6 @@ class QzTrayController extends Controller
         DigitalCodeCustomerExportService $exportService,
         ThermalEscPosBuilder $escPosBuilder
     ): JsonResponse {
-        if (! config('qz-tray.enabled')) {
-            abort(404);
-        }
-
         $orderIds = (array) $request->input('orderIds', []);
         $customerId = auth('customer')->id();
         $codes = $exportService->getCodesForOrders($orderIds, $customerId);

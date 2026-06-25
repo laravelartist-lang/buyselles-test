@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin\Supplier;
 
+use App\Contracts\Repositories\CategoryRepositoryInterface;
 use App\Http\Controllers\BaseController;
 use App\Jobs\SyncDenominationsJob;
 use App\Models\Product;
@@ -9,6 +10,7 @@ use App\Models\SupplierApi;
 use App\Models\SupplierProductMapping;
 use Brian2694\Toastr\Facades\Toastr;
 use Illuminate\Contracts\View\View;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -18,6 +20,10 @@ use Illuminate\Support\Facades\Validator;
 
 class SupplierMappingController extends BaseController
 {
+    public function __construct(
+        private readonly CategoryRepositoryInterface $categoryRepo,
+    ) {}
+
     /**
      * Display product-supplier mappings for a given product.
      */
@@ -47,14 +53,44 @@ class SupplierMappingController extends BaseController
     public function getAddView(): View
     {
         $suppliers = SupplierApi::orderBy('name')->get(['id', 'name', 'driver', 'is_active']);
+        $categories = $this->categoryRepo->getListWhere(filters: ['position' => 0], dataLimit: 'all');
 
-        $products = Product::where('product_type', 'digital')
-            ->where('digital_product_type', 'ready_product')
-            ->where('status', 1)
-            ->orderBy('name')
-            ->get(['id', 'name']);
+        return view('admin-views.supplier.mapping-add', compact('suppliers', 'categories'));
+    }
 
-        return view('admin-views.supplier.mapping-add', compact('suppliers', 'products'));
+    /**
+     * List in-house digital products for supplier mapping (AJAX).
+     */
+    public function getInHouseProducts(Request $request): JsonResponse
+    {
+        $categoryId = (int) $request->get('category_id');
+        $subCategoryId = (int) $request->get('sub_category_id');
+        $subSubCategoryId = (int) $request->get('sub_sub_category_id');
+
+        if ($categoryId <= 0) {
+            return response()->json([
+                'success' => true,
+                'products' => [],
+            ]);
+        }
+
+        $query = $this->inHouseDigitalProductQuery();
+
+        if ($subSubCategoryId > 0) {
+            $query->where('sub_sub_category_id', $subSubCategoryId);
+        } elseif ($subCategoryId > 0) {
+            $query->where('sub_category_id', $subCategoryId);
+        } else {
+            $query->where('category_id', $categoryId);
+        }
+
+        $products = $query->orderBy('name')->get(['id', 'name']);
+
+        return response()->json([
+            'success' => true,
+            'products' => $products,
+            'count' => $products->count(),
+        ]);
     }
 
     /**
@@ -81,6 +117,12 @@ class SupplierMappingController extends BaseController
 
         if ($validator->fails()) {
             Toastr::error($validator->errors()->first());
+
+            return redirect()->back()->withInput();
+        }
+
+        if (! $this->inHouseDigitalProductQuery()->where('id', $request->input('product_id'))->exists()) {
+            Toastr::error(translate('supplier_mapping_in_house_product_required') ?: 'Please select a valid in-house digital product.');
 
             return redirect()->back()->withInput();
         }
@@ -130,14 +172,9 @@ class SupplierMappingController extends BaseController
         $mapping = SupplierProductMapping::with(['product', 'supplierApi'])->findOrFail($id);
 
         $suppliers = SupplierApi::orderBy('name')->get(['id', 'name', 'driver', 'is_active']);
+        $categories = $this->categoryRepo->getListWhere(filters: ['position' => 0], dataLimit: 'all');
 
-        $products = Product::where('product_type', 'digital')
-            ->where('digital_product_type', 'ready_product')
-            ->where('status', 1)
-            ->orderBy('name')
-            ->get(['id', 'name']);
-
-        return view('admin-views.supplier.mapping-edit', compact('mapping', 'suppliers', 'products'));
+        return view('admin-views.supplier.mapping-edit', compact('mapping', 'suppliers', 'categories'));
     }
 
     /**
@@ -146,6 +183,7 @@ class SupplierMappingController extends BaseController
     public function update(Request $request, int $id): RedirectResponse
     {
         $validator = Validator::make($request->all(), [
+            'product_id' => 'required|exists:products,id',
             'supplier_product_id' => 'required|string|max:255',
             'cost_price' => 'required|numeric|min:0',
             'cost_currency' => 'required|string|max:3',
@@ -166,9 +204,17 @@ class SupplierMappingController extends BaseController
             return redirect()->back()->withInput();
         }
 
+        if (! $this->inHouseDigitalProductQuery()->where('id', $request->input('product_id'))->exists()) {
+            Toastr::error(translate('supplier_mapping_in_house_product_required') ?: 'Please select a valid in-house digital product.');
+
+            return redirect()->back()->withInput();
+        }
+
         $mapping = SupplierProductMapping::findOrFail($id);
         $supplierProductChanged = $mapping->supplier_product_id !== $request->input('supplier_product_id');
+        $productChanged = (int) $mapping->product_id !== (int) $request->input('product_id');
         $mapping->update([
+            'product_id' => $request->input('product_id'),
             'supplier_product_id' => $request->input('supplier_product_id'),
             'supplier_product_name' => $request->input('supplier_product_name'),
             'cost_price' => $request->input('cost_price'),
@@ -184,7 +230,7 @@ class SupplierMappingController extends BaseController
             'max_amount' => $request->input('is_customizable') ? $request->input('max_amount') : null,
         ]);
 
-        if ($supplierProductChanged || $mapping->activeDenominations()->count() === 0) {
+        if ($supplierProductChanged || $productChanged || $mapping->activeDenominations()->count() === 0) {
             SyncDenominationsJob::dispatch($mapping->id);
         }
 
@@ -237,5 +283,14 @@ class SupplierMappingController extends BaseController
                 'message' => translate('price_sync_failed').': '.$e->getMessage(),
             ], 500);
         }
+    }
+
+    private function inHouseDigitalProductQuery(): Builder
+    {
+        return Product::query()
+            ->where('added_by', 'admin')
+            ->where('product_type', 'digital')
+            ->where('digital_product_type', 'ready_product')
+            ->where('status', 1);
     }
 }

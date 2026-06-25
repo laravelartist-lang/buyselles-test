@@ -499,11 +499,17 @@
 
     function fetchEscPosJobs(orderIds) {
         var config = getConfig();
+        var thermalConfig = window.BuysellesThermalConfig || {};
+        var escPosUrl = config.escPosUrl || thermalConfig.escPosUrl || '';
         var params = (orderIds || []).map(function (id) {
             return 'orderIds[]=' + encodeURIComponent(id);
         }).join('&');
 
-        return fetch(config.escPosUrl + '?' + params, {
+        if (!escPosUrl) {
+            return Promise.reject(new Error(getConfig().messages?.loadPrintDataFailed || 'Unable to load print data.'));
+        }
+
+        return fetch(escPosUrl + '?' + params, {
             credentials: 'same-origin',
             headers: {
                 Accept: 'application/json',
@@ -605,21 +611,206 @@
         return el.classList.contains('show') || el.getAttribute('aria-hidden') === 'false';
     }
 
-    function cleanupOrphanModalState() {
-        if (typeof jQuery === 'undefined') {
+    function forceHideModalElement(el) {
+        if (!el) {
             return;
         }
 
-        var visibleCount = QZ_MODAL_IDS.filter(isModalVisible).length;
+        el.classList.remove('show');
+        el.setAttribute('aria-hidden', 'true');
+        el.style.display = 'none';
+        el.removeAttribute('aria-modal');
+    }
 
-        if (visibleCount > 0) {
+    function getExistingBootstrapModalInstance(el) {
+        if (typeof bootstrap === 'undefined' || !bootstrap.Modal) {
+            return null;
+        }
+
+        if (typeof bootstrap.Modal.getInstance === 'function') {
+            return bootstrap.Modal.getInstance(el);
+        }
+
+        return null;
+    }
+
+    function removeExcessBackdrops(expectedCount) {
+        var backdrops = document.querySelectorAll('.modal-backdrop');
+
+        while (backdrops.length > expectedCount) {
+            backdrops[backdrops.length - 1].remove();
+            backdrops = document.querySelectorAll('.modal-backdrop');
+        }
+
+        if (expectedCount === 0) {
+            document.querySelectorAll('.modal-backdrop').forEach(function (backdrop) {
+                backdrop.remove();
+            });
+        }
+    }
+
+    function countOpenParentModals() {
+        var count = 0;
+
+        document.querySelectorAll('.modal.show').forEach(function (modal) {
+            if (QZ_MODAL_IDS.indexOf(modal.id) === -1) {
+                count++;
+            }
+        });
+
+        return count;
+    }
+
+    function finalizeQzModalClose(modalId) {
+        QZ_MODAL_IDS.forEach(function (id) {
+            if (modalId && id !== modalId) {
+                return;
+            }
+
+            var qzEl = document.getElementById(id);
+
+            if (!qzEl) {
+                return;
+            }
+
+            if (!modalId && !qzEl.classList.contains('show')) {
+                return;
+            }
+
+            var instance = getExistingBootstrapModalInstance(qzEl);
+
+            if (instance) {
+                try {
+                    instance.hide();
+                } catch (error) {
+                    // Ignore hide errors from mixed Bootstrap stacks.
+                }
+            }
+
+            if (typeof jQuery !== 'undefined' && typeof jQuery.fn.modal === 'function') {
+                jQuery(qzEl).modal('hide');
+            }
+
+            forceHideModalElement(qzEl);
+        });
+
+        document.body.classList.remove('qz-tray-modal-open');
+
+        var parentOpenCount = countOpenParentModals();
+
+        removeExcessBackdrops(parentOpenCount);
+
+        if (parentOpenCount === 0) {
+            document.body.classList.remove('modal-open');
+            document.body.style.removeProperty('overflow');
+            document.body.style.removeProperty('padding-right');
+
+            if (typeof jQuery !== 'undefined') {
+                jQuery('body').removeClass('modal-open').css({
+                    paddingRight: '',
+                    overflow: '',
+                });
+            }
+
             return;
         }
 
-        jQuery('.modal-backdrop').remove();
-        jQuery('body').removeClass('modal-open').css({
-            paddingRight: '',
-            overflow: '',
+        if (!document.body.classList.contains('modal-open')) {
+            document.body.classList.add('modal-open');
+        }
+    }
+
+    function scheduleQzModalCleanup(modalId) {
+        finalizeQzModalClose(modalId);
+        window.setTimeout(function () {
+            finalizeQzModalClose(modalId);
+        }, 150);
+        window.setTimeout(function () {
+            finalizeQzModalClose(modalId);
+        }, 450);
+    }
+
+    function closeQzModal(modalId) {
+        return modalHide(modalId).then(function () {
+            scheduleQzModalCleanup(modalId);
+        });
+    }
+
+    function syncModalStack() {
+        if (QZ_MODAL_IDS.some(isModalVisible)) {
+            document.body.classList.add('qz-tray-modal-open');
+        } else {
+            document.body.classList.remove('qz-tray-modal-open');
+        }
+
+        removeExcessBackdrops(countOpenParentModals());
+    }
+
+    function getBootstrapModalInstance(el, options) {
+        if (typeof bootstrap === 'undefined' || !bootstrap.Modal) {
+            return null;
+        }
+
+        var Modal = bootstrap.Modal;
+        var modalOptions = options || {
+            backdrop: 'static',
+            keyboard: true,
+        };
+
+        if (typeof Modal.getOrCreateInstance === 'function') {
+            return Modal.getOrCreateInstance(el, modalOptions);
+        }
+
+        if (typeof Modal.getInstance === 'function') {
+            var existing = Modal.getInstance(el);
+
+            if (existing) {
+                return existing;
+            }
+        }
+
+        return new Modal(el, modalOptions);
+    }
+
+    function bindQzModalCloseButtons() {
+        QZ_MODAL_IDS.forEach(function (modalId) {
+            var el = document.getElementById(modalId);
+
+            if (!el || el.dataset.qzCloseBound === '1') {
+                return;
+            }
+
+            el.dataset.qzCloseBound = '1';
+
+            el.querySelectorAll('.close, [data-qz-modal-close], [data-dismiss="modal"], [data-bs-dismiss="modal"]').forEach(function (btn) {
+                btn.addEventListener('click', function (event) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    event.stopImmediatePropagation();
+                    closeQzModal(modalId);
+                }, true);
+            });
+        });
+    }
+
+    function bindQzModalStackSync() {
+        QZ_MODAL_IDS.forEach(function (modalId) {
+            var el = document.getElementById(modalId);
+
+            if (!el || el.dataset.qzStackSyncBound === '1') {
+                return;
+            }
+
+            el.dataset.qzStackSyncBound = '1';
+
+            el.addEventListener('hidden.bs.modal', function () {
+                scheduleQzModalCleanup(modalId);
+            });
+
+            el.addEventListener('shown.bs.modal', function () {
+                document.body.classList.add('qz-tray-modal-open');
+                syncModalStack();
+            });
         });
     }
 
@@ -634,11 +825,33 @@
                 }
 
                 settled = true;
+                syncModalStack();
                 resolve();
             }
 
             if (!el) {
                 finish();
+                return;
+            }
+
+            document.body.classList.add('qz-tray-modal-open');
+
+            var bootstrapInstance = getBootstrapModalInstance(el);
+
+            if (bootstrapInstance) {
+                if (el.classList.contains('show')) {
+                    finish();
+                    return;
+                }
+
+                el.addEventListener('shown.bs.modal', function onShown() {
+                    el.removeEventListener('shown.bs.modal', onShown);
+                    finish();
+                });
+
+                bootstrapInstance.show();
+                window.setTimeout(finish, 450);
+
                 return;
             }
 
@@ -661,14 +874,6 @@
                 return;
             }
 
-            if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
-                var Modal = bootstrap.Modal;
-                var instance = typeof Modal.getOrCreateInstance === 'function'
-                    ? Modal.getOrCreateInstance(el)
-                    : new Modal(el);
-                instance.show();
-            }
-
             finish();
         });
     }
@@ -684,7 +889,13 @@
                 }
 
                 settled = true;
-                cleanupOrphanModalState();
+
+                if (QZ_MODAL_IDS.indexOf(modalId) !== -1) {
+                    scheduleQzModalCleanup(modalId);
+                } else {
+                    syncModalStack();
+                }
+
                 resolve();
             }
 
@@ -693,13 +904,27 @@
                 return;
             }
 
+            if (!el.classList.contains('show') && el.getAttribute('aria-hidden') !== 'false') {
+                finish();
+                return;
+            }
+
+            var bootstrapInstance = getExistingBootstrapModalInstance(el);
+
+            if (bootstrapInstance) {
+                el.addEventListener('hidden.bs.modal', function onHidden() {
+                    el.removeEventListener('hidden.bs.modal', onHidden);
+                    finish();
+                });
+
+                bootstrapInstance.hide();
+                window.setTimeout(finish, 450);
+
+                return;
+            }
+
             if (typeof jQuery !== 'undefined' && typeof jQuery.fn.modal === 'function') {
                 var $el = jQuery(el);
-
-                if (!$el.hasClass('show') && $el.attr('aria-hidden') !== 'false') {
-                    finish();
-                    return;
-                }
 
                 $el.off('hidden.bs.modal.buysellesQz').one('hidden.bs.modal.buysellesQz', finish);
                 $el.modal('hide');
@@ -708,17 +933,7 @@
                 return;
             }
 
-            if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
-                var Modal = bootstrap.Modal;
-                var instance = typeof Modal.getInstance === 'function'
-                    ? Modal.getInstance(el)
-                    : null;
-
-                if (instance) {
-                    instance.hide();
-                }
-            }
-
+            forceHideModalElement(el);
             finish();
         });
     }
@@ -1019,7 +1234,7 @@
         return modalShow('qzTrayThermalChoiceModal');
     }
 
-    function runThermalPrint(orderIds, onPreviewFallback) {
+    function runQzThermalPrint(orderIds, onPreviewFallback) {
         var savedPrinter = getSavedPrinter();
 
         if (savedPrinter) {
@@ -1035,6 +1250,33 @@
         return openWizard({ orderIds: orderIds, onPreviewFallback: onPreviewFallback });
     }
 
+    function runThermalPrint(orderIds, onPreviewFallback) {
+        if (window.BuysellesBluetoothThermal
+            && typeof window.BuysellesBluetoothThermal.isAvailable === 'function'
+            && window.BuysellesBluetoothThermal.isAvailable()) {
+            var pairFn = window.BuysellesBluetoothThermal.pairPrinter;
+
+            if (!window.BuysellesBluetoothThermal.getSavedPrinter()
+                && window.BuysellesBluetoothThermal.isTestMode
+                && window.BuysellesBluetoothThermal.isTestMode()
+                && window.BuysellesBluetoothThermal.pairTestPrinter) {
+                pairFn = window.BuysellesBluetoothThermal.pairTestPrinter;
+            }
+
+            var bluetoothPrint = window.BuysellesBluetoothThermal.getSavedPrinter && window.BuysellesBluetoothThermal.getSavedPrinter()
+                ? window.BuysellesBluetoothThermal.printOrderIds(orderIds)
+                : pairFn().then(function () {
+                    return window.BuysellesBluetoothThermal.printOrderIds(orderIds);
+                });
+
+            return bluetoothPrint.catch(function () {
+                return runQzThermalPrint(orderIds, onPreviewFallback);
+            });
+        }
+
+        return runQzThermalPrint(orderIds, onPreviewFallback);
+    }
+
     function printWithSavedPrinter(orderIds) {
         var savedPrinter = getSavedPrinter();
 
@@ -1047,7 +1289,7 @@
         });
     }
 
-    function tryAutoPrint(orderIds, onPreviewFallback) {
+    function tryQzAutoPrint(orderIds, onPreviewFallback) {
         var savedPrinter = getSavedPrinter();
 
         if (!savedPrinter) {
@@ -1065,6 +1307,19 @@
             .catch(function () {
                 openWizard({ orderIds: orderIds, onPreviewFallback: onPreviewFallback });
             });
+    }
+
+    function tryAutoPrint(orderIds, onPreviewFallback) {
+        if (window.BuysellesBluetoothThermal
+            && typeof window.BuysellesBluetoothThermal.tryAutoPrint === 'function'
+            && window.BuysellesBluetoothThermal.getSavedPrinter
+            && window.BuysellesBluetoothThermal.getSavedPrinter()) {
+            return window.BuysellesBluetoothThermal.tryAutoPrint(orderIds).catch(function () {
+                return tryQzAutoPrint(orderIds, onPreviewFallback);
+            });
+        }
+
+        return tryQzAutoPrint(orderIds, onPreviewFallback);
     }
 
     function bindWizardEvents() {
@@ -1212,9 +1467,17 @@
         }
     }
 
-    document.addEventListener('DOMContentLoaded', function () {
+    function initQzModalUi() {
+        bindQzModalCloseButtons();
+        bindQzModalStackSync();
         bindWizardEvents();
-    });
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initQzModalUi);
+    } else {
+        initQzModalUi();
+    }
 
     window.BuysellesQzTray = {
         connect: connect,

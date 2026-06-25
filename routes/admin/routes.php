@@ -1339,6 +1339,7 @@ Route::group(['prefix' => 'admin', 'as' => 'admin.', 'middleware' => ['admin', '
             Route::controller(SupplierMappingController::class)->group(function () {
                 Route::get('list', 'index')->name('list');
                 Route::get('add', 'getAddView')->name('add');
+                Route::get('in-house-products', 'getInHouseProducts')->name('in-house-products');
                 Route::post('add', 'add')->name('store');
                 Route::get('edit/{id}', 'getUpdateView')->name('edit');
                 Route::post('edit/{id}', 'update')->name('update');

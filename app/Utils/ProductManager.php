@@ -1876,11 +1876,7 @@ class ProductManager
             return $query;
         }
 
-        $query = $query->sortBy(function ($product) {
-            return $product['sort_priority'] ?? 0;
-        })->orderBy('id', 'desc');
-
-        return $query->get();
+        return $query->orderBy('sort_priority', 'asc')->orderBy('id', 'desc')->get();
     }
 
     public static function applySellerFilters($query, $request)

@@ -227,56 +227,17 @@
                         <div class="alert alert-warning py-2 px-3 fs-13 mb-3" id="codes-modal-alert" @if(!$hasDigitalCodes) style="display:none;" @endif>
                             <i class="fa fa-exclamation-triangle me-1"></i>
                             <strong>{{ translate('Important') }}:</strong>
-                            {{ translate('Copy_or_print_your_codes_below._They_are_also_sent_to_your_email.') }}
+                            {{ translate('Copy_or_print_your_codes_below._They_are_also_sent_to_your_email.') ?: translate('Copy or print your codes below. They are also sent to your email.') }}
                         </div>
 
-                        @include('web-views.partials._digital-code-delivery-actions', [
+                        @include('web-views.partials._digital-code-purchase-modal-section', [
+                            'codes' => $digitalCodes,
                             'orderIds' => $order_ids ?? [],
-                            'viewTarget' => 'codes-modal-container',
-                            'codesContainer' => 'codes-modal-container',
-                            'layout' => 'cards',
+                            'codesContainerId' => 'codes-modal-container',
+                            'codeIdPrefix' => 'modal-code',
+                            'copyBtnClass' => 'modal-copy-btn',
+                            'showAlert' => false,
                         ])
-
-                        <hr class="my-3">
-
-                        <div id="codes-modal-container">
-                            @foreach ($digitalCodes as $idx => $item)
-                                <div class="border rounded p-3 mb-3 bg-light">
-                                    <p class="text-muted mb-1 fw-semibold" style="font-size:0.8rem;">
-                                        <i class="fa fa-box me-1"></i>
-                                        {{ $item['productName'] }}
-                                        @if ($item['orderId'])
-                                            &mdash; <span class="text-secondary">{{ translate('Order') }} #{{ $item['orderId'] }}</span>
-                                        @endif
-                                    </p>
-                                    <div class="d-flex align-items-center gap-2 flex-wrap mt-1">
-                                        <code class="fs-4 fw-bold text-dark bg-white px-3 py-2 rounded border flex-grow-1 text-center"
-                                            id="modal-code-{{ $idx }}"
-                                            style="letter-spacing:4px;font-family:'Courier New',monospace;word-break:break-all;">
-                                            {{ $item['code'] }}
-                                        </code>
-                                        <button type="button" class="btn btn-sm btn-outline-primary modal-copy-btn"
-                                            data-target="modal-code-{{ $idx }}"
-                                            title="{{ translate('Copy_Code') }}">
-                                            <i class="fa fa-copy"></i> {{ translate('Copy') }}
-                                        </button>
-                                    </div>
-                                    @if (!empty($item['pin']) || !empty($item['serial']) || !empty($item['expiry']))
-                                        <p class="text-muted mb-0 mt-1" style="font-size:0.76rem;">
-                                            @if (!empty($item['pin']))
-                                                <strong>{{ translate('PIN') }}:</strong> <code class="text-dark fw-semibold">{{ $item['pin'] }}</code>
-                                            @endif
-                                            @if (!empty($item['serial']))
-                                                &nbsp;&nbsp;<strong>{{ translate('S/N') }}:</strong> {{ $item['serial'] }}
-                                            @endif
-                                            @if (!empty($item['expiry']))
-                                                &nbsp;&nbsp;<strong>{{ translate('Exp') }}:</strong> {{ $item['expiry'] }}
-                                            @endif
-                                        </p>
-                                    @endif
-                                </div>
-                            @endforeach
-                        </div>
 
                         {{-- Loading spinner for pending supplier codes --}}
                         @if ($hasPendingSupplierCodes)
@@ -304,7 +265,7 @@
                         </div>
 
                         {{-- Confirmation checkbox — required before close --}}
-                        <div class="form-check p-3 border rounded mt-2" style="background:#fffde7;" id="codes-modal-confirm-wrap" @if(!$hasDigitalCodes) style="display:none;" @endif>
+                        <div class="form-check p-3 border rounded mt-2" id="codes-modal-confirm-wrap" style="background:#fffde7;@if(!$hasDigitalCodes) display:none; @endif">
                             <input class="form-check-input" type="checkbox" id="confirmCodesDownloaded" value="1">
                             <label class="form-check-label fw-semibold" for="confirmCodesDownloaded" style="cursor:pointer;">
                                 <i class="fa fa-shield-alt me-1 text-success"></i>
@@ -375,7 +336,14 @@
     document.addEventListener('DOMContentLoaded', function () {
         var modalEl = document.getElementById('orderSuccessModal');
         if (modalEl && typeof bootstrap !== 'undefined') {
-            var bsModal = new bootstrap.Modal(modalEl, {
+            document.querySelectorAll('.modal-backdrop').forEach(function (backdrop) {
+                backdrop.remove();
+            });
+            document.body.classList.remove('modal-open');
+            document.body.style.removeProperty('overflow');
+            document.body.style.removeProperty('padding-right');
+
+            var bsModal = bootstrap.Modal.getOrCreateInstance(modalEl, {
                 backdrop: showDigitalCodesSection ? 'static' : true,
                 keyboard: !showDigitalCodesSection
             });

@@ -5,12 +5,13 @@
     $viewTarget = $viewTarget ?? 'digitalCodesSection';
     $codesContainer = $codesContainer ?? 'digitalCodesPrintArea';
     $layout = $layout ?? ((($compact ?? false) ? 'compact' : 'cards'));
+    $context = $context ?? 'default';
     $showHeading = $showHeading ?? ($layout === 'cards');
     $exportBaseUrl = route('order.digital-codes.export', ['format' => '__FORMAT__']);
     $receiptUrl = route('order.digital-codes.receipt');
 @endphp
 
-<div class="digital-code-delivery-actions digital-code-delivery-actions--{{ $layout }}"
+<div class="digital-code-delivery-actions digital-code-delivery-actions--{{ $layout }} digital-code-delivery-actions--{{ $context }}"
      data-order-ids='@json(array_values($orderIds))'
      data-receipt-url="{{ $receiptUrl }}"
      data-export-base-url="{{ $exportBaseUrl }}"
@@ -29,20 +30,27 @@
     @if ($layout === 'cards')
         <div class="digital-code-delivery-actions__grid">
             <div class="digital-code-delivery-option digital-code-delivery-option--thermal">
-                <button type="button"
-                        class="digital-code-delivery-option__main digital-code-action digital-code-action-thermal">
-                    <span class="digital-code-delivery-option__icon"><i class="fa fa-print"></i></span>
-                    <span class="digital-code-delivery-option__content">
-                        <span class="digital-code-delivery-option__title">{{ translate('thermal_print') ?: 'Thermal Print' }}</span>
-                        <span class="digital-code-delivery-option__subtitle">{{ translate('thermal_print_subtitle') ?: 'Open 80mm receipt preview in your browser' }}</span>
-                    </span>
-                    <span class="digital-code-delivery-option__arrow"><i class="fa fa-chevron-right"></i></span>
-                </button>
-                @if ($qzTrayAvailable)
-                    <button type="button" class="btn btn-sm btn-outline-primary digital-code-action-qz-setup">
-                        <i class="fa fa-cog mr-1"></i>{{ translate('configure_thermal_printer') ?: 'Configure printer' }}
+                <div class="digital-code-thermal-card">
+                    <button type="button"
+                            class="digital-code-delivery-option__main digital-code-action digital-code-action-thermal">
+                        <span class="digital-code-delivery-option__icon"><i class="fa fa-print"></i></span>
+                        <span class="digital-code-delivery-option__content">
+                            <span class="digital-code-delivery-option__title">{{ translate('thermal_print') ?: 'Thermal Print' }}</span>
+                            <span class="digital-code-delivery-option__subtitle">{{ translate('thermal_print_subtitle') ?: 'Bluetooth first, then QZ Tray, then browser preview' }}</span>
+                        </span>
+                        <span class="digital-code-delivery-option__arrow"><i class="fa fa-chevron-right"></i></span>
                     </button>
-                @endif
+                    <div class="digital-code-thermal-toolbar">
+                        <span class="digital-code-bluetooth-status digital-code-bluetooth-status-pill" title="{{ translate('bluetooth_thermal_print') ?: 'Bluetooth thermal printer' }}">
+                            <i class="fa fa-bluetooth-b"></i>
+                            <span class="digital-code-bluetooth-status__text">{{ translate('bluetooth_status_setup') ?: 'Not configured' }}</span>
+                        </span>
+                        <button type="button" class="digital-code-action-qz-setup digital-code-thermal-toolbar__configure" title="{{ translate('configure_thermal_printer') ?: 'Configure printer' }}">
+                            <i class="fa fa-cog"></i>
+                            <span>{{ translate('configure_thermal_printer') ?: 'Configure printer' }}</span>
+                        </button>
+                    </div>
+                </div>
             </div>
 
             <button type="button"
@@ -97,15 +105,19 @@
         </div>
     @else
         <div class="d-flex flex-wrap gap-2 align-items-center">
-            <div class="digital-code-thermal-compact d-flex align-items-center gap-2">
-                <button type="button" class="btn btn-sm btn-outline-dark digital-code-action digital-code-action-thermal">
-                    <i class="fa fa-print"></i> {{ translate('thermal_print') ?: 'Thermal' }}
-                </button>
-                @if ($qzTrayAvailable)
-                    <button type="button" class="btn btn-sm btn-outline-primary digital-code-action-qz-setup">
-                        <i class="fa fa-cog"></i> {{ translate('configure_thermal_printer') ?: 'Configure' }}
+            <div class="digital-code-thermal-compact">
+                <div class="digital-code-thermal-compact__actions btn-group" role="group">
+                    <button type="button" class="btn btn-sm btn-outline-dark digital-code-action digital-code-action-thermal">
+                        <i class="fa fa-print"></i> {{ translate('thermal_print') ?: 'Thermal' }}
                     </button>
-                @endif
+                    <button type="button" class="btn btn-sm btn-outline-primary digital-code-action-qz-setup" title="{{ translate('configure_thermal_printer') ?: 'Configure printer' }}">
+                        <i class="fa fa-cog"></i>
+                    </button>
+                </div>
+                <span class="digital-code-bluetooth-status digital-code-bluetooth-status-pill digital-code-bluetooth-status-pill--compact">
+                    <i class="fa fa-bluetooth-b"></i>
+                    <span class="digital-code-bluetooth-status__text">{{ translate('bluetooth_status_setup') ?: 'Not configured' }}</span>
+                </span>
             </div>
             <button type="button" class="btn btn-sm btn-outline-danger digital-code-action digital-code-action-a4">
                 <i class="fa fa-file-pdf-o"></i> {{ translate('print_receipt_a4') ?: 'A4 PDF' }}
@@ -125,119 +137,3 @@
         </div>
     @endif
 </div>
-
-<style>
-    .digital-code-delivery-actions__grid {
-        display: flex;
-        flex-direction: column;
-        gap: 12px;
-    }
-
-    .digital-code-delivery-option {
-        width: 100%;
-        display: flex;
-        align-items: center;
-        gap: 14px;
-        padding: 14px 16px;
-        border: 1px solid #e9ecef;
-        border-radius: 10px;
-        background: #fff;
-        text-align: start;
-        transition: box-shadow .2s ease, border-color .2s ease, transform .2s ease;
-    }
-
-    .digital-code-delivery-option--thermal {
-        padding: 8px 10px 8px 8px;
-        gap: 10px;
-    }
-
-    .digital-code-delivery-option--thermal:hover {
-        border-color: rgba(6, 60, 147, .25);
-        box-shadow: 0 4px 14px rgba(0, 0, 0, .08);
-    }
-
-    .digital-code-delivery-option__main {
-        flex: 1;
-        min-width: 0;
-        display: flex;
-        align-items: center;
-        gap: 14px;
-        padding: 6px 8px;
-        border: 0;
-        background: transparent;
-        text-align: start;
-        cursor: pointer;
-    }
-
-    .digital-code-delivery-option__main:hover {
-        background: rgba(6, 60, 147, .03);
-        border-radius: 8px;
-    }
-
-    .digital-code-delivery-option:not(.digital-code-delivery-option--thermal) {
-        cursor: pointer;
-    }
-
-    .digital-code-delivery-option:not(.digital-code-delivery-option--thermal):hover {
-        border-color: rgba(6, 60, 147, .25);
-        box-shadow: 0 4px 14px rgba(0, 0, 0, .08);
-        transform: translateY(-1px);
-    }
-
-    button.digital-code-delivery-option {
-        cursor: pointer;
-    }
-
-    button.digital-code-delivery-option:hover {
-        border-color: rgba(6, 60, 147, .25);
-        box-shadow: 0 4px 14px rgba(0, 0, 0, .08);
-        transform: translateY(-1px);
-    }
-
-    .digital-code-delivery-option__icon {
-        width: 44px;
-        height: 44px;
-        border-radius: 50%;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        background: rgba(6, 60, 147, .08);
-        color: #063c93;
-        font-size: 18px;
-        flex-shrink: 0;
-    }
-
-    .digital-code-delivery-option__content {
-        flex: 1;
-        min-width: 0;
-        display: flex;
-        flex-direction: column;
-        gap: 2px;
-    }
-
-    .digital-code-delivery-option__title {
-        font-size: 15px;
-        font-weight: 700;
-        color: #212529;
-    }
-
-    .digital-code-delivery-option__subtitle {
-        font-size: 12px;
-        color: #6c757d;
-    }
-
-    .digital-code-delivery-option__arrow {
-        color: #adb5bd;
-        font-size: 12px;
-        flex-shrink: 0;
-    }
-
-    .digital-code-delivery-actions--compact .btn i {
-        margin-right: 5px;
-    }
-
-    .digital-code-action-qz-setup {
-        white-space: nowrap;
-        flex-shrink: 0;
-    }
-</style>

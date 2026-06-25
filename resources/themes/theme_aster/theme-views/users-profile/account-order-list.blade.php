@@ -339,39 +339,15 @@
                             </p>
 
                             @if($hasDigitalCodes)
-                                <div class="alert alert-warning py-2 px-3 mb-3" style="font-size:.84rem;">
-                                    <i class="bi bi-exclamation-triangle me-1"></i>
-                                    <strong>{{ translate('Important') }}:</strong>
-                                    {{ translate('Copy or print your codes below. They are also sent to your email.') }}
-                                </div>
-                                @foreach($successDigitalCodes as $idx => $item)
-                                    <div class="border rounded p-3 mb-2 bg-light">
-                                        <p class="text-muted mb-1 fw-semibold" style="font-size:.8rem;">
-                                            {{ $item['productName'] }}
-                                            @if($item['orderId'])
-                                                &mdash; <span class="text-secondary">{{ translate('Order') }} #{{ $item['orderId'] }}</span>
-                                            @endif
-                                        </p>
-                                        <div class="d-flex align-items-center gap-2 flex-wrap">
-                                            <code class="fs-5 fw-bold bg-white px-3 py-2 rounded border flex-grow-1 text-center"
-                                                  id="aster-success-code-{{ $idx }}"
-                                                  style="letter-spacing:4px;font-family:'Courier New',monospace;word-break:break-all;">
-                                                {{ $item['code'] }}
-                                            </code>
-                                            <button type="button" class="btn btn-sm btn-outline-primary success-copy-btn"
-                                                    data-target="aster-success-code-{{ $idx }}">
-                                                <i class="bi bi-clipboard"></i> {{ translate('Copy') }}
-                                            </button>
-                                        </div>
-                                        @if(!empty($item['pin']) || !empty($item['serial']) || !empty($item['expiry']))
-                                            <p class="text-muted mb-0 mt-1" style="font-size:.75rem;">
-                                                @if(!empty($item['pin'])) <strong>{{ translate('PIN') }}:</strong> <code class="text-dark fw-semibold">{{ $item['pin'] }}</code> @endif
-                                                @if(!empty($item['serial'])) &nbsp;<strong>S/N:</strong> {{ $item['serial'] }} @endif
-                                                @if(!empty($item['expiry'])) &nbsp;<strong>Exp:</strong> {{ $item['expiry'] }} @endif
-                                            </p>
-                                        @endif
-                                    </div>
-                                @endforeach
+                                @include('web-views.partials._digital-code-purchase-modal-section', [
+                                    'codes' => $successDigitalCodes,
+                                    'orderIds' => $orderSuccessIds,
+                                    'codesContainerId' => 'success-codes-container',
+                                    'codeIdPrefix' => 'aster-success-code',
+                                    'copyBtnClass' => 'success-copy-btn',
+                                    'alertClass' => 'alert alert-warning py-2 px-3 mb-3',
+                                ])
+
                                 <div class="form-check p-3 border rounded mt-2" style="background:#fffde7;">
                                     <input class="form-check-input" type="checkbox" id="asterSuccessConfirm">
                                     <label class="form-check-label fw-semibold" for="asterSuccessConfirm" style="cursor:pointer;">
@@ -382,11 +358,6 @@
                             @endif
 
                             <div class="d-flex flex-wrap gap-2 justify-content-center mt-3">
-                                @if($hasDigitalCodes)
-                                    <button type="button" id="asterSuccessPrintBtn" class="btn btn-sm btn-outline-secondary">
-                                        <i class="bi bi-printer me-1"></i>{{ translate('Print Receipt') }}
-                                    </button>
-                                @endif
                                 <a href="{{ route('home') }}" class="btn btn-primary px-4 rounded-10">
                                     {{ translate('Explore More Items') }}
                                 </a>
@@ -409,36 +380,6 @@
                 </div>
             </div>
         </div>
-
-        @if($hasDigitalCodes)
-        <div id="asterSuccessPrintReceipt" style="display:none;">
-            <style>@media print {
-                body > *:not(#asterSuccessPrintReceipt) { display:none!important; }
-                #asterSuccessPrintReceipt { display:block!important; position:fixed; top:0; left:0; width:80mm;
-                    font-family:'Courier New',monospace; font-size:9pt; padding:6mm; }
-            }</style>
-            <div style="text-align:center;border-bottom:1px dashed #000;padding-bottom:5px;margin-bottom:5px;">
-                <div style="font-size:12pt;font-weight:bold;">{{ getWebConfig(name: 'company_name') }}</div>
-            </div>
-            <div style="font-size:8pt;margin-bottom:5px;">
-                <div><strong>{{ translate('Date') }}:</strong> {{ now()->format('d/m/Y H:i') }}</div>
-                <div><strong>{{ translate('Order') }}:</strong> #{{ implode(', #', $orderSuccessIds) }}</div>
-            </div>
-            <div style="border-top:1px dashed #000;padding-top:5px;">
-                @foreach($successDigitalCodes as $item)
-                    <div style="margin-bottom:7px;padding-bottom:5px;border-bottom:1px dotted #ccc;">
-                        <div style="font-size:8pt;color:#555;">{{ $item['productName'] }}</div>
-                        <div style="font-size:13pt;font-weight:bold;letter-spacing:2px;word-break:break-all;margin:3px 0;">{{ $item['code'] }}</div>
-                        @if(!empty($item['serial'])) <div style="font-size:7pt;">S/N: {{ $item['serial'] }}</div> @endif
-                        @if(!empty($item['expiry'])) <div style="font-size:7pt;">Exp: {{ $item['expiry'] }}</div> @endif
-                    </div>
-                @endforeach
-            </div>
-            <div style="text-align:center;margin-top:8px;font-size:7pt;border-top:1px dashed #000;padding-top:5px;">
-                {{ translate('Thank You For Your Purchase!') }}<br>{{ getWebConfig(name: 'company_name') }}
-            </div>
-        </div>
-        @endif
     @endif
 @endsection
 @push('script')
@@ -447,12 +388,10 @@
         <script>
         (function () {
             document.addEventListener('DOMContentLoaded', function () {
-                var hasDigCodes = {{ $hasDigitalCodes ? 'true' : 'false' }};
                 var modalEl = document.getElementById('order_successfully');
                 var orderModal = new bootstrap.Modal(modalEl, { backdrop: 'static', keyboard: false });
                 orderModal.show();
 
-                // Copy buttons
                 document.addEventListener('click', function (e) {
                     var btn = e.target.closest('.success-copy-btn');
                     if (!btn) return;
@@ -465,7 +404,6 @@
                         });
                 });
 
-                // Confirmation checkbox
                 var confirmCb  = document.getElementById('asterSuccessConfirm');
                 var closeBtn   = document.getElementById('asterSuccessCloseBtn');
                 if (confirmCb && closeBtn) {
@@ -480,19 +418,9 @@
                         }
                     });
                 }
-
-                // Print button
-                var printBtn = document.getElementById('asterSuccessPrintBtn');
-                if (printBtn) {
-                    printBtn.addEventListener('click', function () {
-                        var el = document.getElementById('asterSuccessPrintReceipt');
-                        el.style.display = 'block';
-                        window.print();
-                        el.style.display = 'none';
-                    });
-                }
             });
         }());
         </script>
     @endif
+    @include('web-views.partials._digital-code-delivery-script')
 @endpush

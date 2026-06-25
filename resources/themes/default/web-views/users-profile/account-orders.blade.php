@@ -254,67 +254,23 @@
                                 <strong>#{{ implode(', #', $orderSuccessIds) }}</strong> —
                                 {{ translate('keep it handy for tracking.') }}
                             </p>
+                            {{-- Digital Codes Section --}}
                             @if ($hasDigitalCodes)
-                                <p class="fs-13 text-muted text-center mb-0">
+                                <p class="fs-13 text-muted text-center mb-3">
                                     <i class="fi fi-rr-info me-1"></i>
                                     {{ translate('You can also retrieve your code(s) anytime from Order Summary section.') }}
                                 </p>
-                            @endif
 
-                            {{-- Digital Codes Section --}}
-                            @if ($hasDigitalCodes)
-                                <div class="alert alert-warning py-2 px-3 fs-13 my-3">
-                                    <i class="fa fa-exclamation-triangle me-1"></i>
-                                    <strong>{{ translate('Important') }}:</strong>
-                                    {{ translate('Copy or print your codes below. They are also sent to your email.') }}
-                                </div>
-                                @foreach ($successDigitalCodes as $idx => $item)
-                                    <div class="border rounded p-3 mb-2 bg-light">
-                                        <p class="text-muted mb-1 fw-semibold" style="font-size:.8rem;">
-                                            <i class="fi fi-rr-box me-1"></i>
-                                            {{ $item['productName'] }}
-                                            @if ($item['orderId'])
-                                                &mdash; <span class="text-secondary">{{ translate('Order') }}
-                                                    #{{ $item['orderId'] }}</span>
-                                            @endif
-                                        </p>
-                                        <div class="d-flex align-items-center gap-2 flex-wrap mt-1">
-                                            <code
-                                                class="fs-5 fw-bold bg-white px-3 py-2 rounded border flex-grow-1 text-center"
-                                                id="success-code-{{ $idx }}"
-                                                style="letter-spacing:4px;font-family:'Courier New',monospace;word-break:break-all;">
-                                                {{ $item['code'] }}
-                                            </code>
-                                            <button type="button" class="btn btn-sm btn-outline-primary success-copy-btn"
-                                                data-target="success-code-{{ $idx }}">
-                                                <i class="fi fi-rr-copy"></i> {{ translate('Copy') }}
-                                            </button>
-                                        </div>
-                                        @if (!empty($item['pin']) || !empty($item['serial']) || !empty($item['expiry']))
-                                            <p class="text-muted mb-0 mt-1" style="font-size:.75rem;">
-                                                @if (!empty($item['pin']))
-                                                    <strong>{{ translate('PIN') }}:</strong> <code class="text-dark fw-semibold">{{ $item['pin'] }}</code>
-                                                @endif
-                                                @if (!empty($item['serial']))
-                                                    &nbsp;<strong>S/N:</strong> {{ $item['serial'] }}
-                                                @endif
-                                                @if (!empty($item['expiry']))
-                                                    &nbsp;<strong>Exp:</strong> {{ $item['expiry'] }}
-                                                @endif
-                                            </p>
-                                        @endif
-                                    </div>
-                                @endforeach
-                                {{-- Confirmation checkbox --}}
+                                @include('web-views.partials._digital-code-purchase-modal-section', [
+                                    'codes' => $successDigitalCodes,
+                                    'orderIds' => $orderSuccessIds,
+                                    'codesContainerId' => 'success-codes-container',
+                                    'codeIdPrefix' => 'success-code',
+                                    'copyBtnClass' => 'success-copy-btn',
+                                ])
                             @endif
                             {{-- Footer buttons --}}
                             <div class="d-flex flex-wrap gap-2 justify-content-center mt-3 pb-2">
-                                @if ($hasDigitalCodes)
-                                    <button type="button" id="successPrintBtn" class="btn btn-sm btn-outline-secondary">
-                                        <i class="fi fi-rr-print"
-                                            style="margin-right: 3px"></i>{{ translate('Print Receipt') }}
-                                    </button>
-                                @endif
                                 <a href="{{ route('home') }}"
                                     class="btn btn--primary font-bold px-4 font-weight-normal rounded-10">
                                     {{ translate('Explore More Items') }}
@@ -329,57 +285,19 @@
                 </div>
             </div>
         </div>
+    @endif
 
-        {{-- Hidden printable receipt --}}
-        @if ($hasDigitalCodes)
-            <div id="successPrintableReceipt" style="display:none;">
-                <style>
-                    @media print {
-                        body>*:not(#successPrintableReceipt) {
-                            display: none !important;
-                        }
-
-                        #successPrintableReceipt {
-                            display: block !important;
-                            position: fixed;
-                            top: 0;
-                            left: 0;
-                            width: 80mm;
-                            font-family: 'Courier New', monospace;
-                            font-size: 9pt;
-                            padding: 6mm;
-                        }
-                    }
-                </style>
-                <div style="text-align:center;border-bottom:1px dashed #000;padding-bottom:5px;margin-bottom:5px;">
-                    <div style="font-size:12pt;font-weight:bold;">{{ getWebConfig(name: 'company_name') }}</div>
-                </div>
-                <div style="font-size:8pt;margin-bottom:5px;">
-                    <div><strong>{{ translate('Date') }}:</strong> {{ now()->format('d/m/Y H:i') }}</div>
-                    <div><strong>{{ translate('Order') }}:</strong> #{{ implode(', #', $orderSuccessIds) }}</div>
-                </div>
-                <div style="border-top:1px dashed #000;padding-top:5px;">
-                    @foreach ($successDigitalCodes as $item)
-                        <div style="margin-bottom:7px;padding-bottom:5px;border-bottom:1px dotted #ccc;">
-                            <div style="font-size:8pt;color:#555;">{{ $item['productName'] }}</div>
-                            <div
-                                style="font-size:13pt;font-weight:bold;letter-spacing:2px;word-break:break-all;margin:3px 0;">
-                                {{ $item['code'] }}</div>
-                            @if (!empty($item['serial']))
-                                <div style="font-size:7pt;">S/N: {{ $item['serial'] }}</div>
-                            @endif
-                            @if (!empty($item['expiry']))
-                                <div style="font-size:7pt;">Exp: {{ $item['expiry'] }}</div>
-                            @endif
-                        </div>
-                    @endforeach
-                </div>
-                <div style="text-align:center;margin-top:8px;font-size:7pt;border-top:1px dashed #000;padding-top:5px;">
-                    {{ translate('Thank You For Your Purchase!') }}<br>{{ getWebConfig(name: 'company_name') }}
-                </div>
-            </div>
-        @endif
-    @endif {{-- end $orderSuccessIds --}}
+    @if (auth('customer')->check())
+        <template id="order-success-delivery-actions-template">
+            @include('web-views.partials._digital-code-delivery-actions', [
+                'orderIds' => [],
+                'viewTarget' => 'success-codes-container',
+                'codesContainer' => 'success-codes-container',
+                'layout' => 'cards',
+                'context' => 'modal',
+            ])
+        </template>
+    @endif
 
     @if ($orders->count() > 0)
         @foreach ($orders as $order)
@@ -417,64 +335,63 @@
                     '&quot;');
             }
 
+            function buildDeliverySectionHtml(orderIds) {
+                var tpl = document.getElementById('order-success-delivery-actions-template');
+                if (!tpl || !tpl.content) {
+                    return '';
+                }
+
+                var node = tpl.content.querySelector('.digital-code-delivery-actions');
+                if (!node) {
+                    return '';
+                }
+
+                var clone = node.cloneNode(true);
+                clone.setAttribute('data-order-ids', JSON.stringify(orderIds || []));
+                clone.setAttribute('data-view-target', 'success-codes-container');
+                clone.setAttribute('data-codes-container', 'success-codes-container');
+
+                return clone.outerHTML + '<hr class="my-3">';
+            }
+
             function buildCodesHtml(data) {
                 if (!data.hasDigitalCodes || !data.codes || !data.codes.length) return '';
                 var h = '';
-                h += '<div class="alert alert-warning py-2 px-3 fs-13 my-3">' +
+                h += '<p class="fs-13 text-muted text-center mb-3"><i class="fi fi-rr-info me-1"></i>{{ addslashes(translate('You can also retrieve your code(s) anytime from Order Summary section.')) }}</p>';
+                h += '<div class="alert alert-warning py-2 px-3 fs-13 mb-3">' +
                     '<i class="fa fa-exclamation-triangle me-1"></i>' +
                     '<strong>{{ addslashes(translate('Important')) }}:</strong> ' +
                     '{{ addslashes(translate('Copy or print your codes below. They are also sent to your email.')) }}' +
                     '</div>';
+                h += buildDeliverySectionHtml(data.orderIds);
+                h += '<div id="success-codes-container">';
                 data.codes.forEach(function(item, idx) {
-                    h += '<div class="border rounded p-3 mb-2 bg-light">';
-                    h += '<p class="text-muted mb-1 fw-semibold" style="font-size:.8rem;"><i class="fi fi-rr-box me-1"></i>' +
+                    h += '<div class="border rounded p-3 mb-3 bg-light digital-code-item">';
+                    h += '<p class="text-muted mb-1 fw-semibold digital-code-item__label" style="font-size:.8rem;"><i class="fa fa-box me-1"></i>' +
                         esc(item.productName);
                     if (item.orderId) h +=
                         ' &mdash; <span class="text-secondary">{{ addslashes(translate('Order')) }} #' + item
                         .orderId + '</span>';
                     h += '</p>';
                     h += '<div class="d-flex align-items-center gap-2 flex-wrap mt-1">';
-                    h += '<code class="fs-5 fw-bold bg-white px-3 py-2 rounded border flex-grow-1 text-center" id="success-code-' +
+                    h += '<code class="fs-5 fw-bold text-dark bg-white px-3 py-2 rounded border flex-grow-1 text-center" id="success-code-' +
                         idx +
                         '" style="letter-spacing:4px;font-family:\'Courier New\',monospace;word-break:break-all;">' +
                         esc(item.code) + '</code>';
                     h += '<button type="button" class="btn btn-sm btn-outline-primary success-copy-btn" data-target="success-code-' +
-                        idx + '"><i class="fi fi-rr-copy"></i> {{ addslashes(translate('Copy')) }}</button>';
+                        idx + '"><i class="fa fa-copy"></i> {{ addslashes(translate('Copy')) }}</button>';
                     h += '</div>';
-                    if (item.serial || item.expiry) {
-                        h += '<p class="text-muted mb-0 mt-1" style="font-size:.75rem;">';
-                        if (item.serial) h += '<strong>S/N:</strong> ' + esc(item.serial) + ' ';
-                        if (item.expiry) h += '&nbsp;<strong>Exp:</strong> ' + esc(item.expiry);
+                    if (item.pin || item.serial || item.expiry) {
+                        h += '<p class="text-muted mb-0 mt-1 digital-code-item__meta" style="font-size:.76rem;">';
+                        if (item.pin) h += '<strong>{{ addslashes(translate('PIN')) }}:</strong> <code class="text-dark fw-semibold">' + esc(item.pin) + '</code> ';
+                        if (item.serial) h += '&nbsp;&nbsp;<strong>S/N:</strong> ' + esc(item.serial) + ' ';
+                        if (item.expiry) h += '&nbsp;&nbsp;<strong>Exp:</strong> ' + esc(item.expiry);
                         h += '</p>';
                     }
                     h += '</div>';
                 });
+                h += '</div>';
                 return h;
-            }
-
-            function buildPrintReceiptHtml(data) {
-                if (!data.hasDigitalCodes || !data.codes || !data.codes.length) return '';
-                var orderStr = data.orderIds.map(function(id) {
-                    return '#' + id;
-                }).join(', ');
-                var rows = '';
-                data.codes.forEach(function(item) {
-                    rows += '<div style="margin-bottom:7px;padding-bottom:5px;border-bottom:1px dotted #ccc;">';
-                    rows += '<div style="font-size:8pt;color:#555;">' + esc(item.productName) + '</div>';
-                    rows +=
-                        '<div style="font-size:13pt;font-weight:bold;letter-spacing:2px;word-break:break-all;margin:3px 0;">' +
-                        esc(item.code) + '</div>';
-                    if (item.serial) rows += '<div style="font-size:7pt;">S/N: ' + esc(item.serial) + '</div>';
-                    if (item.expiry) rows += '<div style="font-size:7pt;">Exp: ' + esc(item.expiry) + '</div>';
-                    rows += '</div>';
-                });
-                return '<div id="successPrintableReceipt" style="display:none;"><style>@media print{body>*:not(#successPrintableReceipt){display:none!important;}#successPrintableReceipt{display:block!important;position:fixed;top:0;left:0;width:80mm;font-family:\'Courier New\',monospace;font-size:9pt;padding:6mm;}}</style>' +
-                    '<div style="text-align:center;border-bottom:1px dashed #000;padding-bottom:5px;margin-bottom:5px;"><div style="font-size:12pt;font-weight:bold;">{{ addslashes(getWebConfig(name: 'company_name')) }}</div></div>' +
-                    '<div style="font-size:8pt;margin-bottom:5px;"><div><strong>{{ addslashes(translate('Date')) }}:</strong> {{ now()->format('d/m/Y H:i') }}</div><div><strong>{{ addslashes(translate('Order')) }}:</strong> ' +
-                    orderStr + '</div></div>' +
-                    '<div style="border-top:1px dashed #000;padding-top:5px;">' + rows + '</div>' +
-                    '<div style="text-align:center;margin-top:8px;font-size:7pt;border-top:1px dashed #000;padding-top:5px;">{{ addslashes(translate('Thank You For Your Purchase!')) }}<br>{{ addslashes(getWebConfig(name: 'company_name')) }}</div>' +
-                    '</div>';
             }
 
             function buildModalHtml(data) {
@@ -482,13 +399,7 @@
                     return '#' + id;
                 }).join(', #');
                 var codesHtml = buildCodesHtml(data);
-                var printHtml = buildPrintReceiptHtml(data);
-                var footerHtml = '';
-                if (data.hasDigitalCodes) {
-                    footerHtml +=
-                        '<button type="button" id="successPrintBtn" class="btn btn-sm btn-outline-secondary"><i class="fi fi-rr-print me-1"></i>{{ addslashes(translate('Print Receipt')) }}</button>';
-                }
-                footerHtml +=
+                var footerHtml =
                     '<a href="{{ route('home') }}" class="btn btn--primary font-bold px-4 font-weight-normal rounded-10">{{ addslashes(translate('Explore More Items')) }}</a>';
                 footerHtml +=
                     '<button type="button" class="btn btn-outline-secondary px-4 rounded-10" data-dismiss="modal">{{ addslashes(translate('Close')) }}</button>';
@@ -503,8 +414,7 @@
                     '</strong> &mdash; {{ addslashes(translate('keep it handy for tracking.')) }}</p>' +
                     codesHtml +
                     '<div class="d-flex flex-wrap gap-2 justify-content-center mt-3 pb-2">' + footerHtml + '</div>' +
-                    '</div></div></div></div></div>' +
-                    printHtml;
+                    '</div></div></div></div></div>';
             }
 
             function attachModalEvents(data) {
@@ -530,15 +440,6 @@
                 $modal.on('hide.bs.modal', function() {
                     localStorage.removeItem(LS_KEY);
                 });
-
-                // Print
-                $(document).on('click', '#successPrintBtn', function() {
-                    var $el = $('#successPrintableReceipt');
-                    $el.show();
-                    window.print();
-                    $el.hide();
-                });
-
             }
 
             $(document).ready(function() {
@@ -588,4 +489,5 @@
             });
         });
     </script>
+    @include('web-views.partials._digital-code-delivery-script')
 @endpush

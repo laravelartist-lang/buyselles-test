@@ -10,7 +10,7 @@
                         {{ translate('qz_tray_wizard_intro') ?: 'Install QZ Tray once on this computer, then connect your USB or network thermal printer.' }}
                     </p>
                 </div>
-                <button type="button" class="close" data-dismiss="modal" aria-label="{{ translate('Close') }}">
+                <button type="button" class="close" data-qz-modal-close="qzTrayWizardModal" aria-label="{{ translate('Close') }}">
                     <span aria-hidden="true">&times;</span>
                 </button>
             </div>
@@ -110,7 +110,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">{{ translate('thermal_print') ?: 'Thermal Print' }}</h5>
-                <button type="button" class="close" data-dismiss="modal" aria-label="{{ translate('Close') }}">
+                <button type="button" class="close" data-qz-modal-close="qzTrayThermalChoiceModal" aria-label="{{ translate('Close') }}">
                     <span aria-hidden="true">&times;</span>
                 </button>
             </div>
@@ -141,7 +141,12 @@
         z-index: 1060;
     }
 
-    .modal-backdrop.show {
+    #orderSuccessModal,
+    #order_successfully {
+        z-index: 1055;
+    }
+
+    body.qz-tray-modal-open .modal-backdrop.show:last-of-type {
         z-index: 1055;
     }
 

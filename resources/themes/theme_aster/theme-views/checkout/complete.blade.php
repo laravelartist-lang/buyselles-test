@@ -181,17 +181,17 @@
                         <div id="codes-modal-alert" class="alert alert-warning py-2 px-3 mb-3" style="font-size:.84rem;{{ !$hasDigitalCodes ? 'display:none;' : '' }}">
                             <i class="fa fa-exclamation-triangle me-1"></i>
                             <strong>{{ translate('Important') }}:</strong>
-                            {{ translate('Copy_or_print_your_codes_below._They_are_also_sent_to_your_email.') }}
+                            {{ translate('Copy_or_print_your_codes_below._They_are_also_sent_to_your_email.') ?: translate('Copy or print your codes below. They are also sent to your email.') }}
                         </div>
 
-                        @include('web-views.partials._digital-code-delivery-actions', [
+                        @include('web-views.partials._digital-code-purchase-modal-section', [
+                            'codes' => $digitalCodes,
                             'orderIds' => $order_ids ?? [],
-                            'viewTarget' => 'codes-modal-container',
-                            'codesContainer' => 'codes-modal-container',
-                            'layout' => 'cards',
+                            'codesContainerId' => 'codes-modal-container',
+                            'codeIdPrefix' => 'aster-modal-code',
+                            'copyBtnClass' => 'modal-copy-btn',
+                            'showAlert' => false,
                         ])
-
-                        <hr class="my-3">
 
                         <div id="codes-modal-loading" class="text-center py-4" style="{{ $hasDigitalCodes ? 'display:none;' : '' }}">
                             <div class="spinner-border text-success" role="status"></div>
@@ -204,37 +204,6 @@
                             <p class="text-muted mt-2 mb-0" style="font-size:.85rem;">
                                 {{ translate('Your_codes_are_taking_longer_than_expected._They_will_be_sent_to_your_email_shortly.') }}
                             </p>
-                        </div>
-
-                        <div id="codes-modal-container">
-                            @foreach ($digitalCodes as $idx => $item)
-                                <div class="border rounded p-3 mb-3 bg-light">
-                                    <p class="text-muted mb-1 fw-semibold" style="font-size:.8rem;">
-                                        <i class="fa fa-box me-1"></i>{{ $item['productName'] }}
-                                        @if ($item['orderId'])
-                                            &mdash; <span class="text-secondary">{{ translate('Order') }} #{{ $item['orderId'] }}</span>
-                                        @endif
-                                    </p>
-                                    <div class="d-flex align-items-center gap-2 flex-wrap mt-1">
-                                        <code class="fs-4 fw-bold bg-white px-3 py-2 rounded border flex-grow-1 text-center"
-                                            id="aster-modal-code-{{ $idx }}"
-                                            style="letter-spacing:4px;font-family:'Courier New',monospace;word-break:break-all;">
-                                            {{ $item['code'] }}
-                                        </code>
-                                        <button type="button" class="btn btn-sm btn-outline-primary modal-copy-btn"
-                                            data-target="aster-modal-code-{{ $idx }}">
-                                            <i class="fa fa-copy"></i> {{ translate('Copy') }}
-                                        </button>
-                                    </div>
-                                    @if (!empty($item['pin']) || !empty($item['serial']) || !empty($item['expiry']))
-                                        <p class="text-muted mb-0 mt-1" style="font-size:.76rem;">
-                                            @if (!empty($item['pin'])) <strong>{{ translate('PIN') }}:</strong> <code class="text-dark fw-semibold">{{ $item['pin'] }}</code> @endif
-                                            @if (!empty($item['serial'])) &nbsp;<strong>S/N:</strong> {{ $item['serial'] }} @endif
-                                            @if (!empty($item['expiry'])) &nbsp;<strong>Exp:</strong> {{ $item['expiry'] }} @endif
-                                        </p>
-                                    @endif
-                                </div>
-                            @endforeach
                         </div>
 
                         <div id="codes-modal-confirm-wrap" class="form-check p-3 border rounded mt-2" style="background:#fffde7;{{ !$hasDigitalCodes ? 'display:none;' : '' }}">
@@ -302,7 +271,14 @@
     document.addEventListener('DOMContentLoaded', function () {
         var modalEl = document.getElementById('orderSuccessModal');
         if (modalEl && typeof bootstrap !== 'undefined') {
-            new bootstrap.Modal(modalEl, {
+            document.querySelectorAll('.modal-backdrop').forEach(function (backdrop) {
+                backdrop.remove();
+            });
+            document.body.classList.remove('modal-open');
+            document.body.style.removeProperty('overflow');
+            document.body.style.removeProperty('padding-right');
+
+            bootstrap.Modal.getOrCreateInstance(modalEl, {
                 backdrop: showDigitalCodesSection ? 'static' : true,
                 keyboard: !showDigitalCodesSection
             }).show();
