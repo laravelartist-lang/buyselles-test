@@ -24,6 +24,4 @@ style-extended.css.map
 temp-data-folder/
 /Modules/Gateways
 /public/Modules/Gateways
-/mobile*.json
-/mobile
 *.json
