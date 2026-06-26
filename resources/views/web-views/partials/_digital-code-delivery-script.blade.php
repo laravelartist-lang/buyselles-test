@@ -70,6 +70,9 @@
         'bluetoothTestCheckSize' => translate('bluetooth_test_check_size') ?: 'Receipt :n has :bytes bytes of print data',
         'bluetoothTestPaired' => translate('bluetooth_test_paired') ?: 'Demo Bluetooth printer paired for testing.',
         'bluetoothStatusReady' => translate('bluetooth_status_ready') ?: 'Bluetooth ready',
+        'bluetoothQuickPrint' => translate('bluetooth_quick_print') ?: 'Quick Print',
+        'bluetoothQuickPrintTitle' => translate('bluetooth_quick_print_title') ?: 'Print receipt to saved Bluetooth printer',
+        'bluetoothQuickPrintFailed' => translate('bluetooth_quick_print_failed') ?: 'Bluetooth quick print failed. Try Thermal Print or Configure.',
         'bluetoothStatusDemo' => translate('bluetooth_status_demo') ?: 'Bluetooth demo',
         'bluetoothStatusSetup' => translate('bluetooth_status_setup') ?: 'Not configured',
         'bluetoothStatusUnavailable' => translate('bluetooth_status_unavailable') ?: 'Bluetooth — use Chrome/HTTPS',
@@ -317,7 +320,56 @@
         }, 1800);
     }
 
+    function setBluetoothQuickPrintBusy(btn, busy) {
+        if (!btn) {
+            return;
+        }
+
+        btn.disabled = !!busy;
+        btn.classList.toggle('is-busy', !!busy);
+    }
+
     document.addEventListener('click', function (event) {
+        var quickPrintBtn = event.target.closest('.digital-code-action-bluetooth-quick-print');
+        if (quickPrintBtn) {
+            event.preventDefault();
+            event.stopPropagation();
+
+            var quickWrapper = quickPrintBtn.closest('.digital-code-delivery-actions');
+            var quickOrderIds = [];
+
+            if (quickWrapper) {
+                try {
+                    quickOrderIds = JSON.parse(quickWrapper.getAttribute('data-order-ids') || '[]');
+                } catch (e) {
+                    quickOrderIds = [];
+                }
+            }
+
+            if (!quickOrderIds.length) {
+                showToast(@json(translate('thermal_load_print_data_failed') ?: 'Unable to load print data.'), 'error');
+                return;
+            }
+
+            var quickReceiptUrl = quickWrapper ? quickWrapper.getAttribute('data-receipt-url') : '';
+
+            setBluetoothQuickPrintBusy(quickPrintBtn, true);
+
+            runBluetoothThermalPrint(quickOrderIds, quickReceiptUrl)
+                .catch(function (error) {
+                    var message = (error && error.message)
+                        ? error.message
+                        : (@json(translate('bluetooth_quick_print_failed') ?: 'Bluetooth quick print failed. Try Thermal Print or Configure.'));
+
+                    showToast(message, 'error');
+                })
+                .finally(function () {
+                    setBluetoothQuickPrintBusy(quickPrintBtn, false);
+                });
+
+            return;
+        }
+
         var setupBtn = event.target.closest('.digital-code-action-qz-setup');
         if (setupBtn) {
             event.preventDefault();

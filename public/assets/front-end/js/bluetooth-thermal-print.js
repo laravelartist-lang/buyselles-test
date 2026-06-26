@@ -647,6 +647,11 @@
                 pill.innerHTML = '<i class="fa fa-bluetooth-b"></i><span class="digital-code-bluetooth-status__text">' + label + '</span>';
             }
         });
+
+        document.querySelectorAll('.digital-code-action-bluetooth-quick-print').forEach(function (btn) {
+            btn.classList.toggle('d-none', !saved);
+            btn.disabled = false;
+        });
     }
 
     function updateSetupUi() {

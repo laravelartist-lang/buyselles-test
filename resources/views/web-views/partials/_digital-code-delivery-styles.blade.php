@@ -62,6 +62,52 @@
         background: #f8f9fa;
     }
 
+    .digital-code-thermal-toolbar__status-group,
+    .digital-code-thermal-compact__status-row {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+        flex: 1 1 auto;
+    }
+
+    .digital-code-action-bluetooth-quick-print {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        flex-shrink: 0;
+        padding: 4px 10px;
+        border: 1px solid rgba(40, 167, 69, .35);
+        border-radius: 999px;
+        background: #fff;
+        color: #1e7e34;
+        font-size: 11px;
+        font-weight: 600;
+        line-height: 1.3;
+        cursor: pointer;
+        transition: background .15s ease, border-color .15s ease, opacity .15s ease;
+    }
+
+    .digital-code-action-bluetooth-quick-print:hover:not(:disabled) {
+        background: rgba(40, 167, 69, .08);
+        border-color: rgba(40, 167, 69, .55);
+        color: #155724;
+    }
+
+    .digital-code-action-bluetooth-quick-print:disabled {
+        opacity: .65;
+        cursor: wait;
+    }
+
+    .digital-code-action-bluetooth-quick-print i {
+        font-size: 11px;
+    }
+
+    .digital-code-thermal-compact__status-row {
+        margin-top: 6px;
+        max-width: 100%;
+    }
+
     .digital-code-bluetooth-status-pill {
         display: inline-flex;
         align-items: center;

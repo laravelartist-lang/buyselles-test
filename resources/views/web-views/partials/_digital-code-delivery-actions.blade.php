@@ -41,10 +41,18 @@
                         <span class="digital-code-delivery-option__arrow"><i class="fa fa-chevron-right"></i></span>
                     </button>
                     <div class="digital-code-thermal-toolbar">
-                        <span class="digital-code-bluetooth-status digital-code-bluetooth-status-pill" title="{{ translate('bluetooth_thermal_print') ?: 'Bluetooth thermal printer' }}">
-                            <i class="fa fa-bluetooth-b"></i>
-                            <span class="digital-code-bluetooth-status__text">{{ translate('bluetooth_status_setup') ?: 'Not configured' }}</span>
-                        </span>
+                        <div class="digital-code-thermal-toolbar__status-group">
+                            <span class="digital-code-bluetooth-status digital-code-bluetooth-status-pill" title="{{ translate('bluetooth_thermal_print') ?: 'Bluetooth thermal printer' }}">
+                                <i class="fa fa-bluetooth-b"></i>
+                                <span class="digital-code-bluetooth-status__text">{{ translate('bluetooth_status_setup') ?: 'Not configured' }}</span>
+                            </span>
+                            <button type="button"
+                                    class="digital-code-action-bluetooth-quick-print d-none"
+                                    title="{{ translate('bluetooth_quick_print_title') ?: 'Print receipt to saved Bluetooth printer' }}">
+                                <i class="fa fa-print"></i>
+                                <span>{{ translate('bluetooth_quick_print') ?: 'Quick Print' }}</span>
+                            </button>
+                        </div>
                         <button type="button" class="digital-code-action-qz-setup digital-code-thermal-toolbar__configure" title="{{ translate('configure_thermal_printer') ?: 'Configure printer' }}">
                             <i class="fa fa-cog"></i>
                             <span>{{ translate('configure_thermal_printer') ?: 'Configure printer' }}</span>
@@ -114,10 +122,18 @@
                         <i class="fa fa-cog"></i>
                     </button>
                 </div>
-                <span class="digital-code-bluetooth-status digital-code-bluetooth-status-pill digital-code-bluetooth-status-pill--compact">
-                    <i class="fa fa-bluetooth-b"></i>
-                    <span class="digital-code-bluetooth-status__text">{{ translate('bluetooth_status_setup') ?: 'Not configured' }}</span>
-                </span>
+                <div class="digital-code-thermal-compact__status-row">
+                    <span class="digital-code-bluetooth-status digital-code-bluetooth-status-pill digital-code-bluetooth-status-pill--compact">
+                        <i class="fa fa-bluetooth-b"></i>
+                        <span class="digital-code-bluetooth-status__text">{{ translate('bluetooth_status_setup') ?: 'Not configured' }}</span>
+                    </span>
+                    <button type="button"
+                            class="digital-code-action-bluetooth-quick-print digital-code-action-bluetooth-quick-print--compact d-none"
+                            title="{{ translate('bluetooth_quick_print_title') ?: 'Print receipt to saved Bluetooth printer' }}">
+                        <i class="fa fa-print"></i>
+                        <span>{{ translate('bluetooth_quick_print') ?: 'Quick Print' }}</span>
+                    </button>
+                </div>
             </div>
             <button type="button" class="btn btn-sm btn-outline-danger digital-code-action digital-code-action-a4">
                 <i class="fa fa-file-pdf-o"></i> {{ translate('print_receipt_a4') ?: 'A4 PDF' }}
