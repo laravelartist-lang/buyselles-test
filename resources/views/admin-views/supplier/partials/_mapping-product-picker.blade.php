@@ -137,9 +137,28 @@
             }).done(function (data) {
                 $targetSelect.empty().append(data.select_tag || ('<option value="">' + selectPlaceholderText + '</option>'));
 
+                var $realOptions = $targetSelect.find('option').filter(function () {
+                    var value = $(this).val();
+                    return value && value !== '0';
+                });
+
+                if ($realOptions.length === 1) {
+                    $targetSelect.val($realOptions.first().val());
+                }
+
                 var downstreamId = $targetSelect.attr('data-target-id');
                 if (downstreamId && data.sub_categories) {
-                    $('#' + downstreamId).empty().append(data.sub_categories);
+                    var $downstreamSelect = $('#' + downstreamId);
+                    $downstreamSelect.empty().append(data.sub_categories);
+
+                    var $downstreamOptions = $downstreamSelect.find('option').filter(function () {
+                        var value = $(this).val();
+                        return value && value !== '0';
+                    });
+
+                    if ($downstreamOptions.length === 1) {
+                        $downstreamSelect.val($downstreamOptions.first().val());
+                    }
                 }
             }).fail(function () {
                 resetSelect($targetSelect, failedToLoadText);

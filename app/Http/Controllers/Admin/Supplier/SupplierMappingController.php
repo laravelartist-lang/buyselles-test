@@ -74,14 +74,12 @@ class SupplierMappingController extends BaseController
             ]);
         }
 
-        $query = $this->inHouseDigitalProductQuery()
-            ->where('category_id', $categoryId);
-
-        if ($subSubCategoryId > 0) {
-            $query->where('sub_sub_category_id', $subSubCategoryId);
-        } elseif ($subCategoryId > 0) {
-            $query->where('sub_category_id', $subCategoryId);
-        }
+        $query = $this->applyCategoryFilters(
+            query: $this->inHouseDigitalProductQuery(),
+            categoryId: $categoryId,
+            subCategoryId: $subCategoryId,
+            subSubCategoryId: $subSubCategoryId,
+        );
 
         $products = $query->orderBy('name')->get(['id', 'name']);
 
@@ -291,5 +289,27 @@ class SupplierMappingController extends BaseController
             ->where('product_type', 'digital')
             ->where('digital_product_type', 'ready_product')
             ->where('status', 1);
+    }
+
+    /**
+     * Apply the most specific category filter, matching admin product list behaviour.
+     * When a sub-sub category is selected, only sub_sub_category_id is used so products
+     * with a stale or missing category_id are still included.
+     */
+    private function applyCategoryFilters(
+        Builder $query,
+        int $categoryId,
+        int $subCategoryId,
+        int $subSubCategoryId,
+    ): Builder {
+        if ($subSubCategoryId > 0) {
+            return $query->where('sub_sub_category_id', $subSubCategoryId);
+        }
+
+        if ($subCategoryId > 0) {
+            return $query->where('sub_category_id', $subCategoryId);
+        }
+
+        return $query->where('category_id', $categoryId);
     }
 }
