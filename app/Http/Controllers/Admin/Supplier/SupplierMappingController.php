@@ -287,7 +287,6 @@ class SupplierMappingController extends BaseController
         return Product::query()
             ->where('added_by', 'admin')
             ->where('product_type', 'digital')
-            ->where('digital_product_type', 'ready_product')
             ->where('status', 1);
     }
 

@@ -11147,7 +11147,7 @@ return [
 	"mapping_added_successfully" => "Mapping added successfully",
 	"edit_product_supplier_mapping" => "Edit product supplier mapping",
 	"supplier_mapping_in_house_products_only" => "Only in-house digital products are shown here. Vendor products are excluded.",
-	"supplier_mapping_not_all_products_note" => "Not all products from the main Products list appear here — only active in-house ready digital products.",
+	"supplier_mapping_not_all_products_note" => "Not all products from the main Products list appear here — only active in-house digital products.",
 	"supplier_mapping_in_house_product_required" => "Please select a valid in-house digital product.",
 	"select_category_to_load_products" => "Select a category to load products",
 	"product(s)_found" => "product(s) found",

@@ -8,7 +8,7 @@
         <i class="fi fi-rr-info me-1"></i>
         <strong>{{ translate('note') ?: 'Note' }}:</strong>
         {{ translate('supplier_mapping_in_house_products_only') ?: 'Only in-house digital products are listed here (vendor products are excluded).' }}
-        {{ translate('supplier_mapping_not_all_products_note') ?: 'Not every product from the main Products section appears here — only active in-house ready digital products.' }}
+        {{ translate('supplier_mapping_not_all_products_note') ?: 'Not every product from the main Products section appears here — only active in-house digital products.' }}
     </div>
 </div>
 
