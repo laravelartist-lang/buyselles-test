@@ -46,3 +46,7 @@ app.*.map.json
 /android/app/release
 # Ignore .cxx directory
 android/app/.cxx/
+
+# Release signing (never commit)
+*.jks
+android/key.properties

@@ -117,14 +117,22 @@ function getRequestFunctionalityRender() {
 getRequestFunctionalityRender();
 
 function getRequestFunctionality(getUrlPrefix, id, getElementType) {
-    let message = $("#message-select-word").data("text");
-    $("#sub-sub-category-select")
-        .empty()
-        .append(
-            `<option value="null" selected disabled>---` +
-                message +
-                `---</option>`
-        );
+    let message = $("#message-select-word").data("text") || "Select";
+    let placeholder = `<option value="" selected disabled>---${message}---</option>`;
+
+    ["sub-sub-category-select", "mapping-sub-sub-category-select"].forEach(function (downstreamId) {
+        if (downstreamId !== id) {
+            $("#" + downstreamId).empty().append(placeholder);
+        }
+    });
+
+    let targetSelect = document.getElementById(id);
+    if (targetSelect) {
+        let nextId = targetSelect.getAttribute("data-element-id");
+        if (nextId && nextId !== id) {
+            $("#" + nextId).empty().append(placeholder);
+        }
+    }
 
     $.get({
         url: getUrlPrefix,
@@ -137,14 +145,13 @@ function getRequestFunctionality(getUrlPrefix, id, getElementType) {
                 $("#" + id)
                     .empty()
                     .append(data.select_tag);
-                if (
-                    data.sub_categories !== "" &&
-                    id.toString() === "sub-category-select"
-                ) {
+                if (data.sub_categories !== "") {
                     let nextElement = $("#" + id).data("element-id");
-                    $("#" + nextElement)
-                        .empty()
-                        .append(data.sub_categories);
+                    if (nextElement) {
+                        $("#" + nextElement)
+                            .empty()
+                            .append(data.sub_categories);
+                    }
                 }
             }
         },

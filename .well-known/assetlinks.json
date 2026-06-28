@@ -10,5 +10,17 @@
                 "34:05:20:FC:33:41:E7:89:C8:C1:40:38:E3:9B:C3:E5:B1:61:24:6E:6B:18:3D:83:F3:89:3C:95:2D:16:5E:73"
             ]
         }
+    },
+    {
+        "relation": [
+            "delegate_permission/common.handle_all_urls"
+        ],
+        "target": {
+            "namespace": "android_app",
+            "package_name": "com.buyselles.vendor",
+            "sha256_cert_fingerprints": [
+                "34:05:20:FC:33:41:E7:89:C8:C1:40:38:E3:9B:C3:E5:B1:61:24:6E:6B:18:3D:83:F3:89:3C:95:2D:16:5E:73"
+            ]
+        }
     }
 ]

@@ -74,14 +74,13 @@ class SupplierMappingController extends BaseController
             ]);
         }
 
-        $query = $this->inHouseDigitalProductQuery();
+        $query = $this->inHouseDigitalProductQuery()
+            ->where('category_id', $categoryId);
 
         if ($subSubCategoryId > 0) {
             $query->where('sub_sub_category_id', $subSubCategoryId);
         } elseif ($subCategoryId > 0) {
             $query->where('sub_category_id', $subCategoryId);
-        } else {
-            $query->where('category_id', $categoryId);
         }
 
         $products = $query->orderBy('name')->get(['id', 'name']);
