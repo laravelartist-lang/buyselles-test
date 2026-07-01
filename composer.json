@@ -129,6 +129,14 @@
         ],
         "post-create-project-cmd": [
             "@php artisan key:generate --ansi"
+        ],
+        "test": [
+            "@php artisan config:clear --quiet",
+            "@php artisan test"
+        ],
+        "test:direct-topup": [
+            "@php artisan config:clear --quiet",
+            "@php artisan test --compact --filter=DirectTopUp"
         ]
     },
     "extra": {

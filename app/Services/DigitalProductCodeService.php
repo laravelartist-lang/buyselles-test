@@ -6,6 +6,7 @@ use App\Mail\DigitalCodeDeliveryMail;
 use App\Models\DigitalProductCode;
 use App\Models\Order;
 use App\Models\Product;
+use App\Models\SupplierProductMapping;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -233,13 +234,18 @@ class DigitalProductCodeService
                 continue;
             }
 
+            // For direct top-up products, use direct_topup_quantity instead of qty
+            $quantityTarget = $detail->direct_topup_quantity !== null
+                ? (int) ceil((float) $detail->direct_topup_quantity)
+                : (int) $detail->qty;
+
             // How many codes are already assigned for this order detail?
             $alreadyAssigned = DigitalProductCode::query()
                 ->where('order_detail_id', $detail->id)
                 ->where('status', 'sold')
                 ->count();
 
-            $needed = max(0, (int) $detail->qty - $alreadyAssigned);
+            $needed = max(0, $quantityTarget - $alreadyAssigned);
 
             if ($needed <= 0) {
                 continue; // Already fully assigned — idempotent
@@ -309,6 +315,10 @@ class DigitalProductCodeService
 
             $productId = $cart->product_id ?? null;
             if (! $productId) {
+                continue;
+            }
+
+            if (SupplierProductMapping::hasActiveMapping($productId)) {
                 continue;
             }
 

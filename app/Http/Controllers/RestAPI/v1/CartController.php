@@ -11,6 +11,7 @@ use App\Models\Cart;
 use App\Models\Color;
 use App\Models\Order;
 use App\Models\Product;
+use App\Models\SupplierProductMapping;
 use App\Services\RestockProductService;
 use App\Utils\CartManager;
 use App\Utils\CustomerManager;
@@ -95,8 +96,12 @@ class CartController extends Controller
                 $product = Product::active()->find($data->product_id);
                 if ($product) {
                     if ($product->product_type === 'digital') {
-                        $availableCodes = CartManager::getAvailableDigitalCodeCount((int) $product->id);
-                        $data['is_product_available'] = $availableCodes >= $data->quantity ? 1 : 0;
+                        if (SupplierProductMapping::hasActiveMapping((int) $product->id)) {
+                            $data['is_product_available'] = 1;
+                        } else {
+                            $availableCodes = CartManager::getAvailableDigitalCodeCount((int) $product->id);
+                            $data['is_product_available'] = $availableCodes >= $data->quantity ? 1 : 0;
+                        }
                     } else {
                         $data['is_product_available'] = 1;
                     }

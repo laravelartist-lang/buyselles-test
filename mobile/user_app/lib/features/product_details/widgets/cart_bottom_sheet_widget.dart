@@ -10,6 +10,7 @@ import 'package:flutter_sixvalley_ecommerce/features/product/domain/models/produ
 import 'package:flutter_sixvalley_ecommerce/features/product_details/widgets/color_selection_widget.dart';
 import 'package:flutter_sixvalley_ecommerce/features/product_details/controllers/product_details_controller.dart';
 import 'package:flutter_sixvalley_ecommerce/features/product_details/domain/models/product_details_model.dart';
+import 'package:flutter_sixvalley_ecommerce/features/product_details/widgets/direct_topup_purchase_widget.dart';
 import 'package:flutter_sixvalley_ecommerce/features/product_details/widgets/min_order_quanty_widget.dart';
 import 'package:flutter_sixvalley_ecommerce/features/product_details/widgets/shipping_method_dialog.dart';
 import 'package:flutter_sixvalley_ecommerce/features/shipping/domain/models/shipping_method_model.dart';
@@ -147,7 +148,9 @@ class CartBottomSheetWidgetState extends State<CartBottomSheetWidget> {
                   widget.product!.discountType
               )!;
       
-              double priceWithQuantity = priceWithDiscount * productDetailsController.quantity!;
+              double priceWithQuantity = widget.product?.directTopup?.enabled == true
+                  ? productDetailsController.directTopUpTotalPrice
+                  : priceWithDiscount * productDetailsController.quantity!;
       
               double total = 0, avg = 0;
               for (var review in widget.product!.reviews!) {
@@ -164,10 +167,16 @@ class CartBottomSheetWidgetState extends State<CartBottomSheetWidget> {
                   color: (widget.product!.colors != null && widget.product!.colors!.isNotEmpty) ?
                   widget.product!.colors![productDetailsController.variantIndex!].code : '',
                   variation : variation,
-                  quantity: productDetailsController.quantity,
+                  quantity: widget.product?.directTopup?.enabled == true ? 1 : productDetailsController.quantity,
                   variantKey: variantKey,
                   digitalVariantPrice: digitalVariantPrice,
-                  productType: widget.product!.productType
+                  productType: widget.product!.productType,
+                  directTopupAccountId: widget.product?.directTopup?.enabled == true
+                      ? productDetailsController.directTopUpAccountId
+                      : null,
+                  directTopupQuantity: widget.product?.directTopup?.enabled == true
+                      ? productDetailsController.directTopUpQuantity
+                      : null,
               );
       
       
@@ -562,7 +571,13 @@ class CartBottomSheetWidgetState extends State<CartBottomSheetWidget> {
                 ),
                 SizedBox(height: Dimensions.paddingSizeSmall),
 
+                if (widget.product?.directTopup?.enabled == true && widget.product?.directTopup != null)
+                  DirectTopUpPurchaseWidget(config: widget.product!.directTopup!),
 
+                if (widget.product?.directTopup?.enabled == true && widget.product?.directTopup != null)
+                  SizedBox(height: Dimensions.paddingSizeSmall),
+
+                if (widget.product?.directTopup?.enabled != true)
                 // Quantity
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: Dimensions.homePagePadding),
@@ -594,6 +609,7 @@ class CartBottomSheetWidgetState extends State<CartBottomSheetWidget> {
                     ),
                   ]),
                 ),
+                if (widget.product?.directTopup?.enabled != true)
                 const SizedBox(height: Dimensions.paddingSizeSmall),
 
 
@@ -758,6 +774,7 @@ class CartBottomSheetWidgetState extends State<CartBottomSheetWidget> {
       tax: tax,
       sellerId: null,
       onlyDigital: !hasPhysical,
+      onlyDirectTopUp: !hasPhysical && (widget.product?.directTopup?.enabled == true),
       hasPhysical: hasPhysical,
       quantity: totalQuantity,
     );

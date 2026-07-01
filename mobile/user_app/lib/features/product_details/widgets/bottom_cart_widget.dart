@@ -456,6 +456,7 @@ class _BottomCartWidgetState extends State<BottomCartWidget> {
       tax: tax,
       sellerId: null,
       onlyDigital: !hasPhysical,
+      onlyDirectTopUp: !hasPhysical && (widget.product?.directTopup?.enabled == true),
       hasPhysical: hasPhysical,
       quantity: totalQuantity,
     );

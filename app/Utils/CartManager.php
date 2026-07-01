@@ -12,6 +12,7 @@ use App\Models\Product;
 use App\Models\ShippingMethod;
 use App\Models\ShippingType;
 use App\Models\Shop;
+use App\Models\SupplierProductMapping;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Str;
 use Modules\TaxModule\app\Traits\VatTaxManagement;
@@ -19,6 +20,41 @@ use Modules\TaxModule\app\Traits\VatTaxManagement;
 class CartManager
 {
     use VatTaxManagement;
+
+    private static function cartForResponse(Cart $cart): array
+    {
+        $response = [
+            'id' => $cart->id,
+            'customer_id' => $cart->customer_id,
+            'cart_group_id' => $cart->cart_group_id,
+            'product_id' => $cart->product_id,
+            'product_type' => $cart->product_type,
+            'digital_product_type' => $cart->digital_product_type,
+            'color' => $cart->color,
+            'variant' => $cart->variant,
+            'quantity' => $cart->quantity,
+            'price' => $cart->price,
+            'custom_amount' => $cart->custom_amount,
+            'direct_topup_quantity' => $cart->direct_topup_quantity,
+            'tax' => $cart->tax,
+            'is_checked' => $cart->is_checked,
+            'discount' => $cart->discount,
+            'slug' => $cart->slug,
+            'name' => $cart->name,
+            'thumbnail' => $cart->thumbnail,
+            'seller_id' => $cart->seller_id,
+            'seller_is' => $cart->seller_is,
+            'shipping_cost' => $cart->shipping_cost,
+            'shipping_type' => $cart->shipping_type,
+            'is_guest' => $cart->is_guest,
+        ];
+
+        if (isset($cart->free_delivery_order_amount)) {
+            $response['free_delivery_order_amount'] = $cart->free_delivery_order_amount;
+        }
+
+        return $response;
+    }
 
     public static function cartListSessionToDatabase($request = null): void
     {
@@ -83,14 +119,7 @@ class CartManager
             })
             ->get();
 
-        foreach ($cartItems as $item) {
-            $item->discount = getProductPriceByType(
-                product: $item->product,
-                type: 'discounted_amount',
-                result: 'value',
-                price: $item->price
-            );
-        }
+        self::applyCartItemDiscounts($cartItems);
 
         return $cartItems;
     }
@@ -117,14 +146,7 @@ class CartManager
                 return $query->where(['is_checked' => 1]);
             })->get();
 
-        foreach ($cartItems as $item) {
-            $item->discount = getProductPriceByType(
-                product: $item->product,
-                type: 'discounted_amount',
-                result: 'value',
-                price: $item->price
-            );
-        }
+        self::applyCartItemDiscounts($cartItems);
 
         return $cartItems;
     }
@@ -150,16 +172,62 @@ class CartManager
             })
             ->get();
 
+        self::applyCartItemDiscounts($cartItems);
+
+        return $cartItems->groupBy('cart_group_id');
+    }
+
+    private static function applyCartItemDiscounts(Collection $cartItems): void
+    {
         foreach ($cartItems as $item) {
+            self::refreshDirectTopUpCartPricing($item, $item->product);
+
+            $discountBasePrice = $item->isDirectTopUp()
+                ? $item->getGrossPrice()
+                : $item->price;
+
             $item->discount = getProductPriceByType(
                 product: $item->product,
                 type: 'discounted_amount',
                 result: 'value',
-                price: $item->price
+                price: $discountBasePrice
             );
         }
+    }
 
-        return $cartItems->groupBy('cart_group_id');
+    public static function refreshDirectTopUpCartPricing(Cart $cart, ?Product $product = null): void
+    {
+        if ($cart->direct_topup_quantity === null) {
+            return;
+        }
+
+        $product ??= $cart->product ?? $cart->allProducts;
+        if (! $product || ! ($product->is_direct_topup ?? false)) {
+            return;
+        }
+
+        $directTopUpService = app(\App\Services\DirectTopUp\DirectTopUpService::class);
+        $expectedPrice = $directTopUpService->calculateTotalPrice($product, (float) $cart->direct_topup_quantity);
+        $expectedDiscount = getProductPriceByType(
+            product: $product,
+            type: 'discounted_amount',
+            result: 'value',
+            price: $expectedPrice
+        );
+
+        if ((float) $cart->price !== (float) $expectedPrice
+            || (float) $cart->discount !== (float) $expectedDiscount
+            || (int) $cart->quantity !== 1) {
+            Cart::where('id', $cart->id)->update([
+                'price' => $expectedPrice,
+                'discount' => $expectedDiscount,
+                'quantity' => 1,
+            ]);
+
+            $cart->price = $expectedPrice;
+            $cart->discount = $expectedDiscount;
+            $cart->quantity = 1;
+        }
     }
 
     public static function get_cart_group_ids($request = null, $type = null)
@@ -299,9 +367,7 @@ class CartManager
         $total = 0;
         if (! empty($cart)) {
             foreach ($cart as $item) {
-                $discount = getProductPriceByType(product: $item['product'], type: 'discounted_amount', result: 'value', price: $item['price']);
-                $productSubtotal = ($item['price'] - $discount) * $item['quantity'];
-                $total += $productSubtotal;
+                $total += $item->getLineTotal();
             }
         }
 
@@ -320,9 +386,7 @@ class CartManager
         $total = 0;
         if (! empty($cart)) {
             foreach ($cart as $item) {
-                $discount = getProductPriceByType(product: $item['product'], type: 'discounted_amount', result: 'value', price: $item['price']);
-                $productSubtotal = ($item['price'] - $discount) * $item['quantity'];
-                $total += $productSubtotal;
+                $total += $item->getLineTotal();
             }
             $total += $shippingCost;
         }
@@ -340,9 +404,7 @@ class CartManager
         $total = 0;
         if (! empty($cart)) {
             foreach ($cart as $item) {
-                $discount = getProductPriceByType(product: $item['product'], type: 'discounted_amount', result: 'value', price: $item['price']);
-                $productSubtotal = ($item['price'] - $discount) * $item['quantity'];
-                $total += $productSubtotal;
+                $total += $item->getLineTotal();
             }
         }
 
@@ -359,8 +421,7 @@ class CartManager
         $total = 0;
         if (! empty($cart)) {
             foreach ($cart as $item) {
-                $productSubtotal = ($item['price'] * $item['quantity']) - $item['discount'] * $item['quantity'];
-                $total += $productSubtotal;
+                $total += $item->getLineTotal();
             }
         }
 
@@ -511,7 +572,7 @@ class CartManager
                 return [
                     'status' => 1,
                     'redirect_to' => 'checkout',
-                    'cart' => $cart,
+                    'cart' => self::cartForResponse($cart),
                     'message' => translate('successfully_added').'!',
                 ];
             }
@@ -552,7 +613,7 @@ class CartManager
                 return [
                     'status' => 1,
                     'redirect_to' => 'checkout',
-                    'cart' => $cart,
+                    'cart' => self::cartForResponse($cart),
                     'cart_shipping_cost' => $getShippingCost->cost ?? 0,
                     'message' => translate('successfully_added').'!',
                 ];
@@ -567,7 +628,7 @@ class CartManager
                 return [
                     'status' => 1,
                     'redirect_to' => 'checkout',
-                    'cart' => $cart,
+                    'cart' => self::cartForResponse($cart),
                     'cart_shipping_cost' => $getShippingCost->cost ?? 0,
                     'message' => translate('successfully_added').'!',
                 ];
@@ -582,7 +643,7 @@ class CartManager
         return [
             'status' => 1,
             'in_cart_key' => $cart['id'],
-            'cart' => $cart,
+            'cart' => self::cartForResponse($cart),
             'message' => translate('successfully_added').'!',
             'product_variant_type' => count(json_decode($product['variation'], true)) > 0 ? 'multi_variant' : 'single_variant',
         ];
@@ -590,7 +651,114 @@ class CartManager
 
     public static function addToCartDigitalProduct($request, $product, $shippingType, $sellerShippingList): array
     {
-        if ($product['product_type'] === 'digital') {
+        $directTopUpService = app(\App\Services\DirectTopUp\DirectTopUpService::class);
+
+        if ($directTopUpService->isDirectTopUpProduct($product)) {
+            $accountId = is_string($request['direct_topup_account_id'] ?? null)
+                ? trim($request['direct_topup_account_id'])
+                : '';
+            $topUpQuantity = (float) ($request['direct_topup_quantity'] ?? 0);
+
+            $errors = $directTopUpService->validatePurchase($product, $accountId, $topUpQuantity);
+            if ($errors !== []) {
+                return ['status' => 0, 'message' => reset($errors)];
+            }
+
+            $price = $directTopUpService->calculateTotalPrice($product, $topUpQuantity);
+            $request['quantity'] = 1;
+
+            $user = Helpers::getCustomerInformation($request);
+            $guestId = session('guest_id') ?? ($request->guest_id ?? 0);
+
+            if ($user == 'offline') {
+                $customerId = $guestId;
+                $isGuest = 1;
+            } else {
+                $customerId = $user['id'];
+                $isGuest = 0;
+            }
+
+            $getProductDiscount = getProductPriceByType(product: $product, type: 'discounted_amount', result: 'value', price: $price);
+            $cartArray = [
+                'customer_id' => $customerId,
+                'product_id' => $request['id'],
+                'product_type' => $product['product_type'],
+                'digital_product_type' => $product['digital_product_type'],
+                'choices' => json_encode([]),
+                'variations' => json_encode([]),
+                'variant' => $request['variant_key'] ?? '',
+                'quantity' => 1,
+                'price' => $price,
+                'custom_amount' => null,
+                'supplier_denomination_id' => null,
+                'direct_topup_account_id' => $accountId,
+                'direct_topup_quantity' => $topUpQuantity,
+                'discount' => $getProductDiscount,
+                'is_checked' => 1,
+                'slug' => $product['slug'],
+                'name' => $product['name'],
+                'thumbnail' => $product['thumbnail'],
+                'seller_id' => ($product->added_by == 'admin') ? 1 : $product->user_id,
+                'seller_is' => $product['added_by'],
+                'created_at' => now(),
+                'updated_at' => now(),
+                'shop_info' => $product->added_by == 'admin' ? getInHouseShopConfig(key: 'name') : Shop::where(['seller_id' => $product->user_id])->first()->name,
+                'shipping_cost' => 0,
+                'shipping_type' => $shippingType,
+                'is_guest' => $isGuest,
+            ];
+
+            $cartCheck = Cart::where(['customer_id' => $customerId, 'is_guest' => $isGuest, 'seller_id' => ($product->added_by == 'admin') ? 1 : $product->user_id, 'seller_is' => $product['added_by'], 'product_type' => 'digital'])->first();
+            if ($cartCheck) {
+                $cartArray['cart_group_id'] = $cartCheck['cart_group_id'];
+            } else {
+                $cartArray['cart_group_id'] = ($user == 'offline' ? 'guest' : $user['id']).'-'.Str::random(5).'-'.time();
+            }
+
+            $cart = Cart::where([
+                'product_id' => $request['id'],
+                'customer_id' => $customerId,
+                'is_guest' => $isGuest,
+                'variant' => $request['variant_key'] ?? '',
+            ])->whereNotNull('direct_topup_quantity')->first();
+
+            if ($cart) {
+                $cart->fill($cartArray);
+                $cart->save();
+            } else {
+                $cart = Cart::create($cartArray);
+            }
+
+            if ($request['buy_now'] == 1) {
+                $productTotalPrice = $price - $getProductDiscount;
+                $verifyStatus = OrderManager::checkSingleProductMinimumOrderAmountVerify(request: $request, product: $product, totalAmount: $productTotalPrice);
+                if ($verifyStatus['status'] == 0) {
+                    return ['status' => 0, 'message' => $verifyStatus['message']];
+                }
+
+                Cart::where(['customer_id' => ($user == 'offline' ? $guestId : $user['id']), 'is_guest' => ($user == 'offline' ? 1 : 0)])
+                    ->update(['is_checked' => 0]);
+
+                Cart::where(['id' => $cart['id']])->update(['is_checked' => 1]);
+
+                return [
+                    'status' => 1,
+                    'redirect_to' => 'checkout',
+                    'cart' => self::cartForResponse($cart),
+                    'message' => translate('successfully_added').'!',
+                ];
+            }
+
+            return [
+                'status' => 1,
+                'in_cart_key' => $cart['id'],
+                'cart' => self::cartForResponse($cart),
+                'message' => translate('successfully_added').'!',
+                'product_variant_type' => 'single_variant',
+            ];
+        }
+
+        if ($product['product_type'] === 'digital' && ! SupplierProductMapping::hasActiveMapping((int) $product['id'])) {
             $available = self::getAvailableDigitalCodeCount((int) $product['id']);
 
             if ($available < $request['quantity']) {
@@ -743,7 +911,7 @@ class CartManager
                 return [
                     'status' => 1,
                     'redirect_to' => 'checkout',
-                    'cart' => $cart,
+                    'cart' => self::cartForResponse($cart),
                     'message' => translate('successfully_added').'!',
                 ];
             }
@@ -752,7 +920,7 @@ class CartManager
         return [
             'status' => 1,
             'in_cart_key' => $cart['id'],
-            'cart' => $cart,
+            'cart' => self::cartForResponse($cart),
             'message' => translate('successfully_added').'!',
             'product_variant_type' => count(json_decode($product['variation'], true)) > 0 ? 'multi_variant' : 'single_variant',
         ];
@@ -824,6 +992,45 @@ class CartManager
         }
 
         $product = Product::find($cart['product_id']);
+        $isDirectTopUp = (bool) ($product->is_direct_topup ?? false);
+
+        if ($isDirectTopUp) {
+            $directTopUpService = app(\App\Services\DirectTopUp\DirectTopUpService::class);
+            $accountId = is_string($request['direct_topup_account_id'] ?? null)
+                ? trim($request['direct_topup_account_id'])
+                : (string) ($cart->direct_topup_account_id ?? '');
+            $newQty = (float) ($request['direct_topup_quantity'] ?? $request->quantity ?? 0);
+
+            $errors = $directTopUpService->validatePurchase($product, $accountId, $newQty);
+            if ($errors !== []) {
+                return [
+                    'status' => 0,
+                    'qty' => (float) ($cart->direct_topup_quantity ?? 0),
+                    'message' => reset($errors),
+                ];
+            }
+
+            $cart['direct_topup_account_id'] = $accountId;
+            $cart['direct_topup_quantity'] = $newQty;
+            $cart['quantity'] = 1;
+            $cart['price'] = $directTopUpService->calculateTotalPrice($product, $newQty);
+            $cart['discount'] = getProductPriceByType(product: $product, type: 'discounted_amount', result: 'value', price: $cart['price']);
+            $cart['shipping_cost'] = 0;
+            $cart->save();
+
+            if ($request['buy_now'] == 1) {
+                Cart::where(['customer_id' => ($user == 'offline' ? $guest_id : $user['id']), 'is_guest' => ($user == 'offline' ? 1 : 0)])
+                    ->update(['is_checked' => 0]);
+                Cart::where(['id' => $request->key, 'customer_id' => ($user == 'offline' ? $guest_id : $user['id'])])->update(['is_checked' => 1]);
+            }
+
+            return [
+                'status' => 1,
+                'qty' => $newQty,
+                'message' => translate('successfully_updated!'),
+            ];
+        }
+
         $count = count(json_decode($product->variation));
         if ($count) {
             for ($i = 0; $i < $count; $i++) {
@@ -837,7 +1044,7 @@ class CartManager
         } elseif (($product['product_type'] == 'physical') && $product['current_stock'] < $request->quantity) {
             $status = 0;
             $qty = $cart['quantity'];
-        } elseif ($product['product_type'] == 'digital') {
+        } elseif ($product['product_type'] == 'digital' && ! SupplierProductMapping::hasActiveMapping((int) $product['id'])) {
             $available = self::getAvailableDigitalCodeCount((int) $product['id']);
 
             if ($available < $request->quantity) {
@@ -968,7 +1175,7 @@ class CartManager
                     }
                 } elseif ($product['product_type'] == 'physical' && $product['current_stock'] < $cart->quantity) {
                     $status = false;
-                } elseif ($product['product_type'] == 'digital') {
+                } elseif ($product['product_type'] == 'digital' && ! SupplierProductMapping::hasActiveMapping((int) $product['id'])) {
                     $available = self::getAvailableDigitalCodeCount((int) $product['id']);
 
                     if ($available < $cart->quantity) {

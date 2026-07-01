@@ -27,9 +27,9 @@ class VendorWalletTransferController extends BaseController
             ->orderBy('f_name')
             ->get();
         $transfers = WalletTransfer::where('from_user_type', 'admin')
-        ->where('to_user_type', 'vendor')
-        ->latest()
-        ->paginate(getWebConfig(name: 'pagination_limit'));
+            ->where('to_user_type', 'vendor')
+            ->latest()
+            ->paginate(getWebConfig(name: 'pagination_limit'));
 
         // Manually load toUser (Seller) with shop because WalletTransfer::toUser()
         // dynamically returns Seller|User based on to_user_type. When called on a

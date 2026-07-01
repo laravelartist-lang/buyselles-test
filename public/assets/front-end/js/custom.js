@@ -1278,11 +1278,36 @@ function hideProductDetailsStickySection() {
     });
 }
 
+function syncDirectTopUpFormFields(formSelector = ".add-to-cart-details-form") {
+    const $section = $(formSelector).find("#direct-topup-purchase-section");
+    if (!$section.length) {
+        return;
+    }
+
+    const minQty = parseFloat($section.data("min-quantity")) || 0;
+    const maxQty = parseFloat($section.data("max-quantity")) || 0;
+    let qty = parseInt(
+        String($("#direct-topup-quantity-input").val()).replace(/[^0-9]/g, ""),
+        10
+    );
+
+    if (isNaN(qty) || qty < minQty) {
+        qty = Math.floor(minQty);
+    } else if (qty > maxQty) {
+        qty = Math.floor(maxQty);
+    }
+
+    $("#direct-topup-quantity-input").val(qty);
+    $("#direct-topup-quantity-hidden").val(qty);
+}
+
 function addToCart(
     formSelector = ".add-to-cart-details-form",
     redirect_to_checkout = false,
     url = null
 ) {
+    syncDirectTopUpFormFields(formSelector);
+
     if (checkValidityForVariantPrice(formSelector)) {
         $.ajaxSetup({
             headers: {
@@ -1298,9 +1323,10 @@ function addToCart(
         // update-quantity endpoint only updates qty and would leave the stored price stale.
         let customAmountInput = $(formSelector).find('#custom-amount-input');
         let hasOpenDenomination = customAmountInput.length > 0 && customAmountInput.val() !== '';
+        let isDirectTopUp = $(formSelector).find('#direct-topup-purchase-section').length > 0;
 
         let formActionUrl = $("#route-cart-add").data("url");
-        if (existCartItem !== "" && !redirect_to_checkout && !hasOpenDenomination) {
+        if (existCartItem !== "" && !redirect_to_checkout && !hasOpenDenomination && !isDirectTopUp) {
             formActionUrl = $("#route-cart-updateQuantity-guest").data("url");
         }
 
@@ -1328,7 +1354,7 @@ function addToCart(
                     }
                 }
                 if (response.status == 1) {
-                    updateNavCart();
+                    updateNavCart(true);
                     toastr.success(response.message, {
                         CloseButton: true,
                         ProgressBar: true,
@@ -1371,6 +1397,10 @@ function addToCart(
 
                     return false;
                 } else if (response.status == 0) {
+                    toastr.error(response.message, {
+                        CloseButton: true,
+                        ProgressBar: true,
+                    });
                     if (
                         redirectToCheckoutValue !== "false" ||
                         !redirect_to_checkout
@@ -1382,11 +1412,47 @@ function addToCart(
                     }
                 }
             },
+            error: function () {
+                toastr.error(
+                    $("#message-something-went-wrong").data("text") ||
+                        "Something went wrong. Please try again.",
+                    {
+                        CloseButton: true,
+                        ProgressBar: true,
+                    }
+                );
+            },
             complete: function () {
                 $("#loading").hide();
             },
         });
     } else {
+        if ($(formSelector).find("#direct-topup-purchase-section").length) {
+            const accountId = $.trim(
+                $(formSelector).find("#direct-topup-account-input").val() || ""
+            );
+            if (!accountId) {
+                toastr.error(
+                    $("#message-please-choose-all-options").data("text") ||
+                        "Please complete all required fields.",
+                    {
+                        CloseButton: true,
+                        ProgressBar: true,
+                    }
+                );
+            } else {
+                toastr.error(
+                    $("#message-minimum-order-quantity-cannot-less-than").data(
+                        "text"
+                    ) || "Please enter a valid quantity.",
+                    {
+                        CloseButton: true,
+                        ProgressBar: true,
+                    }
+                );
+            }
+            return;
+        }
         Swal.fire({
             type: "info",
             title: "Cart",
@@ -1523,14 +1589,36 @@ function orderSummaryStickyFunction() {
 $(window).on("resize", orderSummaryStickyFunction);
 $(window).on("scroll", orderSummaryStickyFunction);
 
+function openHeaderCartDropdown() {
+    const $menu = $("#cart_items").find(".dropdown-menu");
+    if ($menu.length) {
+        $menu.addClass("__cart-visible").removeClass("dismissed").removeAttr("style");
+    }
+}
+
 function cartListQuantityUpdateInit() {
-    $(".action-update-cart-quantity").on("click", function () {
-        let cartId = $(this).data("cart-id");
-        let productId = $(this).data("product-id");
-        let action = $(this).data("action");
-        let event = $(this).data("event");
-        updateCartQuantity(cartId, productId, action, event);
-    });
+    $(".action-update-cart-quantity")
+        .off("click")
+        .on("click", function () {
+            let cartId = $(this).data("cart-id");
+            let productId = $(this).data("product-id");
+            let action = $(this).data("action");
+            let event = $(this).data("event");
+            updateCartQuantity(cartId, productId, action, event);
+        });
+
+    $(".action-remove-from-cart")
+        .off("click")
+        .on("click", function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            let cartId = $(this).data("cart-id");
+            let removeUrl = $("#route-cart-remove").data("url");
+            let token = $('meta[name="_token"]').attr("content");
+            let segmentArray = window.location.pathname.split("/");
+            let segment = segmentArray[segmentArray.length - 1];
+            cartItemRemoveFunction(removeUrl, token, cartId, segment);
+        });
 
     $(".action-update-cart-quantity-list").on("click", function () {
         let minimumOrderQuantity = $(this).data("minimum-order");
@@ -1738,7 +1826,7 @@ function removeFromCart(key) {
     );
 }
 
-function updateNavCart() {
+function updateNavCart(openDropdown = false) {
     $.post(
         $("#route-cart-nav-cart").data("url"),
         {
@@ -1747,8 +1835,20 @@ function updateNavCart() {
         function (response) {
             $("#cart_items").html(response.data);
             cartListQuantityUpdateInit();
+            if (openDropdown) {
+                openHeaderCartDropdown();
+            }
         }
-    );
+    ).fail(function () {
+        toastr.error(
+            $("#message-something-went-wrong").data("text") ||
+                "Something went wrong. Please try again.",
+            {
+                CloseButton: true,
+                ProgressBar: true,
+            }
+        );
+    });
 }
 
 function cartQuantityInitialize() {
@@ -1917,13 +2017,26 @@ function updateCartQuantity(cart_id, product_id, action, event) {
     let remove_url = $("#route-cart-remove").data("url");
     let update_quantity_url = $("#route-cart-updateQuantity-guest").data("url");
     let token = $('meta[name="_token"]').attr("content");
-    let product_qyt =
-        parseInt($(`.cartQuantity${cart_id}`).val()) + parseInt(action);
     let cart_quantity_of = $(`.cartQuantity${cart_id}`);
+    let isDirectTopUp = parseInt(cart_quantity_of.data("is-direct-topup"), 10) === 1;
+    let product_qyt =
+        parseInt(cart_quantity_of.val(), 10) + parseInt(action, 10);
     let segment_array = window.location.pathname.split("/");
     let segment = segment_array[segment_array.length - 1];
 
-    if (cart_quantity_of.val() > cart_quantity_of.data("current-stock")) {
+    if (isDirectTopUp) {
+        const minQty = parseInt(cart_quantity_of.data("min"), 10) || 1;
+        const maxQty =
+            parseInt(cart_quantity_of.data("max"), 10) ||
+            parseInt(cart_quantity_of.data("current-stock"), 10) ||
+            product_qyt;
+        product_qyt = Math.max(minQty, Math.min(maxQty, product_qyt));
+    }
+
+    if (
+        !isDirectTopUp &&
+        cart_quantity_of.val() > cart_quantity_of.data("current-stock")
+    ) {
         cartItemRemoveFunction(remove_url, token, cart_id, segment);
         return false;
     }
@@ -1952,15 +2065,21 @@ function updateCartQuantity(cart_id, product_id, action, event) {
             cart_quantity_of.val(min_value);
             updateCartQuantity(cart_id, product_id, action, event);
         } else {
-            $(`.cartQuantity${cart_id}`).html(product_qyt);
+            cart_quantity_of.val(product_qyt);
+            const postData = {
+                _token: token,
+                key: cart_id,
+                product_id: product_id,
+                quantity: isDirectTopUp ? 1 : product_qyt,
+            };
+
+            if (isDirectTopUp) {
+                postData.direct_topup_quantity = product_qyt;
+            }
+
             $.post(
                 update_quantity_url,
-                {
-                    _token: token,
-                    key: cart_id,
-                    product_id: product_id,
-                    quantity: product_qyt,
-                },
+                postData,
                 function (response) {
                     if (response["status"] == 0) {
                         toastr.error(response["message"]);
@@ -1970,16 +2089,8 @@ function updateCartQuantity(cart_id, product_id, action, event) {
                     $('.product-exist-in-cart-list[name="key"]').val(
                         response.in_cart_key
                     );
-                    response["qty"] <= 1
-                        ? $(`.quantity__minus${cart_id}`).html(
-                            '<i class="fi fi-rr-trash-outlined text-danger fs-10"></i>'
-                        )
-                        : $(`.quantity__minus${cart_id}`).html(
-                            '<i class="tio-remove fs-10"></i>'
-                        );
 
                     $(`.cartQuantity${cart_id}`).val(response["qty"]);
-                    $(`.cartQuantity${cart_id}`).html(response["qty"]);
                     $(`.cart_quantity_multiply${cart_id}`).html(
                         response["qty"]
                     );
@@ -2007,18 +2118,24 @@ function updateCartQuantity(cart_id, product_id, action, event) {
                         progressBar.style.width =
                             response.free_delivery_status.percentage + "%";
                     }
-                    if (response["qty"] == cart_quantity_of.data("min")) {
+                    updateNavCart();
+                    if (
+                        parseInt(response["qty"], 10) ===
+                            parseInt(cart_quantity_of.data("min"), 10) ||
+                        (parseInt(response["qty"], 10) <= 1 &&
+                            !response["is_direct_topup"])
+                    ) {
                         cart_quantity_of
                             .parent()
                             .find(".quantity__minus")
                             .html(
-                                '<i class="fi fi-rr-trash-outlined text-danger fs-10"></i>'
+                                '<span class="fi fi-rr-trash text-danger fs-14"></span>'
                             );
                     } else {
                         cart_quantity_of
                             .parent()
                             .find(".quantity__minus")
-                            .html('<i class="tio-remove fs-10"></i>');
+                            .html('<i class="tio-remove fs-10 text-primary"></i>');
                     }
                     if (
                         segment === "shop-cart" ||
@@ -2178,6 +2295,12 @@ $(".product-quantity-plus").on("click", function () {
 });
 
 function checkValidityForVariantPrice(formSelector) {
+    if ($(formSelector).find('#direct-topup-purchase-section').length > 0) {
+        let qty = parseFloat($(formSelector).find('#direct-topup-quantity-hidden').val()) || 0;
+
+        return qty > 0 && checkAddToCartValidity(formSelector);
+    }
+
     return (
         $(formSelector).find("input[name=quantity]").val() > 0 &&
         checkAddToCartValidity(formSelector)
@@ -2253,6 +2376,14 @@ function updateProductDetailsTopSection(formSelector, response) {
     $(formSelector).find(".product-details-chosen-price-section").removeClass("d-none");
     $(formSelector).find(".product-details-chosen-price-amount").html(response?.price);
 
+    if (response?.is_direct_topup) {
+        const topUpQty = Math.floor(parseFloat(response?.direct_topup_quantity ?? response?.in_cart_quantity ?? 0));
+        $('#direct-topup-quantity-hidden').val(topUpQty);
+        $('#direct-topup-quantity-input').val(topUpQty);
+        $('#direct-topup-qty-from-price').text(topUpQty);
+    } else {
+        $(formSelector).find(".product-details-cart-qty").val(response?.in_cart_quantity);
+    }
 
     $(formSelector).find(".product-details-cart-qty").attr("max", response?.quantity);
 
@@ -2283,7 +2414,6 @@ function updateProductDetailsTopSection(formSelector, response) {
         }
     }
 
-    $(formSelector).find(".product-details-cart-qty").val(response?.in_cart_quantity);
     $(formSelector).find(".product-generated-variation-code").val(response?.variation_code);
     $(formSelector).find(".product-generated-variation-text").text(response?.variation_code);
 
@@ -2332,6 +2462,17 @@ document.addEventListener('change', function (e) {
     if (match) match.checked = true;
 });
 function checkAddToCartValidity(formSelector = ".add-to-cart-details-form") {
+    if ($(formSelector).find("#direct-topup-purchase-section").length > 0) {
+        const accountId = $.trim(
+            $(formSelector).find("#direct-topup-account-input").val() || ""
+        );
+        const qty =
+            parseFloat($(formSelector).find("#direct-topup-quantity-hidden").val()) ||
+            0;
+
+        return accountId !== "" && qty > 0;
+    }
+
     var names = {};
     $(formSelector)
         .find("input:radio")

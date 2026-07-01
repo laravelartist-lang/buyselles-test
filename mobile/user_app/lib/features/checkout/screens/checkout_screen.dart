@@ -39,6 +39,7 @@ class CheckoutScreen extends StatefulWidget {
   final double tax;
   final int? sellerId;
   final bool onlyDigital;
+  final bool onlyDirectTopUp;
   final bool hasPhysical;
   final int quantity;
 
@@ -52,6 +53,7 @@ class CheckoutScreen extends StatefulWidget {
       required this.shippingFee,
       this.sellerId,
       this.onlyDigital = false,
+      this.onlyDirectTopUp = false,
       required this.quantity,
       required this.hasPhysical});
 
@@ -130,6 +132,10 @@ class CheckoutScreenState extends State<CheckoutScreen> {
     }
 
     Provider.of<CheckoutController>(context, listen: false).clearData();
+    Provider.of<CheckoutController>(context, listen: false)
+        .digitalOnly(widget.onlyDigital, isUpdate: false);
+    Provider.of<CheckoutController>(context, listen: false)
+        .directTopUpOnly(widget.onlyDirectTopUp, isUpdate: false);
 
     if (splashController.configModel?.systemTaxIncludeStatus != 1) {
       _tax = widget.tax;
@@ -632,7 +638,47 @@ class CheckoutScreenState extends State<CheckoutScreen> {
             Provider.of<CheckoutController>(context, listen: false)
                 .getFirstOrderId(orderID);
 
-        if (widget.onlyDigital && orderId != null) {
+        if (widget.onlyDirectTopUp && orderId != null) {
+          if (isLoggedIn) {
+            RouterHelper.getOrderDetailsScreenRoute(
+              orderId: int.parse(orderId),
+              action: RouteAction.pushReplacement,
+            );
+          } else {
+            RouterHelper.getDashboardRoute(
+                action: RouteAction.pushReplacement, page: 'home');
+          }
+
+          Future.delayed(const Duration(milliseconds: 300), () {
+            showModalBottomSheet(
+              isDismissible: false,
+              enableDrag: false,
+              context: Get.context!,
+              isScrollControlled: true,
+              backgroundColor: Colors.transparent,
+              shape: const RoundedRectangleBorder(
+                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+              ),
+              builder: (context) {
+                return Container(
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).cardColor,
+                    borderRadius:
+                        const BorderRadius.vertical(top: Radius.circular(20)),
+                  ),
+                  child: OrderPlaceBottomSheetWidget(
+                    orderID: orderID,
+                    icon: Icons.check,
+                    title: getTranslated('order_placed', Get.context!),
+                    description: getTranslated('direct_topup_order_completed', Get.context!) ??
+                        getTranslated('your_order_placed', Get.context!),
+                    isFailed: false,
+                  ),
+                );
+              },
+            );
+          });
+        } else if (widget.onlyDigital && orderId != null) {
           RouterHelper.getDigitalProductDeliveryScreenRoute(
               orderId: int.parse(orderId), action: RouteAction.pushReplacement);
         } else {

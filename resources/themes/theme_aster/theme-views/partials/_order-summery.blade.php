@@ -19,8 +19,8 @@
             @php($get_shipping_cost_saved_for_free_delivery = CartManager::getShippingCostSavedForFreeDelivery(type: 'checked'))
             @if ($cart->count() > 0)
                 @foreach ($cart as $key => $cartItem)
-                    @php($product_price_total += $cartItem['price'] * $cartItem['quantity'])
-                    @php($total_discount_on_product += $cartItem['discount'] * $cartItem['quantity'])
+                    @php($product_price_total += $cartItem->isDirectTopUp() ? $cartItem->getGrossPrice() : $cartItem['price'] * $cartItem['quantity'])
+                    @php($total_discount_on_product += $cartItem->getTotalDiscountAmount())
                 @endforeach
 
                 @if (session()->missing('coupon_type') || session('coupon_type') != 'free_delivery')

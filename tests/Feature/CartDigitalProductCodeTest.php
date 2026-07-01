@@ -8,19 +8,19 @@ use App\Utils\CartManager;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Schema;
+use Tests\Concerns\ManagesTestDatabaseSchema;
 use Tests\TestCase;
 
 class CartDigitalProductCodeTest extends TestCase
 {
+    use ManagesTestDatabaseSchema;
+
     protected function setUp(): void
     {
         parent::setUp();
 
         Cache::flush();
-        Schema::dropIfExists('business_settings');
-        Schema::dropIfExists('digital_product_codes');
-        Schema::create('business_settings', function (Blueprint $table): void {
+        $this->recreateTable('business_settings', function (Blueprint $table): void {
             $table->id();
             $table->string('type')->nullable();
             $table->longText('value')->nullable();
@@ -35,7 +35,7 @@ class CartDigitalProductCodeTest extends TestCase
             'updated_at' => now(),
         ]);
 
-        Schema::create('digital_product_codes', function (Blueprint $table): void {
+        $this->recreateTable('digital_product_codes', function (Blueprint $table): void {
             $table->id();
             $table->unsignedBigInteger('product_id')->index();
             $table->text('code');
@@ -44,15 +44,6 @@ class CartDigitalProductCodeTest extends TestCase
             $table->date('expiry_date')->nullable();
             $table->timestamps();
         });
-    }
-
-    protected function tearDown(): void
-    {
-        Schema::dropIfExists('digital_product_codes');
-        Schema::dropIfExists('business_settings');
-        Cache::flush();
-
-        parent::tearDown();
     }
 
     // ── Add-to-cart ───────────────────────────────────────────────────────────

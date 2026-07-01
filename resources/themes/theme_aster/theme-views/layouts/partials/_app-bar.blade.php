@@ -87,6 +87,26 @@
                     @php($total_tax=0)
                     @foreach($cart_mobile as $cartItem)
                         @php($product=$cartItem->product)
+                        @php
+                            $getProductCurrentStock = $product?->current_stock ?? 0;
+                            if ($product && !empty($product->variation)) {
+                                foreach (json_decode($product->variation, true) as $productVariantSingle) {
+                                    if ($productVariantSingle['type'] == $cartItem->variant) {
+                                        $getProductCurrentStock = $productVariantSingle['qty'];
+                                    }
+                                }
+                            }
+
+                            $isDirectTopUpItem = $cartItem->isDirectTopUp();
+                            $displayQuantity = (int) floor($cartItem->getDisplayQuantity());
+                            $minCartQuantity = $isDirectTopUpItem
+                                ? (int) floor((float) $product->direct_topup_min_quantity)
+                                : ($product?->minimum_order_qty ?? 1);
+                            $maxCartQuantity = $isDirectTopUpItem
+                                ? (int) floor((float) $product->direct_topup_max_quantity)
+                                : $getProductCurrentStock;
+                            $lineTotal = $cartItem->getLineTotal();
+                        @endphp
                         <li>
                             <div class="media gap-3">
                                 <div class="avatar avatar-xxl overflow-hidden position-relative rounded">
@@ -105,7 +125,7 @@
                                     <h6 class="mb-1 {{ $product && $product->status == 0?'blur-section':'' }}">
                                         <a href="{{ $product && $product->status == 1? route('product',$cartItem['slug']) :'javascript:'}}">{{Str::limit($cartItem['name'],30)}}</a>
                                     </h6>
-                                    @if(!empty($cartItem['variant']))
+                                    @if(!empty($cartItem['variant']) && ! $isDirectTopUpItem)
                                         <div>
                                             <span class="fs-12">{{translate('variant')}} : {{ $cartItem['variant'] }}</span>
                                         </div>
@@ -114,30 +134,35 @@
                                         <div
                                             class="d-flex flex-column gap-1 {{ $product && $product->status == 0?'blur-section':'' }}">
                                             <div class="fs-12"><span
-                                                    class="cart_quantity_{{ $cartItem['id'] }}">{{$cartItem['quantity']}}</span>
-                                                 {{'×'.webCurrencyConverter(($cartItem['price']-$cartItem['discount']))}}
+                                                    class="cart_quantity_{{ $cartItem['id'] }}">{{ $displayQuantity }}</span>
+                                                @if ($isDirectTopUpItem)
+                                                    {{ translate('quantity') }}
+                                                @else
+                                                    {{ '×'.webCurrencyConverter(($cartItem['price']-$cartItem['discount'])) }}
+                                                @endif
                                             </div>
                                             <div class="product__price d-flex flex-wrap gap-2">
+                                                @if($cartItem['discount'] > 0)
                                                 <del
-                                                    class="product__old-price quantity_price_of_{{ $cartItem['id'] }}">{{webCurrencyConverter($cartItem['price']*$cartItem['quantity'])}}</del>
+                                                    class="product__old-price quantity_price_of_{{ $cartItem['id'] }}">{{webCurrencyConverter($cartItem['price'] * ($isDirectTopUpItem ? 1 : $cartItem['quantity']))}}</del>
+                                                @endif
                                                 <ins
-                                                    class="product__new-price discount_price_of_{{ $cartItem['id'] }}">{{webCurrencyConverter(($cartItem['price']-$cartItem['discount'])*(int)$cartItem['quantity'])}}</ins>
+                                                    class="product__new-price discount_price_of_{{ $cartItem['id'] }}">{{webCurrencyConverter($lineTotal)}}</ins>
                                             </div>
                                         </div>
 
-                                        <div class="quantity">
+                                        <div class="d-flex flex-column align-items-end gap-1">
                                             @if ($product && $product->status == 1)
-                                                <?php
-                                                    $getProductCurrentStock = $product->current_stock;
-                                                    if(!empty($product->variation)) {
-                                                        foreach(json_decode($product->variation, true) as $productVariantSingle) {
-                                                            if($productVariantSingle['type'] == $cartItem->variant) {
-                                                                $getProductCurrentStock = $productVariantSingle['qty'];
-                                                            }
-                                                        }
-                                                    }
-                                                ?>
-
+                                                <button type="button"
+                                                    class="btn btn-link p-0 border-0 action-remove-from-cart"
+                                                    data-cart-id="{{ $cartItem['id'] }}"
+                                                    data-product-id="{{ $cartItem['product_id'] }}"
+                                                    title="{{ translate('remove') }}">
+                                                    <i class="bi bi-trash3-fill text-danger fs-12"></i>
+                                                </button>
+                                            @endif
+                                            <div class="quantity">
+                                            @if ($product && $product->status == 1)
                                                 <span
                                                     class="quantity__minus cart-quantity-update cart_quantity__minus{{ $cartItem['id'] }}"
                                                     data-cart-id="{{ $cartItem['id'] }}"
@@ -146,7 +171,7 @@
                                                     data-event="minus"
                                                     data-prevent="true">
 
-                                                    @if($getProductCurrentStock < $cartItem['quantity'] || $cartItem['quantity'] == ($product ? $product->minimum_order_qty : 1))
+                                                    @if((! $isDirectTopUpItem && $getProductCurrentStock < $displayQuantity) || $displayQuantity == $minCartQuantity)
                                                         <i class="bi bi-trash3-fill text-danger fs-10"></i>
                                                     @else
                                                         <i class="bi bi-dash"></i>
@@ -155,11 +180,13 @@
                                                 </span>
                                                 <input type="text"
                                                        class="quantity__qty cart-quantity-update-input cart_quantity_of_{{ $cartItem['id'] }}"
-                                                       data-min="{{ $product?->minimum_order_qty ?? 1 }}"
-                                                       value="{{$cartItem['quantity']}}"
+                                                       data-min="{{ $minCartQuantity }}"
+                                                       data-max="{{ $maxCartQuantity }}"
+                                                       data-is-direct-topup="{{ $isDirectTopUpItem ? 1 : 0 }}"
+                                                       value="{{ $displayQuantity }}"
                                                        data-cart-id="{{ $cartItem['id'] }}"
                                                        data-product-id="{{ $cartItem['product_id'] }}"
-                                                       data-current-stock="{{ $getProductCurrentStock }}"
+                                                       data-current-stock="{{ $maxCartQuantity }}"
                                                        data-value=0
                                                        data-prevent="true">
                                                 <span class="quantity__plus cart-quantity-update"
@@ -188,12 +215,13 @@
                                                        data-prevent="true">
                                             @endif
                                         </div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
                         </li>
-                        @php($sub_total+=($cartItem['price']-$cartItem['discount'])*(int)$cartItem['quantity'])
-                        @php($total_tax+=$cartItem['tax']*(int)$cartItem['quantity'])
+                        @php($sub_total += $lineTotal)
+                        @php($total_tax += $cartItem['tax'] * ($isDirectTopUpItem ? 1 : $cartItem['quantity']))
                     @endforeach
 
                     <li>

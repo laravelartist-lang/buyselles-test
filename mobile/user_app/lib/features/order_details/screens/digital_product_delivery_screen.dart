@@ -93,9 +93,33 @@ class _DigitalProductDeliveryScreenState extends State<DigitalProductDeliveryScr
           final codes = orderDetailsController.digitalCodes;
           if (codes == null || codes.isEmpty) {
             return Center(
-              child: Text(
-                getTranslated('no_digital_codes_available', context) ?? 'No digital codes available',
-                style: titilliumRegular.copyWith(fontSize: Dimensions.fontSizeLarge),
+              child: Padding(
+                padding: const EdgeInsets.all(Dimensions.paddingSizeDefault),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.check_circle, color: Theme.of(context).primaryColor, size: 64),
+                    const SizedBox(height: Dimensions.paddingSizeDefault),
+                    Text(
+                      getTranslated('direct_topup_order_completed', context) ??
+                          getTranslated('order_placed', context) ??
+                          'Order placed',
+                      textAlign: TextAlign.center,
+                      style: titilliumSemiBold.copyWith(fontSize: Dimensions.fontSizeLarge),
+                    ),
+                    const SizedBox(height: Dimensions.paddingSizeSmall),
+                    Text(
+                      getTranslated('your_order_placed', context) ?? 'Your order has been placed successfully.',
+                      textAlign: TextAlign.center,
+                      style: titilliumRegular.copyWith(color: Theme.of(context).hintColor),
+                    ),
+                    const SizedBox(height: Dimensions.paddingSizeLarge),
+                    ElevatedButton(
+                      onPressed: _onExit,
+                      child: Text(getTranslated('continue', context) ?? 'Continue'),
+                    ),
+                  ],
+                ),
               ),
             );
           }

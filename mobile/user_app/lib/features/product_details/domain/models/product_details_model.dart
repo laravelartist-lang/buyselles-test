@@ -71,6 +71,9 @@ class ProductDetailsModel {
   List<String?>? restockRequestedList;
   int? isRestockRequested;
   ClearanceSale? clearanceSale;
+  DirectTopUpConfig? _directTopup;
+
+  DirectTopUpConfig? get directTopup => _directTopup;
 
   ProductDetailsModel(
       {int? id,
@@ -502,8 +505,11 @@ class ProductDetailsModel {
     final supplierMapping = json['has_active_supplier_mapping'];
     if (supplierMapping is bool) {
       _hasActiveSupplierMapping = supplierMapping ? 1 : 0;
-    } else if (supplierMapping != null) {
+    } else     if (supplierMapping != null) {
       _hasActiveSupplierMapping = int.tryParse(supplierMapping.toString());
+    }
+    if (json['direct_topup'] != null) {
+      _directTopup = DirectTopUpConfig.fromJson(json['direct_topup']);
     }
     if(json['minimum_order_qty'] != null){
       _minimumOrderQty = int.parse(json['minimum_order_qty'].toString());
@@ -912,5 +918,32 @@ class DigitalVariation {
     data['created_at'] = createdAt;
     data['updated_at'] = updatedAt;
     return data;
+  }
+}
+
+class DirectTopUpConfig {
+  bool? enabled;
+  String? accountLabel;
+  double? minQuantity;
+  double? maxQuantity;
+  double? pricePerUnit;
+  String? currency;
+
+  DirectTopUpConfig({
+    this.enabled,
+    this.accountLabel,
+    this.minQuantity,
+    this.maxQuantity,
+    this.pricePerUnit,
+    this.currency,
+  });
+
+  DirectTopUpConfig.fromJson(Map<String, dynamic> json) {
+    enabled = json['enabled'] == true;
+    accountLabel = json['account_label'];
+    minQuantity = double.tryParse('${json['min_quantity']}');
+    maxQuantity = double.tryParse('${json['max_quantity']}');
+    pricePerUnit = double.tryParse('${json['price_per_unit']}');
+    currency = json['currency'];
   }
 }

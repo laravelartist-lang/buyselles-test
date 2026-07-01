@@ -335,6 +335,8 @@ class CartModelBody{
   String? variantKey;
   double? digitalVariantPrice;
   String? productType;
+  String? directTopupAccountId;
+  double? directTopupQuantity;
 
   CartModelBody(
     {this.productId,
@@ -344,7 +346,9 @@ class CartModelBody{
       this.quantity,
       this.variantKey,
       this.digitalVariantPrice,
-      this.productType});
+      this.productType,
+      this.directTopupAccountId,
+      this.directTopupQuantity});
 
 
   Map<String, dynamic> toJson() {
@@ -357,6 +361,12 @@ class CartModelBody{
     data['variant_key'] = variantKey;
     data['digital_variant_price'] = digitalVariantPrice;
     data['product_type'] = productType;
+    if (directTopupAccountId != null && directTopupAccountId!.isNotEmpty) {
+      data['direct_topup_account_id'] = directTopupAccountId;
+    }
+    if (directTopupQuantity != null) {
+      data['direct_topup_quantity'] = directTopupQuantity;
+    }
     return data;
   }
 

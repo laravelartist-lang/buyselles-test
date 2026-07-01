@@ -128,6 +128,7 @@
                 </div>
             </div>
 
+            @if (! ($product->is_direct_topup ?? false))
             <div class="d-flex align-items-center gap-2 gap-sm-3 gap-xl-4">
                 <div class="quantity quantity--style-two d-flex align-items-center justify-content-between w-130px min-width-120 h-40px rounded overflow-hidden">
                     <span class="quantity__minus btn-number single-quantity-minus form-control h-100 bg--light w-32px" data-type="minus" data-field="quantity" data-form=".add-to-cart-sticky-form">
@@ -145,6 +146,8 @@
                         <i class="bi bi-plus"></i>
                     </span>
                 </div>
+            </div>
+            @endif
 
                 <div class="font-weight-normal text-accent align-items-end gap-2 d-none d-lg-flex">
                     <span class="text-primary fs-5 fw-bold product-details-chosen-price-amount user-select-none">  {{ $initialProductConfig['price']  }}</span>

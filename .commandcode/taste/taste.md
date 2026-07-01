@@ -13,3 +13,4 @@
 
 # laravel
 - When filtering Category::childes() by vendor product scope in ShopViewController, match the relationship to the child's position level: for children of level-0 categories (sub-categories), use `whereHas('subCategoryProduct', ...)` (maps to `Product.sub_category_id`); for children of level-1 categories (sub-sub-categories), use `whereHas('subSubCategoryProduct', ...)` (maps to `Product.sub_sub_category_id`). Never use `whereHas('product', ...)` for these — that maps to `Product.category_id` which is wrong for child categories. Confidence: 0.70
+- When fixing stock/availability issues for supplier-mapped products, check both backend validation (CartManager, DigitalProductCodeService, ResellerApiService) AND frontend display logic (Blade templates, JS components that render "out of stock" badges/buttons) — the `has_active_supplier_mapping` model attribute may need to be consumed in the UI layer too. Confidence: 0.65

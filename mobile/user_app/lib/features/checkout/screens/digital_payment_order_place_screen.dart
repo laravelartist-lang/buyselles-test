@@ -141,6 +141,7 @@ class DigitalPaymentScreenState extends State<DigitalPaymentScreen> {
   void _handlePaymentResult(bool isSuccess, bool isFailed, bool isCancel, bool isNewUser, String? orderIds) {
     bool isLoggedIn = Provider.of<AuthController>(context, listen: false).isLoggedIn();
     bool onlyDigital = Provider.of<CheckoutController>(context, listen: false).onlyDigital;
+    bool onlyDirectTopUp = Provider.of<CheckoutController>(context, listen: false).onlyDirectTopUp;
     String? firstOrderId = orderIds != null ? Provider.of<CheckoutController>(context, listen: false).getFirstOrderId(orderIds) : null;
 
     // if (Navigator.canPop(context)) {
@@ -154,6 +155,39 @@ class DigitalPaymentScreenState extends State<DigitalPaymentScreen> {
           action: RouteAction.pushReplacement,
           isNotification: true
         );
+      } else if (onlyDirectTopUp && firstOrderId != null) {
+        RouterHelper.getOrderDetailsScreenRoute(
+          orderId: int.parse(firstOrderId),
+          action: RouteAction.pushReplacement,
+        );
+        Future.delayed(const Duration(milliseconds: 300), () {
+          showModalBottomSheet(
+            isDismissible: false,
+            enableDrag: false,
+            context: Get.context!,
+            isScrollControlled: true,
+            backgroundColor: Colors.transparent,
+            shape: const RoundedRectangleBorder(
+              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+            ),
+            builder: (context) {
+              return Container(
+                decoration: BoxDecoration(
+                  color: Theme.of(context).cardColor,
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                ),
+                child: OrderPlaceBottomSheetWidget(
+                  orderID: firstOrderId,
+                  icon: Icons.check,
+                  title: getTranslated('order_placed', Get.context!),
+                  description: getTranslated('direct_topup_order_completed', Get.context!) ??
+                      getTranslated('your_order_placed', Get.context!),
+                  isFailed: false,
+                ),
+              );
+            },
+          );
+        });
       } else if (onlyDigital && firstOrderId != null) {
         RouterHelper.getDigitalProductDeliveryScreenRoute(
           orderId: int.parse(firstOrderId),

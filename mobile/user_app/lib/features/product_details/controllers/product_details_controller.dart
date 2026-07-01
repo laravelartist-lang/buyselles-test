@@ -49,6 +49,52 @@ class ProductDetailsController extends ChangeNotifier {
   int? get digitalVariationSubindex => _digitalVariationSubindex;
   bool get isDownloadLoading => _isDownloadLoading;
 
+  String _directTopUpAccountId = '';
+  double _directTopUpQuantity = 0;
+
+  String get directTopUpAccountId => _directTopUpAccountId;
+  double get directTopUpQuantity => _directTopUpQuantity;
+
+  double get directTopUpTotalPrice {
+    final pricePerUnit = _productDetailsModel?.directTopup?.pricePerUnit ?? 0;
+    return _directTopUpQuantity * pricePerUnit;
+  }
+
+  void setDirectTopUpAccountId(String value) {
+    _directTopUpAccountId = value.trim();
+    notifyListeners();
+  }
+
+  void setDirectTopUpQuantity(double value) {
+    final min = _productDetailsModel?.directTopup?.minQuantity ?? value;
+    final max = _productDetailsModel?.directTopup?.maxQuantity ?? value;
+    if (value < min) {
+      value = min;
+    }
+    if (value > max) {
+      value = max;
+    }
+    _directTopUpQuantity = value.floorToDouble();
+    notifyListeners();
+  }
+
+  void setDirectTopUpQuantityFromPrice(double price) {
+    final pricePerUnit = _productDetailsModel?.directTopup?.pricePerUnit ?? 0;
+    if (pricePerUnit <= 0) {
+      setDirectTopUpQuantity(_productDetailsModel?.directTopup?.minQuantity ?? 0);
+      return;
+    }
+    setDirectTopUpQuantity((price / pricePerUnit).floorToDouble());
+  }
+
+  void initializeDirectTopUpDefaults() {
+    final config = _productDetailsModel?.directTopup;
+    if (config?.enabled == true) {
+      _directTopUpQuantity = config?.minQuantity ?? 1;
+      _directTopUpAccountId = '';
+    }
+  }
+
 
 
   Future<void> getProductDetails(BuildContext context, String productId, String slug) async {
@@ -60,6 +106,7 @@ class ProductDetailsController extends ChangeNotifier {
       _productDetailsModel = ProductDetailsModel.fromJson(apiResponse.response!.data);
       if(_productDetailsModel != null){
         _quantity = _productDetailsModel!.minimumOrderQty ?? 1;
+        initializeDirectTopUpDefaults();
         log("=====slug===>$slug/ $productId");
         // Provider.of<SellerProductController>(Get.context!, listen: false).
         // getSellerProductList(_productDetailsModel?.addedBy == 'admin' ? '0' : productDetailsModel!.userId.toString(), 1, productId, reload: true);

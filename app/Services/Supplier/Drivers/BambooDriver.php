@@ -296,6 +296,70 @@ class BambooDriver implements SupplierDriverInterface
     }
 
     /**
+     * Place a direct top-up order with Bamboo using the V1 async API.
+     *
+     * For Bamboo, a "direct top-up" is the same as a regular order — we purchase
+     * gift card products on behalf of the customer. The customer's external account
+     * ID ($accountId) is stored in our records for reference but is NOT sent to
+     * Bamboo; Bamboo uses its own AccountId for billing resolution.
+     *
+     * Endpoint: POST /api/integration/v1.0/orders/checkout
+     * Body:     { RequestId, AccountId, Products: [{ ProductId, Quantity, Value }] }
+     * Response: "<RequestId>"  (plain JSON string)
+     */
+    public function placeTopUpOrder(
+        string $supplierProductId,
+        float $quantity,
+        string $accountId,
+        ?float $unitPrice = null,
+    ): SupplierOrderResult {
+        $bambooAccountId = $this->resolveAccountId();
+
+        if ($bambooAccountId === 0) {
+            throw new \RuntimeException('Bamboo placeTopUpOrder: could not resolve account_id — set it in credentials or ensure the accounts API is reachable.');
+        }
+
+        // The face value of the gift card, NOT the wholesale cost
+        $faceValue = ($unitPrice && $unitPrice > 0) ? $unitPrice : $this->getProductFaceValue($supplierProductId);
+
+        if ($faceValue <= 0) {
+            throw new \RuntimeException("Bamboo placeTopUpOrder: could not determine face value for product {$supplierProductId} from catalog.");
+        }
+
+        $requestId = (string) \Illuminate\Support\Str::uuid();
+
+        $body = [
+            'RequestId' => $requestId,
+            'AccountId' => $bambooAccountId,
+            'Products' => [
+                [
+                    'ProductId' => (int) $supplierProductId,
+                    'Quantity' => (int) ceil($quantity),
+                    'Value' => $faceValue,
+                ],
+            ],
+        ];
+
+        $response = $this->post('/api/integration/v1.0/orders/checkout', $body);
+
+        if ($response->failed()) {
+            throw new \RuntimeException("Bamboo placeTopUpOrder failed: HTTP {$response->status()} — {$response->body()}");
+        }
+
+        // V1 response body is just the RequestId string: "71ac2817-..."
+        $returnedId = trim($response->body(), '" \n\r\t');
+        $supplierOrderId = $returnedId !== '' ? $returnedId : $requestId;
+
+        // V1 is always async — codes come via webhook or polling
+        return new SupplierOrderResult(
+            supplierOrderId: $supplierOrderId,
+            status: 'processing',
+            codes: [],
+            rawResponse: ['request_id' => $supplierOrderId],
+        );
+    }
+
+    /**
      * Poll the status of an existing Bamboo V1 order.
      *
      * Endpoint: GET /api/integration/v1.0/orders/{requestId}

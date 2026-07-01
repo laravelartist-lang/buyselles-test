@@ -35,6 +35,7 @@ class OrderDetailsModel {
   double? _bringChangeAmount;
   String? _refundStartedAt;
   OrderEditHistory? _latestEditHistory;
+  bool? _isDirectTopup;
 
 
   OrderDetailsModel(
@@ -123,6 +124,7 @@ class OrderDetailsModel {
   double? get bringChangeAmount => _bringChangeAmount;
   String? get refundStartedAt => _refundStartedAt;
   OrderEditHistory? get latestEditHistory => _latestEditHistory;
+  bool get isDirectTopup => _isDirectTopup ?? false;
 
 
   OrderDetailsModel.fromJson(Map<String, dynamic> json) {
@@ -185,6 +187,7 @@ class OrderDetailsModel {
       _refundStartedAt = null;
     }
     _latestEditHistory = json['latest_edit_history'] != null ? OrderEditHistory.fromJson(json['latest_edit_history']) : null;
+    _isDirectTopup = json['is_direct_topup'] == true || json['is_direct_topup'] == 1;
   }
 
 }

@@ -13,6 +13,7 @@ use App\Http\Controllers\Controller;
 use App\Models\DigitalProductCode;
 use App\Models\Product;
 use App\Models\Review;
+use App\Models\SupplierProductMapping;
 use App\Repositories\DealOfTheDayRepository;
 use App\Repositories\WishlistRepository;
 use App\Services\ProductService;
@@ -92,7 +93,9 @@ class ProductDetailsController extends Controller
                 $firstVariationQuantity = json_decode($product['variation'], true)[0]['qty'];
             }
             if ($product['product_type'] === 'digital') {
-                $firstVariationQuantity = DigitalProductCode::where('product_id', $product['id'])->available()->count();
+                $firstVariationQuantity = SupplierProductMapping::hasActiveMapping((int) $product['id'])
+                    ? 100
+                    : DigitalProductCode::where('product_id', $product['id'])->available()->count();
             }
 
             $rating = getRating(reviews: $product->reviews);
@@ -235,7 +238,9 @@ class ProductDetailsController extends Controller
                 $firstVariationQuantity = json_decode($product['variation'], true)[0]['qty'];
             }
             if ($product['product_type'] === 'digital') {
-                $firstVariationQuantity = DigitalProductCode::where('product_id', $product['id'])->available()->count();
+                $firstVariationQuantity = SupplierProductMapping::hasActiveMapping((int) $product['id'])
+                    ? 100
+                    : DigitalProductCode::where('product_id', $product['id'])->available()->count();
             }
 
             $decimalPointSettings = getWebConfig('decimal_point_settings');
@@ -368,7 +373,9 @@ class ProductDetailsController extends Controller
                 $firstVariationQuantity = json_decode($product['variation'], true)[0]['qty'];
             }
             if ($product['product_type'] === 'digital') {
-                $firstVariationQuantity = DigitalProductCode::where('product_id', $product['id'])->available()->count();
+                $firstVariationQuantity = SupplierProductMapping::hasActiveMapping((int) $product['id'])
+                    ? 100
+                    : DigitalProductCode::where('product_id', $product['id'])->available()->count();
             }
 
             $decimalPointSettings = getWebConfig('decimal_point_settings');

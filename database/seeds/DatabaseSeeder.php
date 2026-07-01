@@ -16,6 +16,7 @@ class DatabaseSeeder extends Seeder
             AdminTable::class,
             SellerTableSeeder::class,
             \Database\Seeders\LocationCountrySeeder::class,
+            \Database\Seeders\CategoryProductSeeder::class,
         ]);
     }
 }

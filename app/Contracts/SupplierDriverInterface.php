@@ -44,6 +44,16 @@ interface SupplierDriverInterface
     public function placeOrder(string $supplierProductId, int $quantity, ?float $unitPrice = null): SupplierOrderResult;
 
     /**
+     * Place a direct top-up order (account ID + quantity, no code inventory).
+     */
+    public function placeTopUpOrder(
+        string $supplierProductId,
+        float $quantity,
+        string $accountId,
+        ?float $unitPrice = null,
+    ): SupplierOrderResult;
+
+    /**
      * Get the current status of a supplier order.
      */
     public function getOrderStatus(string $supplierOrderId): SupplierOrderResult;

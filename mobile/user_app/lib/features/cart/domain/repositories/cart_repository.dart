@@ -58,6 +58,11 @@ class CartRepository extends DataSyncService implements CartRepositoryInterface 
         'digital_variation_price': cart.digitalVariantPrice
       });
     }
+    if (cart.directTopupAccountId != null && cart.directTopupAccountId!.isNotEmpty) {
+      data['direct_topup_account_id'] = cart.directTopupAccountId;
+      data['direct_topup_quantity'] = cart.directTopupQuantity;
+      data['quantity'] = 1;
+    }
 
     try {
       final response = await dioClient.post(AppConstants.addToCartUri, data: data);

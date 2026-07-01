@@ -30,6 +30,8 @@ class CheckoutController with ChangeNotifier {
   int _paymentMethodIndex = -1;
   bool _onlyDigital = true;
   bool get onlyDigital => _onlyDigital;
+  bool _onlyDirectTopUp = false;
+  bool get onlyDirectTopUp => _onlyDirectTopUp;
   int? get addressIndex => _addressIndex;
   int? get shippingIndex => _shippingIndex;
   bool get isLoading => _isLoading;
@@ -214,6 +216,13 @@ class CheckoutController with ChangeNotifier {
       notifyListeners();
     }
 
+  }
+
+  void directTopUpOnly(bool value, {bool isUpdate = false}) {
+    _onlyDirectTopUp = value;
+    if (isUpdate) {
+      notifyListeners();
+    }
   }
 
 

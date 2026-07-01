@@ -23,8 +23,16 @@ $("#product_type").on("change", function() {
 });
 
 $("#digital-product-type-input").on("change", function() {
-    updateDigitalProductCodeFieldState();
+    updateDirectTopUpFieldState();
     getUpdateDigitalVariationFunctionality();
+});
+
+$("#is-direct-topup-input").on("change", function() {
+    updateDirectTopUpFieldState();
+});
+
+$(document).ready(function() {
+    updateDirectTopUpFieldState();
 });
 
 $("#product-color-switcher").on("click", function() {
@@ -178,9 +186,28 @@ document.querySelectorAll(".product-discount-type").forEach(function(select) {
     });
 });
 
+function updateDirectTopUpFieldState() {
+    const productType = $("#product_type").val();
+    const isDirectTopup = $("#is-direct-topup-input").is(":checked");
+    const $config = $("#direct-topup-config");
+
+    if (!$config.length) {
+        return;
+    }
+
+    if (productType === "digital" && isDirectTopup) {
+        $config.show();
+    } else {
+        $config.hide();
+    }
+
+    updateDigitalProductCodeFieldState();
+}
+
 function updateDigitalProductCodeFieldState() {
     const productType = $("#product_type").val();
     const digitalType = $("#digital-product-type-input").val();
+    const isDirectTopup = $("#is-direct-topup-input").is(":checked");
     const $wrapper = $("#digital-product-code-wrapper");
     const $input = $("#digital_product_code");
 
@@ -189,7 +216,9 @@ function updateDigitalProductCodeFieldState() {
     }
 
     const isReadyProduct =
-        productType === "digital" && digitalType === "ready_product";
+        productType === "digital" &&
+        digitalType === "ready_product" &&
+        !isDirectTopup;
     const isExistingProduct = $wrapper.find(".badge").length > 0;
 
     if (isReadyProduct) {
@@ -210,8 +239,13 @@ function hasDigitalExtensionSelections() {
 function validateReadyProductDigitalCode() {
     const productType = $("#product_type").val();
     const digitalType = $("#digital-product-type-input").val();
+    const isDirectTopup = $("#is-direct-topup-input").is(":checked");
 
-    if (productType !== "digital" || digitalType !== "ready_product") {
+    if (
+        productType !== "digital" ||
+        digitalType !== "ready_product" ||
+        isDirectTopup
+    ) {
         return true;
     }
 
@@ -256,7 +290,7 @@ function getProductTypeFunctionality() {
         $("#color-wise-image-section")
             .empty()
             .html("");
-        updateDigitalProductCodeFieldState();
+        updateDirectTopUpFieldState();
     }
 
     try {

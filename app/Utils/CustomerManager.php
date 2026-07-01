@@ -215,8 +215,7 @@ class CustomerManager
             $totalAmount = 0;
             if (! empty($cart)) {
                 foreach ($cart as $item) {
-                    $discount = getProductPriceByType(product: $item['product'], type: 'discounted_amount', result: 'value', price: $item['price']);
-                    $totalAmount += ($item['price'] - $discount) * $item['quantity'];
+                    $totalAmount += $item->getLineTotal();
                 }
             }
             $couponDiscount = is_null($couponDiscount) ? 0 : (float) $couponDiscount;

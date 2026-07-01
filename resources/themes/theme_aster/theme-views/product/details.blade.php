@@ -426,7 +426,10 @@
                                                     @endif
 
 
-                                                    {{-- ─── Denomination Selection / Variable Amount ──────────────────────────── --}}
+                                                    {{-- ─── Direct Top-up OR Denomination Selection ──────────────────────────── --}}
+                                                    @if ($product->is_direct_topup)
+                                                        @include('theme-views.product.partials._direct-topup-purchase')
+                                                    @else
                                                     @php
                                                         $denominationMapping = \App\Models\SupplierProductMapping::where('product_id', $product->id)
                                                             ->where('is_active', true)
@@ -547,12 +550,38 @@
                                                             </span>
                                                         </div>
                                                     </div>
+                                                    @endif
+
                                                     <input type="hidden" class="product-generated-variation-code"
                                                         name="product_variation_code"
                                                         data-product-id="{{ $product['id'] }}">
                                                     <input type="hidden" value=""
                                                         class="product-exist-in-cart-list form-control w-50"
                                                         name="key">
+
+                                                    @if ($product->is_direct_topup)
+                                                        @php
+                                                            $directTopUpInitialTotal = round(
+                                                                (float) $product->direct_topup_min_quantity * app(\App\Services\DirectTopUp\DirectTopUpService::class)->getPricePerUnit($product),
+                                                                2
+                                                            );
+                                                        @endphp
+                                                        <div class="mb-30">
+                                                            <div class="bg-light w-100 rounded px-3 py-2">
+                                                                <div class="d-flex gap-1 align-items-center">
+                                                                    <h4 class="flex-middle-gap-2 mb-0 fs-12">
+                                                                        <span>
+                                                                            {{ translate('total_price') . ':' }}
+                                                                        </span>
+                                                                        <span
+                                                                            class="product-details-chosen-price-amount fs-18 text-primary">
+                                                                            {{ webCurrencyConverter(amount: $directTopUpInitialTotal) }}
+                                                                        </span>
+                                                                    </h4>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    @else
                                                     <div class="mb-30">
                                                         <div class="bg-light w-100 rounded px-3 py-2">
                                                             <div class="d-flex gap-1 align-items-center">
@@ -570,6 +599,7 @@
                                                             </div>
                                                         </div>
                                                     </div>
+                                                    @endif
 
                                                     <div
                                                         class="mx-w d-flex flex-wrap gap-3 width--24rem product-add-and-buy-section-parent">

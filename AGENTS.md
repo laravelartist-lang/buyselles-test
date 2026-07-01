@@ -242,4 +242,11 @@ protected function isAccessible(User $user, ?string $path = null): bool
 - To run all tests in a file: `php artisan test --compact tests/Feature/ExampleTest.php`.
 - To filter on a particular test name: `php artisan test --compact --filter=testName` (recommended after making a change to a related file).
 
+## Database Safety (Critical)
+
+- NEVER run tests against the local MySQL development database. Tests boot through `tests/bootstrap.php` and must use sqlite `:memory:` only.
+- Prefer `composer test` (clears config cache first). Do not run `php artisan config:cache` in local development.
+- Destructive commands (`migrate:fresh`, `migrate:refresh`, `db:wipe`) are blocked on real databases unless `ALLOW_DESTRUCTIVE_DB=true` is set intentionally in `.env`.
+- Never call `Schema::dropIfExists()` directly in tests; use `Tests\Concerns\ManagesTestDatabaseSchema::recreateTable()` instead.
+
 </laravel-boost-guidelines>

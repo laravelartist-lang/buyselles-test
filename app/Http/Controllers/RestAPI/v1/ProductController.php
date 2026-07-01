@@ -21,6 +21,7 @@ use App\Models\Review;
 use App\Models\ShippingMethod;
 use App\Models\Shop;
 use App\Models\StockClearanceProduct;
+use App\Models\SupplierProductMapping;
 use App\Models\Wishlist;
 use App\Services\ProductService;
 use App\Traits\CacheManagerTrait;
@@ -372,14 +373,24 @@ class ProductController extends Controller
             $product['digital_product_publishing_house_names'] = $this->productService->getProductPublishingHouseInfo(product: $product)['names'];
 
             if ($product['product_type'] === 'digital') {
-                $availableDigitalCodesCount = DigitalProductCode::where('product_id', $product['id'])
-                    ->available()
-                    ->count();
+                $directTopUpService = app(\App\Services\DirectTopUp\DirectTopUpService::class);
+                $productModel = Product::find($product['id']);
 
-                $product['current_stock'] = $availableDigitalCodesCount;
-                $product['total_current_stock'] = $availableDigitalCodesCount;
-                $product['available_digital_codes_count'] = $availableDigitalCodesCount;
-                $product['can_add_to_cart'] = $availableDigitalCodesCount > 0;
+                if ($productModel && $directTopUpService->isDirectTopUpProduct($productModel)) {
+                    $product['can_add_to_cart'] = $directTopUpService->canAddToCart($productModel);
+                    $product['direct_topup'] = $directTopUpService->buildApiPayload($productModel);
+                } else {
+                    $availableDigitalCodesCount = DigitalProductCode::where('product_id', $product['id'])
+                        ->available()
+                        ->count();
+
+                    $hasMapping = SupplierProductMapping::hasActiveMapping((int) $product['id']);
+                    $product['current_stock'] = $hasMapping ? 100 : $availableDigitalCodesCount;
+                    $product['total_current_stock'] = $hasMapping ? 100 : $availableDigitalCodesCount;
+                    $product['available_digital_codes_count'] = $hasMapping ? 100 : $availableDigitalCodesCount;
+                    $product['can_add_to_cart'] = $hasMapping || $availableDigitalCodesCount > 0;
+                    $product['direct_topup'] = null;
+                }
             }
 
             if ($user != 'offline' && count($restockRequestedIds) > 0) {

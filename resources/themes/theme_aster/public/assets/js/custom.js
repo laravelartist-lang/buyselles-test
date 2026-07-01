@@ -476,7 +476,41 @@ function shareOnSocialMedia() {
 }
 shareOnSocialMedia();
 
+function syncDirectTopUpFormFields(formSelector = ".add-to-cart-details-form") {
+    const $section = $(formSelector).find("#direct-topup-purchase-section");
+    if (!$section.length) {
+        return;
+    }
+
+    const minQty = parseFloat($section.data("min-quantity")) || 0;
+    const maxQty = parseFloat($section.data("max-quantity")) || 0;
+    let qty = parseInt(
+        String($("#direct-topup-quantity-input").val()).replace(/[^0-9]/g, ""),
+        10
+    );
+
+    if (isNaN(qty) || qty < minQty) {
+        qty = Math.floor(minQty);
+    } else if (qty > maxQty) {
+        qty = Math.floor(maxQty);
+    }
+
+    $("#direct-topup-quantity-input").val(qty);
+    $("#direct-topup-quantity-hidden").val(qty);
+}
+
 function checkAddToCartValidity(formSelector = ".add-to-cart-details-form") {
+    if ($(formSelector).find("#direct-topup-purchase-section").length > 0) {
+        const accountId = $.trim(
+            $(formSelector).find("#direct-topup-account-input").val() || ""
+        );
+        const qty =
+            parseFloat($(formSelector).find("#direct-topup-quantity-hidden").val()) ||
+            0;
+
+        return accountId !== "" && qty > 0;
+    }
+
     let names = {};
     $(formSelector).find("input:radio").each(function () {
         names[$(this).attr("name")] = true;
@@ -594,6 +628,8 @@ function hideProductDetailsStickySection() {
 }
 
 function addToCart(formSelector, redirectToCheckout = false, url = null) {
+    syncDirectTopUpFormFields(formSelector);
+
     if (checkValidityForVariantPrice(formSelector)) {
         $.ajaxSetup({
             headers: {
@@ -606,8 +642,9 @@ function addToCart(formSelector, redirectToCheckout = false, url = null) {
         // add-to-cart so CartManager can update both price and custom_amount.
         let customAmountInput = $(formSelector).find('#custom-amount-input');
         let hasOpenDenomination = customAmountInput.length > 0 && customAmountInput.val() !== '';
+        let isDirectTopUp = $(formSelector).find('#direct-topup-purchase-section').length > 0;
         let formActionUrl = $(formSelector).attr("action");
-        if (existCartItem !== "" && !redirectToCheckout && !hasOpenDenomination) {
+        if (existCartItem !== "" && !redirectToCheckout && !hasOpenDenomination && !isDirectTopUp) {
             formActionUrl = $("#update_quantity_url").data("url");
         }
 
@@ -619,7 +656,7 @@ function addToCart(formSelector, redirectToCheckout = false, url = null) {
             }),
             beforeSend: function () { },
             success: function (response) {
-                if (response.status === 2) {
+                if (response.status == 2) {
                     hideProductDetailsStickySection()
                     $("#buyNowModal-body").html(
                         response.shippingMethodHtmlView
@@ -629,8 +666,8 @@ function addToCart(formSelector, redirectToCheckout = false, url = null) {
                     return false;
                 }
 
-                if (response.status === 1) {
-                    updateNavCart();
+                if (response.status == 1) {
+                    updateNavCart(true);
                     toastr.success(response.message, {
                         CloseButton: true,
                         ProgressBar: true,
@@ -654,7 +691,7 @@ function addToCart(formSelector, redirectToCheckout = false, url = null) {
                     }
                     $("#quickViewModal").modal("hide");
                     return false;
-                } else if (response.status === 0) {
+                } else if (response.status == 0) {
                     toastr.warning(response.message, {
                         CloseButton: true,
                         ProgressBar: true,
@@ -663,8 +700,40 @@ function addToCart(formSelector, redirectToCheckout = false, url = null) {
                     return false;
                 }
             },
+            error: function () {
+                toastr.error(
+                    $(".login-warning").data("login-warning-message") ||
+                        "Something went wrong. Please try again.",
+                    {
+                        CloseButton: true,
+                        ProgressBar: true,
+                        timeOut: 2000,
+                    }
+                );
+            },
             complete: function () { },
         });
+    } else if ($(formSelector).find("#direct-topup-purchase-section").length) {
+        const accountId = $.trim(
+            $(formSelector).find("#direct-topup-account-input").val() || ""
+        );
+        if (!accountId) {
+            toastr.error($(formSelector).data("errormessage"), {
+                CloseButton: true,
+                ProgressBar: true,
+                timeOut: 2000,
+            });
+        } else {
+            toastr.error(
+                $(".minimum_order_quantity_msg").data("text") ||
+                    "Please enter a valid quantity.",
+                {
+                    CloseButton: true,
+                    ProgressBar: true,
+                    timeOut: 2000,
+                }
+            );
+        }
     } else if (parseInt($(formSelector).find("input[name=quantity]").val()) === 0) {
         toastr.warning($(formSelector).data("outofstock"), {
             CloseButton: true,
@@ -680,7 +749,14 @@ function addToCart(formSelector, redirectToCheckout = false, url = null) {
     }
 }
 
-function updateNavCart() {
+function openHeaderCartDropdown() {
+    const $toggle = $("#cart_items").find('[data-bs-toggle="dropdown"]');
+    if ($toggle.length && typeof bootstrap !== "undefined") {
+        bootstrap.Dropdown.getOrCreateInstance($toggle[0]).show();
+    }
+}
+
+function updateNavCart(openDropdown = false) {
     let url = $("#update_nav_cart_url").data("url");
     $.post(
         url,
@@ -691,8 +767,17 @@ function updateNavCart() {
             $("#cart_items").html(response.data);
             $("#mobile_app_bar").html(response.mobile_nav);
             updateCart();
+            if (openDropdown) {
+                openHeaderCartDropdown();
+            }
         }
-    );
+    ).fail(function () {
+        toastr.error("Something went wrong. Please try again.", {
+            CloseButton: true,
+            ProgressBar: true,
+            timeOut: 2000,
+        });
+    });
 }
 $('.add-all-to-cart').on('click', function (e) {
     e.preventDefault();
@@ -806,21 +891,37 @@ function removeFromCart(key) {
 }
 
 function updateCart() {
-    $(".cart-quantity-update").on("click", function () {
-        let cartId = $(this).data("cart-id");
-        let productId = $(this).data("product-id");
-        let value = $(this).data("value");
-        let event = $(this).data("event");
-        updateCartQuantity(cartId, productId, value, event);
-        initCartDropdown();
-    });
-    $(".cart-quantity-update-input").on("change", function () {
-        let cartId = $(this).data("cart-id");
-        let productId = $(this).data("product-id");
-        let value = $(this).data("value");
-        updateCartQuantity(cartId, productId, value);
-        initCartDropdown();
-    });
+    $(".cart-quantity-update")
+        .off("click")
+        .on("click", function () {
+            let cartId = $(this).data("cart-id");
+            let productId = $(this).data("product-id");
+            let value = $(this).data("value");
+            let event = $(this).data("event");
+            updateCartQuantity(cartId, productId, value, event);
+            initCartDropdown();
+        });
+    $(".cart-quantity-update-input")
+        .off("change")
+        .on("change", function () {
+            let cartId = $(this).data("cart-id");
+            let productId = $(this).data("product-id");
+            let value = $(this).data("value");
+            updateCartQuantity(cartId, productId, value);
+            initCartDropdown();
+        });
+    $(".action-remove-from-cart")
+        .off("click")
+        .on("click", function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            let cartId = $(this).data("cart-id");
+            let removeUrl = $("#remove_from_cart_url").data("url");
+            let token = $('meta[name="_token"]').attr("content");
+            let segmentArray = window.location.pathname.split("/");
+            let segment = segmentArray[segmentArray.length - 1];
+            cartItemRemoveFunction(removeUrl, token, cartId, segment);
+        });
 }
 updateCart();
 function updateCartQuantity(cartId, productId, action, event) {
@@ -828,11 +929,24 @@ function updateCartQuantity(cartId, productId, action, event) {
     let updateQuantityQrl = $("#update_quantity_url").data("url");
     let token = $('meta[name="_token"]').attr("content");
     let cartQuantity = $(`.cart_quantity_of_${cartId}`);
-    let productQyt = parseInt(cartQuantity.val()) + parseInt(action);
+    let isDirectTopUp = parseInt(cartQuantity.data("is-direct-topup"), 10) === 1;
+    let productQyt = parseInt(cartQuantity.val(), 10) + parseInt(action, 10);
     let segmentArray = window.location.pathname.split("/");
     let segment = segmentArray[segmentArray.length - 1];
 
-    if (cartQuantity.val() > cartQuantity.data("current-stock")) {
+    if (isDirectTopUp) {
+        const minQty = parseInt(cartQuantity.data("min"), 10) || 1;
+        const maxQty =
+            parseInt(cartQuantity.data("max"), 10) ||
+            parseInt(cartQuantity.data("current-stock"), 10) ||
+            productQyt;
+        productQyt = Math.max(minQty, Math.min(maxQty, productQyt));
+    }
+
+    if (
+        !isDirectTopUp &&
+        cartQuantity.val() > cartQuantity.data("current-stock")
+    ) {
         cartItemRemoveFunction(removeUrl, token, cartId, segment);
         return false;
     }
@@ -852,30 +966,29 @@ function updateCartQuantity(cartId, productId, action, event) {
             updateCartQuantity(cartId, productId, action, event);
         } else {
             $(`.cart_quantity_${cartId}`).html(productQyt);
-            cartQuantity.empty().val(productQyt);
+            cartQuantity.val(productQyt);
+            const postData = {
+                _token: token,
+                key: cartId,
+                product_id: productId,
+                quantity: isDirectTopUp ? 1 : productQyt,
+            };
+
+            if (isDirectTopUp) {
+                postData.direct_topup_quantity = productQyt;
+            }
+
             $.post(
                 updateQuantityQrl,
-                {
-                    _token: token,
-                    key: cartId,
-                    product_id: productId,
-                    quantity: productQyt,
-                },
+                postData,
                 function (response) {
-                    if (response["status"] === 0) {
+                    if (response["status"] == 0) {
                         toastr.error(response["message"]);
                     } else {
                         toastr.success(response["message"]);
                     }
-                    let cartQuantityMinus = $(`.cart_quantity__minus${cartId}`);
-                    parseInt(response["qty"]) <= 1
-                        ? cartQuantityMinus.html(
-                            '<i class="bi bi-trash3-fill text-danger fs-10"></i>'
-                        )
-                        : cartQuantityMinus.html('<i class="bi bi-dash"></i>');
-
-                    cartQuantityMinus.val(response["qty"]);
                     $(`.cart_quantity_${cartId}`).html(response["qty"]);
+                    cartQuantity.val(response["qty"]);
                     $(".cart_total_amount").html(response.total_price);
                     $(`.discount_price_of_${cartId}`).html(
                         response["discount_price"]
@@ -884,7 +997,10 @@ function updateCartQuantity(cartId, productId, action, event) {
                         response["quantity_price"]
                     );
                     if (
-                        parseInt(response["qty"]) === cartQuantity.data("min")
+                        parseInt(response["qty"], 10) ===
+                            parseInt(cartQuantity.data("min"), 10) ||
+                        (parseInt(response["qty"], 10) <= 1 &&
+                            !response["is_direct_topup"])
                     ) {
                         cartQuantity
                             .parent()
@@ -904,6 +1020,8 @@ function updateCartQuantity(cartId, productId, action, event) {
                         segment === "checkout-details"
                     ) {
                         location.reload();
+                    } else {
+                        updateNavCart();
                     }
                 }
             );
@@ -961,6 +1079,12 @@ function cartItemRemoveFunction(removeUrl, token, cartId, segment) {
 }
 
 function checkValidityForVariantPrice(formSelector) {
+    if ($(formSelector).find('#direct-topup-purchase-section').length > 0) {
+        let qty = parseFloat($(formSelector).find('#direct-topup-quantity-hidden').val()) || 0;
+
+        return qty > 0 && checkAddToCartValidity(formSelector);
+    }
+
     return $(formSelector).find("input[name=quantity]").val() > 0 && checkAddToCartValidity(formSelector);
 }
 
@@ -1019,6 +1143,16 @@ function updateProductDetailsTopSection(formSelector, response) {
     $(".add-to-cart-details-form").find(".product-details-chosen-price-amount").html(response?.price);
     $(".add-to-cart-details-form").find(".product-details-stock-qty").html(response?.quantity);
 
+    if (response?.is_direct_topup) {
+        const topUpQty = Math.floor(parseFloat(response?.direct_topup_quantity ?? response?.in_cart_quantity ?? 0));
+        $('#direct-topup-quantity-hidden').val(topUpQty);
+        $('#direct-topup-quantity-input').val(topUpQty);
+        $('#direct-topup-qty-from-price').text(topUpQty);
+    } else {
+        $(".add-to-cart-details-form").find(".product-details-cart-qty").val(response?.in_cart_quantity);
+        $(".add-to-cart-details-form").find(".product-details-cart-qty").attr("max", response?.quantity);
+    }
+
     if (response?.product_type?.toString() === 'physical') {
         let productRestockRequestButton = $(".add-to-cart-details-form").find(".product-restock-request-button");
         if (response?.quantity <= 0) {
@@ -1046,8 +1180,6 @@ function updateProductDetailsTopSection(formSelector, response) {
         }
     }
 
-    $(".add-to-cart-details-form").find(".product-details-cart-qty").val(response?.in_cart_quantity);
-    $(".add-to-cart-details-form").find(".product-details-cart-qty").attr("max", response?.quantity);
     $(".add-to-cart-details-form").find(".product-generated-variation-code").val(response?.variation_code);
     $(".add-to-cart-details-form").find(".product-generated-variation-text").text(response?.variation_code);
 

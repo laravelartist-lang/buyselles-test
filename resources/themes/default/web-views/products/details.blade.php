@@ -387,7 +387,10 @@
                                                 </div>
                                             @endforeach
 
-                                            {{-- ─── Denomination Selection / Variable Amount ──────────────────────────── --}}
+                                            {{-- ─── Direct Top-up OR Denomination Selection ──────────────────────────── --}}
+                                            @if ($product->is_direct_topup)
+                                                @include('web-views.products.partials._direct-topup-purchase')
+                                            @else
                                             @php
                                                 $denominationMapping = \App\Models\SupplierProductMapping::where('product_id', $product->id)
                                                     ->where('is_active', true)
@@ -523,12 +526,6 @@
                                                                 </button>
                                                             </span>
                                                         </div>
-                                                        <input type="hidden" class="product-generated-variation-code"
-                                                            name="product_variation_code"
-                                                            data-product-id="{{ $product['id'] }}">
-                                                        <input type="hidden" value=""
-                                                            class="product-exist-in-cart-list form-control w-50"
-                                                            name="key">
                                                     </div>
                                                     <div class="product-details-chosen-price-section">
                                                         <div
@@ -545,6 +542,40 @@
                                                     </div>
                                                 </div>
                                             </div>
+                                            @endif
+
+                                            @if ($product->is_direct_topup)
+                                                @php
+                                                    $directTopUpInitialTotal = round(
+                                                        (float) $product->direct_topup_min_quantity * app(\App\Services\DirectTopUp\DirectTopUpService::class)->getPricePerUnit($product),
+                                                        2
+                                                    );
+                                                @endphp
+                                                <input type="hidden" class="product-generated-variation-code"
+                                                    name="product_variation_code"
+                                                    data-product-id="{{ $product['id'] }}">
+                                                <input type="hidden" value=""
+                                                    class="product-exist-in-cart-list form-control w-50"
+                                                    name="key">
+                                                <div class="product-details-chosen-price-section mb-3">
+                                                    <div class="d-flex align-items-center gap-4">
+                                                        <div
+                                                            class="product-description-label fs-20 text-dark font-bold text-capitalize">
+                                                            <strong>{{ translate('total_price') }}</strong>:
+                                                        </div>
+                                                        <strong class="text-base product-details-chosen-price-amount fs-20">
+                                                            {{ webCurrencyConverter(amount: $directTopUpInitialTotal) }}
+                                                        </strong>
+                                                    </div>
+                                                </div>
+                                            @else
+                                                <input type="hidden" class="product-generated-variation-code"
+                                                    name="product_variation_code"
+                                                    data-product-id="{{ $product['id'] }}">
+                                                <input type="hidden" value=""
+                                                    class="product-exist-in-cart-list form-control w-50"
+                                                    name="key">
+                                            @endif
 
                                             <div class="__btn-grp product-add-and-buy-section-parent">
 

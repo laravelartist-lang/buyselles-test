@@ -11,6 +11,7 @@ use Illuminate\Support\Arr;
 class CustomerAuthService
 {
     use EmailTemplateTrait;
+
     public function getCustomerVerificationToken(): string
     {
         return (string) rand(100000, 999999);

@@ -2675,6 +2675,12 @@ class ProductManager
         foreach ($cartItemsList as $cartItem) {
             $cartItemProduct = $cartItem?->product;
 
+            if ($cartItem->direct_topup_quantity !== null) {
+                CartManager::refreshDirectTopUpCartPricing($cartItem, $cartItemProduct);
+
+                continue;
+            }
+
             if (empty($cartItem->variant)) {
                 $priceForTax = ! empty($cartItem->custom_amount) ? $cartItem->price : $cartItemProduct->unit_price;
                 $productTax = Helpers::tax_calculation(product: $cartItemProduct, price: $priceForTax, tax: $cartItemProduct['tax'], tax_type: 'percent');
@@ -2704,7 +2710,7 @@ class ProductManager
                 }
             }
 
-            if (empty($cartItem->variant) && $cartItem->price != $cartItemProduct->unit_price && empty($cartItem->custom_amount)) {
+            if (empty($cartItem->variant) && $cartItem->price != $cartItemProduct->unit_price && empty($cartItem->custom_amount) && $cartItem->direct_topup_quantity === null) {
                 Cart::where(['id' => $cartItem['id']])->update(['price' => $cartItemProduct->unit_price]);
             } elseif (! empty($cartItem->variant) && $cartItem->product_type == 'physical') {
                 $productVariation = json_decode($cartItemProduct?->variation ?? '', true);
@@ -2822,10 +2828,19 @@ class ProductManager
         $firstVariant = '';
         $firstVariantInCart = false;
 
-        $price = $product['unit_price'];
-        $discount = getProductPriceByType(product: $product, type: 'discounted_amount', result: 'value', price: $product['unit_price']);
+        $directTopUpTotalPrice = null;
 
-        if ($product['product_type'] == 'digital') {
+        if ((bool) ($product->is_direct_topup ?? false)) {
+            $dtService = app(\App\Services\DirectTopUp\DirectTopUpService::class);
+            $perUnit = $dtService->getPricePerUnit($product);
+            $discount = getProductPriceByType(product: $product, type: 'discounted_amount', result: 'value', price: $perUnit);
+            $price = $perUnit - $discount;
+        } else {
+            $price = $product['unit_price'];
+            $discount = getProductPriceByType(product: $product, type: 'discounted_amount', result: 'value', price: $product['unit_price']);
+        }
+
+        if ($product['product_type'] == 'digital' && ! ($product->is_direct_topup ?? false)) {
             $digitalVariation = DigitalProductVariation::where([
                 'product_id' => $product['id'],
                 'variant_key' => $product['digitalVariation']?->first()?->variant_key ?? '',
@@ -2845,7 +2860,7 @@ class ProductManager
                     }
                 }
             }
-        } else {
+        } elseif (! ($product->is_direct_topup ?? false)) {
             $productColors = json_decode($product['colors'], true) ?? [];
             $productChoiceOptions = json_decode($product['choice_options'], true) ?? [];
 
@@ -2881,8 +2896,27 @@ class ProductManager
             }
         }
 
-        $initialProduct = $cartList->where('product_id', $product['id'])->where('variant', $firstVariant)->first();
-        $initialProductQuantity = $initialProduct['quantity'] ?? $product['minimum_order_qty'];
+        if ((bool) ($product->is_direct_topup ?? false)) {
+            $initialProduct = $cartList->where('product_id', $product['id'])
+                ->first(fn ($item) => $item->direct_topup_quantity !== null);
+            $initialProductQuantity = (float) ($initialProduct?->direct_topup_quantity ?? $product->direct_topup_min_quantity);
+            if ($initialProduct) {
+                $firstVariantInCart = true;
+            }
+
+            $totalBeforeDiscount = app(\App\Services\DirectTopUp\DirectTopUpService::class)
+                ->calculateTotalPrice($product, $initialProductQuantity);
+            $totalDiscount = getProductPriceByType(
+                product: $product,
+                type: 'discounted_amount',
+                result: 'value',
+                price: $totalBeforeDiscount
+            );
+            $directTopUpTotalPrice = $totalBeforeDiscount - $totalDiscount;
+        } else {
+            $initialProduct = $cartList->where('product_id', $product['id'])->where('variant', $firstVariant)->first();
+            $initialProductQuantity = $initialProduct['quantity'] ?? $product['minimum_order_qty'];
+        }
 
         $restockRequestStatus = 0;
         if (auth('customer')->check()) {
@@ -2906,7 +2940,7 @@ class ProductManager
             'price' => $price,
             'discount' => $discountType == 'flat' ? webCurrencyConverter($discount) : getProductPriceByType(product: $product, type: 'discount', result: 'value').'%',
             'discount_type' => $discountType,
-            'total_quantity_price' => $price * $initialProductQuantity,
+            'total_quantity_price' => $directTopUpTotalPrice ?? ($price * $initialProductQuantity),
             'variant' => $firstVariant,
             'restock_request_status' => $restockRequestStatus,
         ];

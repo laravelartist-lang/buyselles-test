@@ -11,27 +11,54 @@ function updateCartQuantityListMobile(minimum_order_qty, key, incr, e) {
 }
 
 function updateCartCommon(minimum_order_qty, key, incr, e, quantity_id) {
-    let quantity = parseInt($("#" + quantity_id + key).val()) + parseInt(incr);
     let exQuantity = $("#" + quantity_id + key);
+    let isDirectTopUp = parseInt(exQuantity.data("is-direct-topup"), 10) === 1;
+    let minQty = isDirectTopUp
+        ? parseInt(exQuantity.data("min"), 10) || minimum_order_qty
+        : minimum_order_qty;
+    let maxQty = isDirectTopUp
+        ? parseInt(exQuantity.data("max"), 10) ||
+          parseInt(exQuantity.data("current-stock"), 10) ||
+          999999
+        : parseInt(exQuantity.data("current-stock"), 10) || 999999;
 
-    if (exQuantity.val() > exQuantity.data('current-stock') && e == 'minus') {
+    let quantity = parseInt(exQuantity.val(), 10) + parseInt(incr, 10);
+
+    if (isDirectTopUp) {
+        quantity = Math.max(minQty, Math.min(maxQty, quantity));
+    }
+
+    if (!isDirectTopUp && exQuantity.val() > exQuantity.data('current-stock') && e == 'minus') {
         removeProductFromCartList(key)
         return false;
     }
 
-    if (minimum_order_qty > quantity && e != 'delete') {
-        toastr.error($('#message-minimum-order-quantity-cannot-less-than').data('text') + minimum_order_qty);
-        $(".cartQuantity" + key).val(minimum_order_qty);
+    if (minQty > quantity && e != 'delete') {
+        toastr.error($('#message-minimum-order-quantity-cannot-less-than').data('text') + minQty);
+        $(".cartQuantity" + key).val(minQty);
         return false;
     }
-    if (exQuantity.val() == exQuantity.data('min') && e == 'delete') {
+    if (parseInt(exQuantity.val(), 10) == parseInt(exQuantity.data('min'), 10) && e == 'delete') {
+        removeProductFromCartList(key)
+    } else if (
+        parseInt(exQuantity.val(), 10) == parseInt(exQuantity.data('min'), 10) &&
+        e == 'minus'
+    ) {
         removeProductFromCartList(key)
     } else {
-        $.post($('#route-cart-updateQuantity').data('url'), {
+        exQuantity.val(quantity);
+
+        const postData = {
             _token: $('meta[name="_token"]').attr('content'),
             key,
-            quantity
-        }, function (response) {
+            quantity: isDirectTopUp ? 1 : quantity,
+        };
+
+        if (isDirectTopUp) {
+            postData.direct_topup_quantity = quantity;
+        }
+
+        $.post($('#route-cart-updateQuantity').data('url'), postData, function (response) {
             if (response.status == 0) {
                 toastr.error(response.message, {
                     CloseButton: true,
@@ -45,6 +72,8 @@ function updateCartCommon(minimum_order_qty, key, incr, e, quantity_id) {
                 actionCheckoutFunctionInit()
                 couponCode()
                 setShippingIdFunctionCartDetails()
+                cartListQuantityUpdateInit();
+                quantityListener();
             }
         });
     }
@@ -71,6 +100,8 @@ function removeProductFromCartList(key) {
             actionCheckoutFunctionInit()
             couponCode()
             setShippingIdFunctionCartDetails();
+            cartListQuantityUpdateInit();
+            quantityListener();
         });
 }
 
@@ -97,8 +128,13 @@ $('.qty_minus').on('click', function () {
 function quantityListener() {
     $('.qty_input').each(function () {
         var qty = $(this);
-        var minimumOrderQuantity = $(this).data('minimum-order') ?? 1;
-        var currentStockQuantity = $(this).data('current-stock') ?? 1000;
+        var isDirectTopUp = parseInt(qty.data('is-direct-topup'), 10) === 1;
+        var minimumOrderQuantity = isDirectTopUp
+            ? (qty.data('min') ?? 1)
+            : (qty.data('minimum-order') ?? 1);
+        var currentStockQuantity = isDirectTopUp
+            ? (qty.data('max') ?? qty.data('current-stock') ?? 1000)
+            : (qty.data('current-stock') ?? 1000);
         if (qty.val() == 1 || qty.val() == minimumOrderQuantity ) {
             qty.siblings('.qty_minus').html('<i class="tio-delete text-danger"></i>')
         } else {
@@ -106,7 +142,7 @@ function quantityListener() {
         }
 
         try {
-            if (qty.val() > currentStockQuantity) {
+            if (!isDirectTopUp && qty.val() > currentStockQuantity) {
                 qty.siblings('.qty_minus').html('<i class="tio-delete text-danger"></i>')
             }
         }catch (e) {

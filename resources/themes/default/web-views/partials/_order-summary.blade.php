@@ -18,8 +18,8 @@
             @php($hasDigitalInCart = $cart->where('product_type', 'digital')->count() > 0)
             @if ($cart->count() > 0)
                 @foreach ($cart as $key => $cartItem)
-                    @php($subTotal += $cartItem['price'] * $cartItem['quantity'])
-                    @php($totalDiscountOnProduct += $cartItem['discount'] * $cartItem['quantity'])
+                    @php($subTotal += $cartItem->isDirectTopUp() ? $cartItem->getGrossPrice() : $cartItem['price'] * $cartItem['quantity'])
+                    @php($totalDiscountOnProduct += $cartItem->getTotalDiscountAmount())
                 @endforeach
 
                 @if (session()->missing('coupon_type') || session('coupon_type') != 'free_delivery')

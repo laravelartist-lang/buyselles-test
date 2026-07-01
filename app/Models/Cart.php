@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use Carbon\Carbon;
+use Illuminate\Contracts\Encryption\DecryptException;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
@@ -51,6 +53,7 @@ class Cart extends Model
         'quantity' => 'integer',
         'price' => 'float',
         'custom_amount' => 'float',
+        'direct_topup_quantity' => 'float',
         'tax' => 'float',
         'is_checked' => 'integer',
         'discount' => 'float',
@@ -74,6 +77,8 @@ class Cart extends Model
         'quantity',
         'price',
         'custom_amount',
+        'direct_topup_account_id',
+        'direct_topup_quantity',
         'tax',
         'discount',
         'tax_model',
@@ -112,6 +117,107 @@ class Cart extends Model
     public function allProducts(): BelongsTo
     {
         return $this->belongsTo(Product::class, 'product_id');
+    }
+
+    public function isDirectTopUp(): bool
+    {
+        return $this->direct_topup_quantity !== null;
+    }
+
+    public function getDisplayQuantity(): float
+    {
+        if ($this->isDirectTopUp()) {
+            return (float) $this->direct_topup_quantity;
+        }
+
+        return (float) $this->quantity;
+    }
+
+    public function getGrossPrice(): float
+    {
+        if (! $this->isDirectTopUp()) {
+            return (float) $this->price;
+        }
+
+        $product = $this->relationLoaded('product')
+            ? $this->product
+            : ($this->relationLoaded('allProducts') ? $this->allProducts : $this->product()->first());
+
+        if (! $product) {
+            return (float) $this->price;
+        }
+
+        return app(\App\Services\DirectTopUp\DirectTopUpService::class)->calculateTotalPrice(
+            $product,
+            (float) $this->direct_topup_quantity
+        );
+    }
+
+    public function getTotalDiscountAmount(): float
+    {
+        if ($this->isDirectTopUp()) {
+            $product = $this->relationLoaded('product')
+                ? $this->product
+                : ($this->relationLoaded('allProducts') ? $this->allProducts : $this->product()->first());
+
+            if ($product) {
+                return getProductPriceByType(
+                    product: $product,
+                    type: 'discounted_amount',
+                    result: 'value',
+                    price: $this->getGrossPrice()
+                );
+            }
+        }
+
+        return (float) $this->discount * (float) $this->quantity;
+    }
+
+    public function getLineTotal(): float
+    {
+        if ($this->isDirectTopUp()) {
+            return $this->getGrossPrice() - $this->getTotalDiscountAmount();
+        }
+
+        return ((float) $this->price - (float) $this->discount) * (float) $this->quantity;
+    }
+
+    protected function directTopupAccountId(): Attribute
+    {
+        return Attribute::make(
+            get: function (?string $value): ?string {
+                if ($value === null || $value === '') {
+                    return $value;
+                }
+
+                // Try with unserialize first (new format: encrypted + serialized)
+                try {
+                    $decrypted = decrypt($value, true);
+
+                    if ($decrypted !== false) {
+                        return $decrypted;
+                    }
+
+                    // Unserialize failed — value was stored as plain encrypted text (old format)
+                } catch (DecryptException) {
+                    // Decryption failed entirely, try without unserialize
+                }
+
+                // Fallback: old format where value was encrypted without serialization
+                try {
+                    return decrypt($value, false);
+                } catch (DecryptException) {
+                    return $value;
+                }
+            },
+            set: function (?string $value): ?string {
+                if ($value === null || $value === '') {
+                    return $value;
+                }
+
+                return encrypt($value);
+            },
+        );
     }
 
     protected static function boot(): void

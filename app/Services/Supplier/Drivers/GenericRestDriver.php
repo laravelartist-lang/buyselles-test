@@ -99,7 +99,7 @@ class GenericRestDriver implements SupplierDriverInterface
         );
     }
 
-    public function placeOrder(string $supplierProductId, int $quantity): SupplierOrderResult
+    public function placeOrder(string $supplierProductId, int $quantity, ?float $unitPrice = null): SupplierOrderResult
     {
         $endpoint = $this->getSetting('order_endpoint', '/orders');
         $productIdField = $this->getSetting('order_product_id_field', 'product_id');
@@ -109,6 +109,11 @@ class GenericRestDriver implements SupplierDriverInterface
             $productIdField => $supplierProductId,
             $quantityField => $quantity,
         ];
+
+        if ($unitPrice !== null) {
+            $priceField = $this->getSetting('order_unit_price_field', 'unit_price');
+            $payload[$priceField] = $unitPrice;
+        }
 
         $extraFields = $this->getSetting('order_extra_fields', []);
         $payload = array_merge($payload, $extraFields);
@@ -131,6 +136,55 @@ class GenericRestDriver implements SupplierDriverInterface
             status: $status,
             codes: $codes,
             rawResponse: $data ?? [],
+        );
+    }
+
+    public function placeTopUpOrder(
+        string $supplierProductId,
+        float $quantity,
+        string $accountId,
+        ?float $unitPrice = null,
+    ): SupplierOrderResult {
+        $endpoint = $this->getSetting('topup_order_endpoint', $this->getSetting('order_endpoint', '/orders'));
+        $productIdField = $this->getSetting('topup_product_id_field', $this->getSetting('order_product_id_field', 'product_id'));
+        $quantityField = $this->getSetting('topup_quantity_field', $this->getSetting('order_quantity_field', 'quantity'));
+        $accountField = $this->getSetting('topup_account_field', 'account_id');
+
+        $payload = [
+            $productIdField => $supplierProductId,
+            $quantityField => $quantity,
+            $accountField => $accountId,
+        ];
+
+        if ($unitPrice !== null) {
+            $priceField = $this->getSetting('topup_unit_price_field', $this->getSetting('order_unit_price_field', 'unit_price'));
+            $payload[$priceField] = $unitPrice;
+        }
+
+        $extraFields = $this->getSetting('topup_extra_fields', $this->getSetting('order_extra_fields', []));
+        $payload = array_merge($payload, $extraFields);
+
+        $response = $this->makeRequest('POST', $endpoint, $payload);
+        $data = $response->json() ?? [];
+
+        $orderIdPath = $this->getSetting('topup_order_id_response_path', $this->getSetting('order_id_response_path', 'order_id'));
+        $statusPath = $this->getSetting('topup_status_response_path', $this->getSetting('order_status_response_path', 'status'));
+        $successValues = (array) $this->getSetting('topup_success_status_values', ['success', 'completed', 'fulfilled', 'done']);
+
+        $rawStatus = (string) data_get($data, $statusPath, '');
+        $status = $this->normalizeStatus($rawStatus);
+
+        if ($response->successful() && ($status === 'fulfilled' || in_array(strtolower($rawStatus), array_map('strtolower', $successValues), true))) {
+            $status = 'fulfilled';
+        } elseif ($response->failed()) {
+            $status = 'failed';
+        }
+
+        return new SupplierOrderResult(
+            supplierOrderId: (string) data_get($data, $orderIdPath),
+            status: $status,
+            codes: [],
+            rawResponse: $data,
         );
     }
 
@@ -276,6 +330,14 @@ class GenericRestDriver implements SupplierDriverInterface
             'order_id_response_path' => ['label' => 'Order ID Response Path', 'type' => 'text', 'default' => 'order_id'],
             'order_status_response_path' => ['label' => 'Order Status Response Path', 'type' => 'text', 'default' => 'status'],
             'order_codes_response_path' => ['label' => 'Order Codes Response Path', 'type' => 'text', 'default' => 'codes'],
+            'order_unit_price_field' => ['label' => 'Order Unit Price Field', 'type' => 'text', 'default' => 'unit_price'],
+            'topup_order_endpoint' => ['label' => 'Top-up Order Endpoint', 'type' => 'text', 'default' => '/orders'],
+            'topup_product_id_field' => ['label' => 'Top-up Product ID Field', 'type' => 'text', 'default' => 'product_id'],
+            'topup_quantity_field' => ['label' => 'Top-up Quantity Field', 'type' => 'text', 'default' => 'quantity'],
+            'topup_account_field' => ['label' => 'Top-up Account ID Field', 'type' => 'text', 'default' => 'account_id'],
+            'topup_unit_price_field' => ['label' => 'Top-up Unit Price Field', 'type' => 'text', 'default' => 'unit_price'],
+            'topup_status_response_path' => ['label' => 'Top-up Status Response Path', 'type' => 'text', 'default' => 'status'],
+            'topup_order_id_response_path' => ['label' => 'Top-up Order ID Response Path', 'type' => 'text', 'default' => 'order_id'],
             'webhook_secret' => ['label' => 'Webhook Secret', 'type' => 'password', 'default' => ''],
             'webhook_signature_header' => ['label' => 'Webhook Signature Header', 'type' => 'text', 'default' => 'X-Signature'],
             'webhook_hash_algo' => ['label' => 'Webhook Hash Algorithm', 'type' => 'text', 'default' => 'sha512'],
@@ -323,8 +385,8 @@ class GenericRestDriver implements SupplierDriverInterface
      */
     private function applyAuth(\Illuminate\Http\Client\PendingRequest $request): \Illuminate\Http\Client\PendingRequest
     {
-        $apiKey = $this->credentials['api_key'] ?? '';
-        $apiSecret = $this->credentials['api_secret'] ?? '';
+        $apiKey = $this->credentials['api_key'] ?? $this->credentials['client_id'] ?? '';
+        $apiSecret = $this->credentials['api_secret'] ?? $this->credentials['client_secret'] ?? '';
 
         return match ($this->supplier->auth_type) {
             'bearer_token' => $request->withToken($apiKey),

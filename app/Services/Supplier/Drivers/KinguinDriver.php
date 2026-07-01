@@ -10,6 +10,7 @@ use App\DTOs\Supplier\SupplierOrderResult;
 use App\DTOs\Supplier\SupplierProductDTO;
 use App\DTOs\Supplier\WebhookResult;
 use App\Models\SupplierApi;
+use App\Services\Supplier\Concerns\ProvidesUnsupportedDirectTopUp;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 
@@ -21,6 +22,8 @@ use Illuminate\Support\Facades\Http;
  */
 class KinguinDriver implements SupplierDriverInterface
 {
+    use ProvidesUnsupportedDirectTopUp;
+
     private SupplierApi $supplier;
 
     /** @var array<string, mixed> */
@@ -106,7 +109,7 @@ class KinguinDriver implements SupplierDriverInterface
         );
     }
 
-    public function placeOrder(string $supplierProductId, int $quantity): SupplierOrderResult
+    public function placeOrder(string $supplierProductId, int $quantity, ?float $unitPrice = null): SupplierOrderResult
     {
         $response = $this->makeRequest('POST', '/v2/order', [
             'products' => [

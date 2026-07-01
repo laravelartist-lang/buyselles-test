@@ -10,6 +10,7 @@ use App\Models\PartnerOrderIdempotency;
 use App\Models\Product;
 use App\Models\ResellerApiKey;
 use App\Models\SellerWallet;
+use App\Models\SupplierProductMapping;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -136,24 +137,26 @@ class ResellerApiService
             return ['error' => 'Product not found or not available.', 'status' => 404];
         }
 
-        // Check available stock
-        $availableCount = DigitalProductCode::query()
-            ->where('product_id', $productId)
-            ->where('status', 'available')
-            ->where('is_active', true)
-            ->where(function ($q) {
-                $q->whereNull('expiry_date')
-                    ->orWhereDate('expiry_date', '>=', now()->toDateString());
-            })
-            ->count();
+        // Check available stock - skip if supplier mapping exists
+        if (! SupplierProductMapping::hasActiveMapping($productId)) {
+            $availableCount = DigitalProductCode::query()
+                ->where('product_id', $productId)
+                ->where('status', 'available')
+                ->where('is_active', true)
+                ->where(function ($q) {
+                    $q->whereNull('expiry_date')
+                        ->orWhereDate('expiry_date', '>=', now()->toDateString());
+                })
+                ->count();
 
-        if ($availableCount < $quantity) {
-            return [
-                'error' => 'Insufficient stock.',
-                'available' => $availableCount,
-                'requested' => $quantity,
-                'status' => 409,
-            ];
+            if ($availableCount < $quantity) {
+                return [
+                    'error' => 'Insufficient stock.',
+                    'available' => $availableCount,
+                    'requested' => $quantity,
+                    'status' => 409,
+                ];
+            }
         }
 
         $totalCost = $product->unit_price * $quantity;

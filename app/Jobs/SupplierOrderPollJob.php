@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Models\DigitalProductCode;
 use App\Models\Order;
 use App\Models\SupplierOrder;
 use App\Services\DigitalProductCodeService;
@@ -11,6 +12,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -128,12 +130,16 @@ class SupplierOrderPollJob implements ShouldQueue
         $plainCodes = array_map(fn ($c) => is_array($c) ? ($c['code'] ?? '') : $c, $codes);
         $supplierOrder->setEncryptedCodes($plainCodes);
 
-        // Add codes to pool via code service
+        // Add codes to pool via code service (inserts new, skips duplicates)
         $bulkResult = $codeService->bulkAddToPool(
             productId: $mapping->product_id,
             records: $codes,
             source: 'supplier_api',
         );
+
+        // Update existing codes with richer metadata when the API returns pin/serial/expiry
+        // after the initial poll (Bamboo may populate card metadata asynchronously).
+        $this->updateExistingCodeMetadata($codes, $mapping);
 
         $supplierOrder->update([
             'status' => $bulkResult['inserted'] >= $supplierOrder->quantity ? 'fulfilled' : 'partial',
@@ -163,6 +169,75 @@ class SupplierOrderPollJob implements ShouldQueue
                 Log::info('SupplierOrderPollJob: codes assigned and customer notified', [
                     'supplier_order_id' => $supplierOrder->id,
                     'order_id' => $order->id,
+                ]);
+            }
+        }
+    }
+
+    /**
+     * Update existing DigitalProductCode records with richer metadata (pin, serial, expiry)
+     * when the supplier API returns data that wasn't available on an earlier poll.
+     *
+     * Bamboo may initially return card codes without pin/serial/expiry, then populate
+     * those fields asynchronously. This method fills in the gaps on subsequent polls.
+     *
+     * @param  array<int, string|array{code: string, pin?: string|null, serial_number?: string|null, expiry_date?: string|null}>  $codes
+     * @param  \App\Models\SupplierProductMapping  $mapping  The product mapping (used for product_id scope)
+     */
+    private function updateExistingCodeMetadata(array $codes, \App\Models\SupplierProductMapping $mapping): void
+    {
+        foreach ($codes as $record) {
+            if (is_string($record)) {
+                continue;
+            }
+
+            $plainCode = trim((string) ($record['code'] ?? ''));
+            $pin = isset($record['pin']) ? trim((string) $record['pin']) : null;
+            $serialNumber = isset($record['serial_number']) ? trim((string) $record['serial_number']) : null;
+            $expiryDate = $record['expiry_date'] ?? null;
+
+            if ($plainCode === '') {
+                continue;
+            }
+
+            // Find existing code by hash (scoped to product to avoid cross-seller collisions)
+            $hash = hash('sha256', strtolower(trim($plainCode)));
+            $existing = DigitalProductCode::where('code_hash', $hash)
+                ->where('product_id', $mapping->product_id)
+                ->first();
+
+            if (! $existing) {
+                continue;
+            }
+
+            $needsUpdate = false;
+            $updateData = [];
+
+            // Update pin if the existing record is missing it
+            if ($existing->pin === null && $pin !== null && $pin !== '') {
+                $updateData['pin'] = Crypt::encryptString($pin);
+                $needsUpdate = true;
+            }
+
+            // Update serial_number if missing
+            if (($existing->serial_number === null || $existing->serial_number === '') && $serialNumber !== null && $serialNumber !== '') {
+                $updateData['serial_number'] = $serialNumber;
+                $needsUpdate = true;
+            }
+
+            // Update expiry_date if missing
+            if ($existing->expiry_date === null && $expiryDate !== null) {
+                $updateData['expiry_date'] = $expiryDate;
+                $needsUpdate = true;
+            }
+
+            if ($needsUpdate) {
+                DigitalProductCode::where('id', $existing->id)->update($updateData);
+
+                Log::info('SupplierOrderPollJob: updated existing code metadata', [
+                    'code_id' => $existing->id,
+                    'code_hash' => $hash,
+                    'updated_fields' => array_keys($updateData),
                 ]);
             }
         }

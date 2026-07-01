@@ -2,6 +2,7 @@
 
 namespace App\Observers;
 
+use App\Jobs\DirectTopUpFulfillmentJob;
 use App\Jobs\SupplierCodeFetchJob;
 use App\Models\DigitalProductCode;
 use App\Models\Order;
@@ -34,6 +35,7 @@ class OrderObserver
             }
 
             $this->dispatchSupplierFallbackIfNeeded($order);
+            $this->dispatchDirectTopUpIfNeeded($order);
         }
     }
 
@@ -56,6 +58,7 @@ class OrderObserver
             }
 
             $this->dispatchSupplierFallbackIfNeeded($order);
+            $this->dispatchDirectTopUpIfNeeded($order);
         }
     }
 
@@ -78,8 +81,9 @@ class OrderObserver
                 $productDetails = json_decode($detail->product_details ?? '{}');
                 $productType = $productDetails->product_type ?? null;
                 $digitalType = $productDetails->digital_product_type ?? null;
+                $isDirectTopUp = (bool) ($productDetails->is_direct_topup ?? false);
 
-                if ($productType !== 'digital') {
+                if ($productType !== 'digital' || $isDirectTopUp) {
                     continue;
                 }
 
@@ -120,6 +124,53 @@ class OrderObserver
             }
         } catch (\Throwable $e) {
             Log::error('OrderObserver: supplier fallback check failed', [
+                'order_id' => $order->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    private function dispatchDirectTopUpIfNeeded(Order $order): void
+    {
+        try {
+            $order->loadMissing('orderDetails');
+
+            if (! $order->orderDetails) {
+                return;
+            }
+
+            $needsDirectTopUp = false;
+
+            foreach ($order->orderDetails as $detail) {
+                if ($detail->direct_topup_quantity === null || empty($detail->direct_topup_account_id)) {
+                    continue;
+                }
+
+                $productId = $detail->product_id;
+                if (! $productId) {
+                    continue;
+                }
+
+                $hasMapping = SupplierProductMapping::query()
+                    ->where('product_id', $productId)
+                    ->where('is_active', true)
+                    ->whereHas('supplierApi', fn ($q) => $q->where('is_active', true))
+                    ->exists();
+
+                if ($hasMapping) {
+                    $needsDirectTopUp = true;
+                    break;
+                }
+            }
+
+            if ($needsDirectTopUp) {
+                DirectTopUpFulfillmentJob::dispatch($order->id);
+                Log::info('OrderObserver: dispatched DirectTopUpFulfillmentJob', [
+                    'order_id' => $order->id,
+                ]);
+            }
+        } catch (\Throwable $e) {
+            Log::error('OrderObserver: direct top-up dispatch failed', [
                 'order_id' => $order->id,
                 'error' => $e->getMessage(),
             ]);

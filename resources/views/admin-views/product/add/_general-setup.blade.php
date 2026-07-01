@@ -182,6 +182,48 @@
                             </div>
                         </div>
 
+                        <div class="col-md-6 col-lg-4 show-for-digital-product">
+                            <div class="form-group">
+                                <label class="form-check form--check">
+                                    <input type="checkbox" class="form-check-input" name="is_direct_topup" id="is-direct-topup-input"
+                                        value="1" {{ old('is_direct_topup') ? 'checked' : '' }}>
+                                    <span class="form-check-label">{{ translate('is_direct_topup') ?: 'Is Direct Top-up?' }}</span>
+                                </label>
+                                <small class="text-muted d-block">{{ translate('direct_topup_admin_hint') ?: 'When enabled, customers enter an account ID and quantity. No voucher code pool is required.' }}</small>
+                            </div>
+                        </div>
+
+                        <div class="col-md-12 show-for-digital-product" id="direct-topup-config" style="display: none;">
+                            <div class="card border mb-3">
+                                <div class="card-body">
+                                    <h6 class="mb-3">{{ translate('direct_topup_configuration') ?: 'Direct Top-up Configuration' }}</h6>
+                                    <div class="row g-3">
+                                        <div class="col-md-6 col-lg-4">
+                                            <label class="form-label">{{ translate('direct_topup_account_label') ?: 'Account ID Input Label' }}</label>
+                                            <input type="text" name="direct_topup_account_label" class="form-control"
+                                                value="{{ old('direct_topup_account_label') }}"
+                                                placeholder="{{ translate('direct_topup_account_label_placeholder') ?: 'Enter Account ID' }}">
+                                        </div>
+                                        <div class="col-md-6 col-lg-4">
+                                            <label class="form-label">{{ translate('direct_topup_min_quantity') ?: 'Minimum Quantity' }}</label>
+                                            <input type="number" step="0.0001" min="0" name="direct_topup_min_quantity" class="form-control"
+                                                value="{{ old('direct_topup_min_quantity') }}">
+                                        </div>
+                                        <div class="col-md-6 col-lg-4">
+                                            <label class="form-label">{{ translate('direct_topup_max_quantity') ?: 'Maximum Quantity' }}</label>
+                                            <input type="number" step="0.0001" min="0" name="direct_topup_max_quantity" class="form-control"
+                                                value="{{ old('direct_topup_max_quantity') }}">
+                                        </div>
+                                        <div class="col-md-6 col-lg-4">
+                                            <label class="form-label">{{ translate('direct_topup_price_per_unit') ?: 'Price Per Unit' }}</label>
+                                            <input type="number" step="0.00000001" min="0" name="direct_topup_price_per_unit" class="form-control"
+                                                value="{{ old('direct_topup_price_per_unit') }}">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
                         <div class="col-md-12" id="digital-product-code-wrapper" style="display: none;">
                             <div class="form-group">
                                 <label class="form-label">

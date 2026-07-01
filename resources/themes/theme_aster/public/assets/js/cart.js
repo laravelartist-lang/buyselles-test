@@ -9,7 +9,7 @@ function updateCartQuantityListCartData()
         let action = $(this).data('action');
         updateCartQuantityList(minOrder, cart, value, action);
     });
-    $('.update-cart-quantity-list-cart-data-input').on('change', function () {
+    $('.update-cart-quantity-list-cart-data-input').off('change').on('change', function () {
         let minOrder = $(this).data('min-order');
         let cart = $(this).data('cart');
         let value = $(this).data('value');
@@ -22,14 +22,14 @@ updateCartQuantityListCartData();
 
 function updateCartQuantityListMobileCartData()
 {
-    $('.update-cart-quantity-list-mobile-cart-data').on('click change', function () {
+    $('.update-cart-quantity-list-mobile-cart-data').off('click change').on('click change', function () {
         let minOrder = $(this).data('min-order');
         let cart = $(this).data('cart');
         let value = $(this).data('value');
         let action = $(this).data('action');
         updateCartQuantityListMobile(minOrder, cart, value, action);
     });
-    $('.update-cart-quantity-list-mobile-cart-data-input').on('change', function () {
+    $('.update-cart-quantity-list-mobile-cart-data-input').off('change').on('change', function () {
         let minOrder = $(this).data('min-order');
         let cart = $(this).data('cart');
         let value = $(this).data('value');
@@ -40,54 +40,80 @@ function updateCartQuantityListMobileCartData()
 updateCartQuantityListMobileCartData();
 
 function updateCartQuantityList(minimum_order_qty, key, incr, e) {
-    let quantity =parseInt($("#cartQuantityWeb" + key).val())+parseInt(incr);
     let ex_quantity = $("#cartQuantityWeb" + key);
+    let quantity = parseInt(ex_quantity.val(), 10) + parseInt(incr, 10);
     updateCartCommon(minimum_order_qty, key, e, quantity, ex_quantity);
 }
 
 function updateCartQuantityListMobile(minimum_order_qty, key, incr, e) {
-    let quantity = parseInt($("#cartQuantityMobile" + key).val())+parseInt(incr);
     let ex_quantity = $("#cartQuantityMobile" + key);
+    let quantity = parseInt(ex_quantity.val(), 10) + parseInt(incr, 10);
     updateCartCommon(minimum_order_qty, key, e, quantity, ex_quantity);
 }
 function updateCartCommon(minimum_order_qty, key, e, quantity, ex_quantity) {
-    if (ex_quantity.val() > ex_quantity.data('current-stock') && e == 'minus') {
+    let isDirectTopUp = parseInt(ex_quantity.data("is-direct-topup"), 10) === 1;
+    let minQty = isDirectTopUp
+        ? parseInt(ex_quantity.data("min"), 10) || minimum_order_qty
+        : minimum_order_qty;
+    let maxQty = isDirectTopUp
+        ? parseInt(ex_quantity.data("max"), 10) ||
+          parseInt(ex_quantity.data("current-stock"), 10) ||
+          999999
+        : parseInt(ex_quantity.data("current-stock"), 10) || 999999;
+
+    if (isDirectTopUp) {
+        quantity = Math.max(minQty, Math.min(maxQty, quantity));
+    }
+
+    if (!isDirectTopUp && ex_quantity.val() > ex_quantity.data('current-stock') && e == 'minus') {
         removeProductFromCartList(key)
         return false;
     }
 
-    if (quantity < minimum_order_qty && e !== 'delete') {
-        if (e === 'plus' && quantity + 1 <= minimum_order_qty) {
+    if (quantity < minQty && e !== 'delete') {
+        if (e === 'plus' && quantity + 1 <= minQty) {
             quantity = quantity + 1;
-            if (quantity < minimum_order_qty) {
+            if (quantity < minQty) {
                 $(".cartQuantity" + key).val(quantity);
                 return false;
             }
         } else {
-            toastr.error($('.minimum_order_quantity_msg').data('text') + ' ' + minimum_order_qty);
-            $(".cartQuantity" + key).val(minimum_order_qty);
-            location.reload();
+            toastr.error($('.minimum_order_quantity_msg').data('text') + ' ' + minQty);
+            $(".cartQuantity" + key).val(minQty);
             return false;
         }
     }
 
-    if (parseInt(ex_quantity.val()) === parseInt(ex_quantity.data('min')) && e === 'delete') {
+    if (parseInt(ex_quantity.val(), 10) === parseInt(ex_quantity.data('min'), 10) && e === 'delete') {
         removeProductFromCartList(key)
-    }else{
-        let updateQuantityBasicUrl = $('#update-quantity-basic-url').data('url');
-        $.post(updateQuantityBasicUrl, {
+    } else if (
+        parseInt(ex_quantity.val(), 10) === parseInt(ex_quantity.data('min'), 10) &&
+        e === 'minus'
+    ) {
+        removeProductFromCartList(key)
+    } else {
+        ex_quantity.val(quantity);
+
+        const postData = {
             _token: $('meta[name="_token"]').attr('content'),
             key,
-            quantity
-        }, function (response) {
-            if (response.status === 0) {
+            quantity: isDirectTopUp ? 1 : quantity,
+        };
+
+        if (isDirectTopUp) {
+            postData.direct_topup_quantity = quantity;
+        }
+
+        let updateQuantityBasicUrl = $('#update-quantity-basic-url').data('url');
+        $.post(updateQuantityBasicUrl, postData, function (response) {
+            if (response.status == 0) {
                 toastr.error(response.message, {
                     CloseButton: true,
                     ProgressBar: true
                 });
                 $(".cartQuantity" + key).val(response['qty']);
             } else {
-                if (response['qty'] === ex_quantity.data('min')) {
+                if (parseInt(response['qty'], 10) === parseInt(ex_quantity.data('min'), 10)) {
                     ex_quantity.parent().find('.quantity__minus').html('<i class="bi bi-trash3-fill text-danger fs-10"></i>')
                 } else {
                     ex_quantity.parent().find('.quantity__minus').html('<i class="bi bi-dash"></i>')
@@ -167,5 +193,4 @@ function setShippingIdFunction(){
     }
 }
 setShippingIdFunction();
-
 

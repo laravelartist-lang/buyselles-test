@@ -586,6 +586,7 @@ class RouterHelper {
     double tax = 0,
     int? sellerId,
     bool onlyDigital = false,
+    bool onlyDirectTopUp = false,
     bool hasPhysical = true,
     int quantity = 1,
   }) {
@@ -598,6 +599,7 @@ class RouterHelper {
       'discount': discount.toString(),
       'tax': tax.toString(),
       'onlyDigital': onlyDigital.toString(),
+      'onlyDirectTopUp': onlyDirectTopUp.toString(),
       'hasPhysical': hasPhysical.toString(),
       'quantity': quantity.toString(),
     };
@@ -1550,6 +1552,7 @@ class RouterHelper {
               sellerId:
                   qp['sellerId'] != null ? int.tryParse(qp['sellerId']!) : null,
               onlyDigital: qp['onlyDigital'] == 'true',
+              onlyDirectTopUp: qp['onlyDirectTopUp'] == 'true',
               hasPhysical: qp['hasPhysical'] == 'true',
               quantity: int.tryParse(qp['quantity'] ?? '1') ?? 1,
             );
