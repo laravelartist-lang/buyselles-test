@@ -690,7 +690,7 @@ class CategoryDisplayBlockWebService
 
         $products = $products
             ->withCount(['orderDetails', 'reviews', 'wishList'])
-            ->with(['reviews', 'rating', 'shop'])
+            ->with(['reviews', 'rating', 'shop', 'supplierMapping'])
             ->orderBy('order_details_count', 'desc')
             ->paginate($perPage, ['*'], 'products_page', $request->integer('products_page', 1));
 

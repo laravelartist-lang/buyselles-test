@@ -22,6 +22,7 @@ use Illuminate\Support\Facades\Crypt;
  * @property int $priority
  * @property bool $is_active
  * @property bool $is_sandbox
+ * @property bool $supports_direct_top_up
  * @property string $health_status healthy|degraded|down|unknown
  * @property Carbon|null $health_checked_at
  * @property Carbon|null $last_sync_at
@@ -44,6 +45,7 @@ class SupplierApi extends Model
         'priority',
         'is_active',
         'is_sandbox',
+        'supports_direct_top_up',
         'health_status',
         'health_checked_at',
         'last_sync_at',
@@ -57,6 +59,7 @@ class SupplierApi extends Model
             'priority' => 'integer',
             'is_active' => 'boolean',
             'is_sandbox' => 'boolean',
+            'supports_direct_top_up' => 'boolean',
             'health_checked_at' => 'datetime',
             'last_sync_at' => 'datetime',
             'created_at' => 'datetime',

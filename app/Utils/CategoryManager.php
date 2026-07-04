@@ -26,7 +26,7 @@ class CategoryManager
     public static function products($category_id, $request = null, $dataLimit = null)
     {
         $user = Helpers::getCustomerInformation($request);
-        $products = Product::with(['flashDealProducts.flashDeal', 'rating', 'seller.shop', 'tags', 'clearanceSale' => function ($query) {
+        $products = Product::with(['flashDealProducts.flashDeal', 'rating', 'seller.shop', 'tags', 'supplierMapping', 'clearanceSale' => function ($query) {
             return $query->active();
         }])
             ->withCount(['reviews', 'wishList' => function ($query) use ($user) {
@@ -42,6 +42,14 @@ class CategoryManager
 
         $products->when($request->has('vendor_id'), function (Builder $query) use ($request) {
             self::applyVendorScopeFromVendorId($query, (int) $request['vendor_id']);
+        });
+
+        $products->when(($request['direct_topup'] ?? '') == '1', function (Builder $query) {
+            return $query->whereHas('supplierMapping', function ($q) {
+                $q->where('is_active', true)
+                    ->where('is_direct_topup', true)
+                    ->whereHas('supplierApi', fn ($sq) => $sq->where('is_active', true)->where('supports_direct_top_up', true));
+            });
         });
 
         if (($request['filter_by'] ?? null) === 'mixed_all') {

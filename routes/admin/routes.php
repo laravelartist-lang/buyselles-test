@@ -1346,6 +1346,7 @@ Route::group(['prefix' => 'admin', 'as' => 'admin.', 'middleware' => ['admin', '
                 Route::post('status', 'updateStatus')->name('status');
                 Route::post('delete', 'delete')->name('delete');
                 Route::post('sync-prices', 'syncPrices')->name('sync-prices');
+                Route::post('validate-direct-topup', 'validateDirectTopup')->name('validate-direct-topup');
             });
         });
 

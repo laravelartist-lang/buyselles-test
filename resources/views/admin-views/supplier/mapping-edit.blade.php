@@ -153,6 +153,60 @@
                             <small class="text-muted">{{ translate('maximum_value_the_customer_can_enter') }}</small>
                         </div>
                     </div>
+
+                    {{-- ─── Direct Top-Up ──────────────────────────────────────── --}}
+                    <div class="col-lg-12">
+                        <hr class="my-2">
+                        <h5 class="mb-3">{{ translate('direct_topup_settings') ?: 'Direct Top-Up Settings' }}</h5>
+                    </div>
+
+                    <div class="col-lg-12">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" name="is_direct_topup" value="1"
+                                   id="direct-topup-toggle"
+                                   data-mapping-id="{{ $mapping->id }}"
+                                   data-validate-url="{{ route('admin.supplier.mapping.validate-direct-topup') }}"
+                                   {{ old('is_direct_topup', $mapping->is_direct_topup) ? 'checked' : '' }}>
+                            <label class="form-check-label" for="direct-topup-toggle">
+                                {{ translate('enable_direct_topup') ?: 'Enable Direct Top-Up' }}
+                            </label>
+                            <br>
+                            <small class="text-muted">{{ translate('direct_topup_mapping_hint') ?: 'When enabled, customers can enter an account ID and quantity. The supplier must support direct top-up to enable this.' }}</small>
+                        </div>
+                    </div>
+
+                    <div class="col-lg-6 direct-topup-fields" style="{{ old('is_direct_topup', $mapping->is_direct_topup) ? '' : 'display:none;' }}">
+                        <div class="form-group">
+                            <label class="form-label">{{ translate('direct_topup_account_label') ?: 'Account ID Input Label' }}</label>
+                            <input type="text" name="direct_topup_account_label" class="form-control"
+                                   value="{{ old('direct_topup_account_label', $mapping->direct_topup_account_label) }}"
+                                   placeholder="{{ translate('direct_topup_account_label_placeholder') ?: 'Enter Account ID' }}">
+                        </div>
+                    </div>
+
+                    <div class="col-lg-3 direct-topup-fields" style="{{ old('is_direct_topup', $mapping->is_direct_topup) ? '' : 'display:none;' }}">
+                        <div class="form-group">
+                            <label class="form-label">{{ translate('direct_topup_min_quantity') ?: 'Minimum Quantity' }}</label>
+                            <input type="number" step="0.0001" min="0" name="direct_topup_min_quantity" class="form-control"
+                                   value="{{ old('direct_topup_min_quantity', $mapping->direct_topup_min_quantity) }}">
+                        </div>
+                    </div>
+
+                    <div class="col-lg-3 direct-topup-fields" style="{{ old('is_direct_topup', $mapping->is_direct_topup) ? '' : 'display:none;' }}">
+                        <div class="form-group">
+                            <label class="form-label">{{ translate('direct_topup_max_quantity') ?: 'Maximum Quantity' }}</label>
+                            <input type="number" step="0.0001" min="0" name="direct_topup_max_quantity" class="form-control"
+                                   value="{{ old('direct_topup_max_quantity', $mapping->direct_topup_max_quantity) }}">
+                        </div>
+                    </div>
+
+                    <div class="col-lg-6 direct-topup-fields" style="{{ old('is_direct_topup', $mapping->is_direct_topup) ? '' : 'display:none;' }}">
+                        <div class="form-group">
+                            <label class="form-label">{{ translate('direct_topup_price_per_unit') ?: 'Price Per Unit' }}</label>
+                            <input type="number" step="0.00000001" min="0" name="direct_topup_price_per_unit" class="form-control"
+                                   value="{{ old('direct_topup_price_per_unit', $mapping->direct_topup_price_per_unit) }}">
+                        </div>
+                    </div>
                 </div>
 
                 <div class="d-flex gap-3 mt-4">
@@ -178,6 +232,65 @@
         customizableToggle.addEventListener('change', function () {
             customizableFields.forEach(el => {
                 el.style.display = this.checked ? '' : 'none';
+            });
+        });
+    }
+
+    const directTopupToggle = document.getElementById('direct-topup-toggle');
+    const directTopupFields = document.querySelectorAll('.direct-topup-fields');
+
+    if (directTopupToggle) {
+        let ajaxCheckInProgress = false;
+
+        directTopupToggle.addEventListener('change', function () {
+            if (!this.checked) {
+                directTopupFields.forEach(el => { el.style.display = 'none'; });
+                return;
+            }
+
+            if (ajaxCheckInProgress) return;
+
+            ajaxCheckInProgress = true;
+            const validateUrl = this.getAttribute('data-validate-url');
+            const mappingId = this.getAttribute('data-mapping-id');
+            const supplierSelect = document.querySelector('select[name="supplier_api_id"]');
+            const supplierId = supplierSelect ? supplierSelect.value : null;
+
+            if (!supplierId) {
+                toastr.error('{{ translate("please_select_a_supplier_first") ?: "Please select a supplier first." }}');
+                this.checked = false;
+                ajaxCheckInProgress = false;
+                return;
+            }
+
+            fetch(validateUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+                    'Accept': 'application/json',
+                },
+                body: JSON.stringify({
+                    mapping_id: mappingId,
+                    supplier_api_id: supplierId,
+                }),
+            })
+            .then(response => response.json())
+            .then(data => {
+                ajaxCheckInProgress = false;
+                if (data.supported) {
+                    directTopupFields.forEach(el => { el.style.display = ''; });
+                } else {
+                    toastr.error(data.message || '{{ translate("supplier_does_not_support_direct_topup") ?: "This supplier does not support direct top-up." }}');
+                    this.checked = false;
+                    directTopupFields.forEach(el => { el.style.display = 'none'; });
+                }
+            })
+            .catch(() => {
+                ajaxCheckInProgress = false;
+                toastr.error('{{ translate("failed_to_check_direct_topup_support") ?: "Failed to check supplier capabilities." }}');
+                this.checked = false;
+                directTopupFields.forEach(el => { el.style.display = 'none'; });
             });
         });
     }

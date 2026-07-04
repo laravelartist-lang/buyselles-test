@@ -26,6 +26,7 @@ class DirectTopUpFulfillmentTest extends TestCase
         $this->recreateTable('supplier_apis', function (Blueprint $table): void {
             $table->id();
             $table->boolean('is_active')->default(true);
+            $table->boolean('supports_direct_top_up')->default(false);
             $table->timestamps();
         });
 
@@ -81,6 +82,7 @@ class DirectTopUpFulfillmentTest extends TestCase
         $this->app['db']->table('supplier_apis')->insert([
             'id' => 1,
             'is_active' => true,
+            'supports_direct_top_up' => true,
             'created_at' => now(),
             'updated_at' => now(),
         ]);

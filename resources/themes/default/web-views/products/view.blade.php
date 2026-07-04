@@ -53,6 +53,7 @@
                                     <hr>
                                     @include('web-views.products.partials._filter-location')
                                     @include('web-views.products.partials._filter-product-type')
+                                    @include('web-views.products.partials._filter-direct-topup')
                                     @include('web-views.products.partials._filter-product-sort')
                                     @include('web-views.products.partials._filter-product-price')
                                     @include('web-views.products.partials._filter-product-categories', [
@@ -155,7 +156,8 @@
         data-offer="{{ request('offer_type') ?? '' }}"
         data-country-id="{{ request('country_id') }}"
         data-city-id="{{ request('city_id') }}"
-        data-area-id="{{ request('area_id') }}"></span>
+        data-area-id="{{ request('area_id') }}"
+        data-direct-topup="{{ request('direct_topup') ?? '' }}"></span>
 @endsection
 
 @push('script')

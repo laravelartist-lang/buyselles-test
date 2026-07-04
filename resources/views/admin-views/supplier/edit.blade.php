@@ -45,7 +45,7 @@
                         <div class="form-group">
                             <label class="form-label">{{ translate('auth_type') }} <span class="text-danger">*</span></label>
                             <select name="auth_type" class="form-control" required>
-                                @foreach(['api_key', 'bearer_token', 'oauth2', 'basic', 'hmac'] as $type)
+                                @foreach(['api_key', 'bearer_token', 'login_via', 'oauth2', 'basic', 'hmac'] as $type)
                                     <option value="{{ $type }}" {{ $supplier->auth_type == $type ? 'selected' : '' }}>
                                         {{ ucfirst(str_replace('_', ' ', $type)) }}
                                     </option>
@@ -54,7 +54,7 @@
                         </div>
                     </div>
 
-                    <div class="col-lg-4">
+                    <div class="col-lg-3">
                         <div class="form-group">
                             <label class="form-label">{{ translate('rate_limit_per_minute') }} <span class="text-danger">*</span></label>
                             <input type="number" name="rate_limit_per_minute" class="form-control"
@@ -63,7 +63,7 @@
                         </div>
                     </div>
 
-                    <div class="col-lg-4">
+                    <div class="col-lg-3">
                         <div class="form-group">
                             <label class="form-label">{{ translate('priority') }} <span class="text-danger">*</span></label>
                             <input type="number" name="priority" class="form-control"
@@ -72,13 +72,24 @@
                         </div>
                     </div>
 
-                    <div class="col-lg-4">
+                    <div class="col-lg-3">
                         <div class="form-group">
                             <label class="form-label">{{ translate('sandbox_mode') }}</label>
                             <div class="form-check form-switch mt-2">
                                 <input class="form-check-input" type="checkbox" name="is_sandbox" value="1"
                                        id="sandbox-toggle" {{ $supplier->is_sandbox ? 'checked' : '' }}>
                                 <label class="form-check-label" for="sandbox-toggle">{{ translate('enable_sandbox') }}</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-lg-3">
+                        <div class="form-group">
+                            <label class="form-label">{{ translate('supports_direct_top_up') }}</label>
+                            <div class="form-check form-switch mt-2">
+                                <input class="form-check-input" type="checkbox" name="supports_direct_top_up" value="1"
+                                       id="topup-toggle" {{ $supplier->supports_direct_top_up ? 'checked' : '' }}>
+                                <label class="form-check-label" for="topup-toggle">{{ translate('enable_direct_top_up') }}</label>
                             </div>
                         </div>
                     </div>

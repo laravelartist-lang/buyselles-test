@@ -44,6 +44,29 @@ class CartDigitalProductCodeTest extends TestCase
             $table->date('expiry_date')->nullable();
             $table->timestamps();
         });
+
+        $this->recreateTable('supplier_apis', function (Blueprint $table): void {
+            $table->id();
+            $table->string('name')->nullable();
+            $table->string('driver')->nullable();
+            $table->string('base_url')->nullable();
+            $table->text('credentials')->nullable();
+            $table->string('auth_type')->nullable();
+            $table->boolean('is_active')->default(true);
+            $table->timestamps();
+        });
+
+        $this->recreateTable('supplier_product_mappings', function (Blueprint $table): void {
+            $table->id();
+            $table->unsignedBigInteger('product_id')->nullable();
+            $table->unsignedBigInteger('supplier_api_id')->nullable();
+            $table->string('supplier_product_id')->nullable();
+            $table->decimal('cost_price', 10, 2)->default(0);
+            $table->string('markup_type')->default('percent');
+            $table->decimal('markup_value', 10, 2)->default(0);
+            $table->boolean('is_active')->default(true);
+            $table->timestamps();
+        });
     }
 
     // ── Add-to-cart ───────────────────────────────────────────────────────────

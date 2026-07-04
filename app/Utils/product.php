@@ -276,7 +276,7 @@ if (! function_exists('getFeaturedDealsProductList')) {
             $featuredDealProductIDs = $featuredDealID ? FlashDealProduct::where('flash_deal_id', $featuredDealID)->pluck('product_id')->toArray() : [];
 
             return ProductManager::getPriorityWiseFeatureDealQuery(
-                query: Product::active()->with(['category', 'clearanceSale' => function ($query) {
+                query: Product::active()->with(['category', 'supplierMapping', 'clearanceSale' => function ($query) {
                     return $query->active();
                 }])->whereIn('id', $featuredDealProductIDs),
                 dataLimit: 'all'

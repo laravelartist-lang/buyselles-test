@@ -119,6 +119,11 @@ class SyncDenominationsJob implements ShouldQueue
             $maxFace = (float) ($product['maxFaceValue'] ?? 0);
             $isFixed = $minFace > 0 && $minFace === $maxFace;
 
+            // Skip products that don't have denomination data (both face values are 0)
+            if ($minFace <= 0 && $maxFace <= 0) {
+                continue;
+            }
+
             // Cost price from supplier (wholesale)
             $costMin = (float) ($product['price']['min'] ?? $minFace);
             $costCurrency = (string) ($product['price']['currencyCode'] ?? $brandCurrency);
@@ -162,13 +167,20 @@ class SyncDenominationsJob implements ShouldQueue
                 ->where('is_active', true)
                 ->first();
 
-            if ($variableDenom) {
+            if ($variableDenom && ($variableDenom->min_face_value > 0 || $variableDenom->max_face_value > 0)) {
                 $mapping->update([
                     'is_customizable' => true,
                     'min_amount' => $variableDenom->min_face_value,
                     'max_amount' => $variableDenom->max_face_value,
                 ]);
             }
+        } elseif (! $hasFixed && ! $hasVariable) {
+            // No real denominations exist — reset customizable state
+            $mapping->update([
+                'is_customizable' => false,
+                'min_amount' => null,
+                'max_amount' => null,
+            ]);
         } elseif ($hasFixed && ! $hasVariable) {
             // Pure fixed denominations — no custom amount input needed
             $mapping->update([

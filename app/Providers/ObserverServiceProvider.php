@@ -4,7 +4,9 @@ namespace App\Providers;
 
 use App\Models\Order;
 use App\Models\Product;
+use App\Models\SupplierProductMapping;
 use App\Observers\OrderObserver;
+use App\Observers\SupplierProductMappingObserver;
 use Illuminate\Support\ServiceProvider;
 
 class ObserverServiceProvider extends ServiceProvider
@@ -24,5 +26,6 @@ class ObserverServiceProvider extends ServiceProvider
     {
         Product::observe([]);
         Order::observe(OrderObserver::class);
+        SupplierProductMapping::observe(SupplierProductMappingObserver::class);
     }
 }

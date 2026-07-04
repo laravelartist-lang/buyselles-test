@@ -128,7 +128,7 @@
                 </div>
             </div>
 
-            @if (! ($product->is_direct_topup ?? false))
+            @if (! ($product->supplierMapping?->is_direct_topup ?? false))
             <div class="d-flex align-items-center gap-2 gap-sm-3 gap-xl-4">
                 <div class="quantity quantity--style-two d-flex align-items-center justify-content-between w-130px min-width-120 h-40px rounded overflow-hidden">
                     <span class="quantity__minus btn-number single-quantity-minus form-control h-100 bg--light w-32px" data-type="minus" data-field="quantity" data-form=".add-to-cart-sticky-form">

@@ -1308,6 +1308,23 @@ function addToCart(
 ) {
     syncDirectTopUpFormFields(formSelector);
 
+    // Validate custom amount input is within range before submitting
+    let customAmountInput = $(formSelector).find('#custom-amount-input');
+    if (customAmountInput.length > 0 && customAmountInput.closest('.customizable-amount-section').is(':visible')) {
+        let amount = parseFloat(customAmountInput.val());
+        let min = parseFloat(customAmountInput.data('min'));
+        let max = parseFloat(customAmountInput.data('max'));
+
+        if (isNaN(amount) || amount < min || amount > max) {
+            toastr.error(
+                @json(translate('amount_must_be_between')) + ' ' + min + ' - ' + max,
+                { CloseButton: true, ProgressBar: true }
+            );
+            customAmountInput.addClass('border-danger');
+            return false;
+        }
+    }
+
     if (checkValidityForVariantPrice(formSelector)) {
         $.ajaxSetup({
             headers: {
@@ -1321,7 +1338,6 @@ function addToCart(
         // For open/variable denomination products (custom_amount input), always use
         // add-to-cart so CartManager can update both price and custom_amount. The
         // update-quantity endpoint only updates qty and would leave the stored price stale.
-        let customAmountInput = $(formSelector).find('#custom-amount-input');
         let hasOpenDenomination = customAmountInput.length > 0 && customAmountInput.val() !== '';
         let isDirectTopUp = $(formSelector).find('#direct-topup-purchase-section').length > 0;
 

@@ -56,6 +56,24 @@ class DirectTopUpServiceTest extends TestCase
             $table->string('markup_type')->default('percent');
             $table->decimal('markup_value', 10, 2)->default(0);
             $table->boolean('is_active')->default(true);
+            $table->boolean('is_direct_topup')->default(false);
+            $table->string('direct_topup_account_label', 255)->nullable();
+            $table->decimal('direct_topup_min_quantity', 20, 4)->nullable();
+            $table->decimal('direct_topup_max_quantity', 20, 4)->nullable();
+            $table->decimal('direct_topup_price_per_unit', 24, 8)->nullable();
+            $table->timestamps();
+        });
+
+        $this->recreateTable('products', function (Blueprint $table): void {
+            $table->id();
+            $table->string('added_by')->nullable();
+            $table->string('name')->nullable();
+            $table->string('slug')->nullable();
+            $table->string('code')->nullable();
+            $table->string('product_type')->nullable();
+            $table->string('digital_product_type')->nullable();
+            $table->decimal('unit_price', 14, 2)->nullable();
+            $table->tinyInteger('status')->default(1);
             $table->timestamps();
         });
 
@@ -83,8 +101,12 @@ class DirectTopUpServiceTest extends TestCase
     public function test_validate_configuration_rejects_invalid_min_max(): void
     {
         $product = $this->makeDirectTopUpProduct();
-        $product->direct_topup_min_quantity = 500;
-        $product->direct_topup_max_quantity = 100;
+        $this->app['db']->table('supplier_product_mappings')
+            ->where('product_id', $product->id)
+            ->update([
+                'direct_topup_min_quantity' => 500,
+                'direct_topup_max_quantity' => 100,
+            ]);
 
         $this->expectException(InvalidArgumentException::class);
 
@@ -107,20 +129,42 @@ class DirectTopUpServiceTest extends TestCase
 
     private function makeDirectTopUpProduct(): Product
     {
-        return new Product([
+        $product = Product::create([
             'added_by' => 'admin',
             'name' => 'Direct Top-up Product',
             'slug' => 'direct-topup-product',
             'code' => 'TOPUP001',
             'product_type' => 'digital',
             'digital_product_type' => 'ready_product',
+            'unit_price' => 1,
+            'status' => 1,
+        ]);
+
+        $supplierId = $this->app['db']->table('supplier_apis')->insertGetId([
+            'name' => 'Test Supplier',
+            'driver' => 'generic_rest',
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->app['db']->table('supplier_product_mappings')->insert([
+            'product_id' => $product->id,
+            'supplier_api_id' => $supplierId,
+            'supplier_product_id' => 'TEST-001',
+            'cost_price' => 0.01,
+            'markup_type' => 'percent',
+            'markup_value' => 0,
+            'is_active' => true,
             'is_direct_topup' => true,
             'direct_topup_account_label' => 'Player ID',
             'direct_topup_min_quantity' => 100,
             'direct_topup_max_quantity' => 10000,
             'direct_topup_price_per_unit' => 0.01,
-            'unit_price' => 1,
-            'status' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
         ]);
+
+        return $product;
     }
 }

@@ -49,12 +49,25 @@ class SupplierCodeFetchJob implements ShouldQueue
         }
 
         try {
-            $fulfilled = $manager->fulfillOrder($order);
+            $result = $manager->fulfillOrder($order);
 
             Log::info('SupplierCodeFetchJob: completed', [
                 'order_id' => $this->orderId,
-                'fulfilled' => $fulfilled,
+                'fulfilled' => $result['fulfilled'],
+                'error' => $result['error'],
             ]);
+
+            if (! $result['fulfilled'] && $result['error']) {
+                $order->update([
+                    'order_status' => 'failed',
+                    'order_note' => 'Supplier fulfillment failed: '.$result['error'],
+                ]);
+
+                Log::error('SupplierCodeFetchJob: fulfillment failed', [
+                    'order_id' => $this->orderId,
+                    'error' => $result['error'],
+                ]);
+            }
         } catch (\Throwable $e) {
             Log::error('SupplierCodeFetchJob: failed', [
                 'order_id' => $this->orderId,
@@ -62,7 +75,7 @@ class SupplierCodeFetchJob implements ShouldQueue
                 'error' => $e->getMessage(),
             ]);
 
-            throw $e; // Rethrow to trigger retry with backoff
+            throw $e;
         }
     }
 

@@ -43,12 +43,25 @@ class DirectTopUpFulfillmentJob implements ShouldQueue
         }
 
         try {
-            $fulfilled = $manager->fulfillDirectTopUpOrder($order);
+            $result = $manager->fulfillDirectTopUpOrder($order);
 
             Log::info('DirectTopUpFulfillmentJob: completed', [
                 'order_id' => $this->orderId,
-                'fulfilled' => $fulfilled,
+                'fulfilled' => $result['fulfilled'],
+                'error' => $result['error'],
             ]);
+
+            if (! $result['fulfilled'] && $result['error']) {
+                $order->update([
+                    'order_status' => 'failed',
+                    'order_note' => 'Direct top-up fulfillment failed: '.$result['error'],
+                ]);
+
+                Log::error('DirectTopUpFulfillmentJob: fulfillment failed', [
+                    'order_id' => $this->orderId,
+                    'error' => $result['error'],
+                ]);
+            }
         } catch (\Throwable $e) {
             Log::error('DirectTopUpFulfillmentJob: failed', [
                 'order_id' => $this->orderId,

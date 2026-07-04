@@ -14,9 +14,7 @@ use App\Models\DigitalProductVariation;
 use App\Models\OrderDetail;
 use App\Models\Product;
 use App\Models\Shop;
-use App\Models\SupplierProductMapping;
 use App\Models\Wishlist;
-use App\Services\DirectTopUp\DirectTopUpService;
 use App\Services\RestockProductService;
 use App\Utils\CartManager;
 use App\Utils\CustomerManager;
@@ -54,11 +52,6 @@ class CartController extends Controller
         $product = Product::with(['digitalVariation', 'clearanceSale' => function ($query) {
             return $query->active();
         }])->where(['id' => $request['id']])->first();
-
-        if ($product && $product->is_direct_topup) {
-            return $this->getDirectTopUpVariantPrice($request, $product);
-        }
-
         $productVariationCode = $request['product_variation_code'];
 
         if ($request->has('color')) {
@@ -169,7 +162,7 @@ class CartController extends Controller
             'discount_amount' => $discount,
             'quantity' => $product['product_type'] == 'physical'
                 ? $quantity
-                : (SupplierProductMapping::hasActiveMapping((int) $product['id'])
+                : (\App\Models\SupplierProductMapping::hasActiveMapping((int) $product['id'])
                     ? 100
                     : CartManager::getAvailableDigitalCodeCount((int) $product['id'])),
             'delivery_cost' => isset($deliveryInfo['delivery_cost']) ? webCurrencyConverter($deliveryInfo['delivery_cost']) : 0,
@@ -185,68 +178,6 @@ class CartController extends Controller
             'variation_code' => $string,
             'product_type' => $product['product_type'],
             'restock_request_status' => $restockRequestStatus,
-        ];
-    }
-
-    private function getDirectTopUpVariantPrice(Request $request, Product $product): array
-    {
-        $directTopUpService = app(DirectTopUpService::class);
-        $getCartList = CartManager::getCartListQuery();
-        $topUpQuantity = (float) ($request['direct_topup_quantity'] ?? $product->direct_topup_min_quantity);
-        $inCartExistStatus = 0;
-        $inCartExistKey = null;
-
-        foreach ($getCartList as $cartItem) {
-            if ($cartItem['product_id'] == $product['id'] && $cartItem['direct_topup_quantity'] !== null) {
-                $inCartExistStatus = 1;
-                $inCartExistKey = $cartItem['id'];
-
-                if (! $request->filled('direct_topup_quantity')) {
-                    $topUpQuantity = (float) $cartItem['direct_topup_quantity'];
-                }
-            }
-        }
-
-        $perUnit = $directTopUpService->getPricePerUnit($product);
-        $totalBeforeDiscount = $directTopUpService->calculateTotalPrice($product, $topUpQuantity);
-        $discount = getProductPriceByType(
-            product: $product,
-            type: 'discounted_amount',
-            result: 'value',
-            price: $totalBeforeDiscount
-        );
-        $discountedTotal = $totalBeforeDiscount - $discount;
-        $unitDiscount = getProductPriceByType(
-            product: $product,
-            type: 'discounted_amount',
-            result: 'value',
-            price: $perUnit
-        );
-        $discountedUnitPrice = $perUnit - $unitDiscount;
-        $discountType = getProductPriceByType(product: $product, type: 'discount_type', result: 'string');
-
-        return [
-            'price' => webCurrencyConverter($discountedTotal),
-            'discount' => $discountType == 'flat'
-                ? webCurrencyConverter($discount)
-                : getProductPriceByType(product: $product, type: 'discount', result: 'value').'%',
-            'discount_type' => $discountType,
-            'discount_amount' => $discount,
-            'quantity' => SupplierProductMapping::hasActiveMapping((int) $product['id']) ? 100 : 0,
-            'delivery_cost' => 0,
-            'unit_price' => webCurrencyConverter($discountedUnitPrice),
-            'total_unit_price' => webCurrencyConverter($perUnit),
-            'discounted_unit_price' => webCurrencyConverter($discountedUnitPrice),
-            'color_name' => '',
-            'stock_limit' => getWebConfig(name: 'stock_limit'),
-            'in_cart_status' => $inCartExistStatus,
-            'in_cart_quantity' => $topUpQuantity,
-            'in_cart_key' => $inCartExistKey,
-            'direct_topup_quantity' => $topUpQuantity,
-            'is_direct_topup' => true,
-            'variation_code' => '',
-            'product_type' => $product['product_type'],
-            'restock_request_status' => 0,
         ];
     }
 
@@ -379,12 +310,12 @@ class CartController extends Controller
             ]);
         }
 
-        $quantity_price = webCurrencyConverter($product->getLineTotal());
-        $discount_price = webCurrencyConverter($product->getLineTotal());
+        $quantity_price = webCurrencyConverter($product['price'] * (int) $product['quantity']);
+        $discount_price = webCurrencyConverter(($product['price'] - $product['discount']) * (int) $product['quantity']);
         $total_discount = 0;
         foreach ($cart as $cartItem) {
-            $sub_total += $cartItem->getLineTotal();
-            $total_discount += (float) $cartItem->discount * (float) ($cartItem->isDirectTopUp() ? 1 : $cartItem->quantity);
+            $sub_total += ($cartItem['price'] - $cartItem['discount']) * $cartItem['quantity'];
+            $total_discount += $cartItem['discount'] * $cartItem['quantity'];
         }
         $total_price = webCurrencyConverter($sub_total);
         $total_discount_price = webCurrencyConverter($total_discount);
@@ -402,8 +333,7 @@ class CartController extends Controller
         return response()->json([
             'status' => $response['status'],
             'message' => translate('successfully_updated!'),
-            'qty' => $response['qty'] ?? $product->getDisplayQuantity(),
-            'is_direct_topup' => $product->isDirectTopUp(),
+            'qty' => $response['status'] == 0 ? $response['qty'] : $request->quantity,
             'total_price' => $total_price,
             'discount_price' => $discount_price,
             'quantity_price' => $quantity_price,
@@ -576,7 +506,7 @@ class CartController extends Controller
 
     public function addToCartDigitalProduct($request, $product): array
     {
-        if ($product['product_type'] === 'digital' && ! SupplierProductMapping::hasActiveMapping((int) $product['id'])) {
+        if ($product['product_type'] === 'digital') {
             $available = CartManager::getAvailableDigitalCodeCount((int) $product['id']);
 
             if ($available < $request['quantity']) {

@@ -23,14 +23,19 @@ let productListPageData = {
     country_id: productListPageBackup.data('country-id'),
     city_id: productListPageBackup.data('city-id'),
     area_id: productListPageBackup.data('area-id'),
+    direct_topup: productListPageBackup.data('direct-topup'),
 };
 
 productListFilterForm.find('.product-list-filter-input').on('change keypress keyup', function () {
     const inputName = $(this).attr('name');
-    const inputValue = $(this).val();
-    if (inputName) {
-        productListPageData[inputName] = inputValue;
+    const inputType = $(this).attr('type');
+
+    if (inputType === 'checkbox') {
+        productListPageData[inputName] = $(this).is(':checked') ? '1' : '';
+    } else {
+        productListPageData[inputName] = $(this).val();
     }
+
     getProductListFilterRender();
 });
 
@@ -66,7 +71,10 @@ function getProductListFilterRender() {
         success: function (response) {
             $('#ajax-products-view').html(response?.html_products);
             $(".view-page-item-count").html(response.total_product);
-            renderQuickViewFunction()
+            renderQuickViewFunction();
+            $(".get-view-by-onclick").on("click", function () {
+                location.href = $(this).data("link");
+            });
         },
         complete: function () {
             $('#loading').hide();

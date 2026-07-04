@@ -4,7 +4,6 @@ namespace App\Utils;
 
 use App\Events\OrderEditDuePaymentEvent;
 use App\Events\OrderPlacedEvent;
-use App\Jobs\DirectTopUpFulfillmentJob;
 use App\Jobs\SupplierCodeFetchJob;
 use App\Models\Admin;
 use App\Models\AdminWallet;
@@ -74,8 +73,8 @@ class OrderManager
         }
 
         foreach ($cart as $item) {
-            $subTotal += $item->isDirectTopUp() ? $item->getGrossPrice() : $item->price * $item->quantity;
-            $totalDiscountOnProduct += $item->getTotalDiscountAmount();
+            $subTotal += $item->price * $item->quantity;
+            $totalDiscountOnProduct += $item->discount * $item->quantity;
         }
 
         $orderTotal = $subTotal - $totalDiscountOnProduct - $coupon_discount;
@@ -501,7 +500,7 @@ class OrderManager
         $onlyProductTotalAmount = 0;
         if ($coupon->coupon_type == 'first_order') {
             foreach ($cartList as $cartItem) {
-                $onlyProductTotalAmount += $cartItem->getLineTotal();
+                $onlyProductTotalAmount += ($cartItem['price'] - $cartItem['discount']) * $cartItem['quantity'];
             }
         }
 
@@ -523,7 +522,7 @@ class OrderManager
         if ($coupon->coupon_type == 'discount_on_purchase') {
             foreach ($cartList as $cartItem) {
                 if (($coupon->seller_id == '0') || (is_null($coupon->seller_id) && $cartItem['seller_is'] == 'admin') || ($coupon->seller_id == $cartItem['seller_id'] && $cartItem['seller_is'] == 'seller')) {
-                    $onlyProductTotalAmount += $cartItem->getLineTotal();
+                    $onlyProductTotalAmount += ($cartItem['price'] - $cartItem['discount']) * $cartItem['quantity'];
                 }
             }
         }
@@ -546,7 +545,7 @@ class OrderManager
         } elseif ($coupon->coupon_type == 'free_delivery') {
             foreach ($cartList as $cartItem) {
                 if (($coupon->seller_id == '0') || (is_null($coupon->seller_id) && $cartItem['seller_is'] == 'admin') || ($coupon->seller_id == $cartItem['seller_id'] && $cartItem['seller_is'] == 'seller')) {
-                    $onlyProductTotalAmount += $cartItem->getLineTotal();
+                    $onlyProductTotalAmount += ($cartItem['price'] - $cartItem['discount']) * $cartItem['quantity'];
                 }
             }
 
@@ -620,7 +619,7 @@ class OrderManager
             foreach ($cartListGroup as $cartListGroupKey => $cartList) {
                 if ($cartListGroupKey == $groupId) {
                     foreach ($cartList as $cartItem) {
-                        $onlyProductTotalAmount += $cartItem->getLineTotal();
+                        $onlyProductTotalAmount += ($cartItem['price'] - $cartItem['discount']) * $cartItem['quantity'];
                     }
                 }
             }
@@ -631,7 +630,7 @@ class OrderManager
                 if ($cartListGroupKey == $groupId) {
                     foreach ($cartList as $cartItem) {
                         if (($coupon->seller_id == '0') || (is_null($coupon->seller_id) && $cartItem['seller_is'] == 'admin') || ($coupon->seller_id == $cartItem['seller_id'] && $cartItem['seller_is'] == 'seller')) {
-                            $onlyProductTotalAmount += $cartItem->getLineTotal();
+                            $onlyProductTotalAmount += ($cartItem['price'] - $cartItem['discount']) * $cartItem['quantity'];
                         }
                     }
                 }
@@ -916,7 +915,7 @@ class OrderManager
             $totalApplicableShippingAmount = 0;
             foreach ($vendorWiseCart['cart_list'] as $cartItem) {
                 if ($cartItem->product) {
-                    $currentProductDiscountedPrice = $cartItem->getLineTotal();
+                    $currentProductDiscountedPrice = ($cartItem->price - $cartItem->discount) * $cartItem->quantity;
                     $totalDiscountProductPrice += $currentProductDiscountedPrice;
                     $totalApplicableShippingAmount += $cartItem?->product?->product_type == 'digital' ? 0 : $currentProductDiscountedPrice;
                 }
@@ -926,7 +925,7 @@ class OrderManager
             $vendorWiseCart['applied_tax_cart_list'] = [];
             foreach ($vendorWiseCart['cart_list'] as $cartItem) {
                 if ($cartItem->product) {
-                    $totalDiscountPrice = $cartItem->getLineTotal();
+                    $totalDiscountPrice = ($cartItem->price - $cartItem->discount) * $cartItem->quantity;
                     $appliedDiscountAmount = $totalDiscountOnProduct > 0 ? ($totalDiscountOnProduct * $totalDiscountPrice) / $totalDiscountProductPrice : 0;
                     $appliedTaxAmount = CartManager::getAppliedTaxAmount(
                         product: $cartItem->product,
@@ -1090,25 +1089,17 @@ class OrderManager
                 $product['storage_path'] = $product['digital_file_ready_storage_type'] ?? 'public';
             }
 
-            $productDiscount = $cartSingleItem->isDirectTopUp()
-                ? $cartSingleItem->getTotalDiscountAmount()
-                : getProductPriceByType(product: $product, type: 'discounted_amount', result: 'value', price: $cartSingleItem['price']);
+            $productDiscount = getProductPriceByType(product: $product, type: 'discounted_amount', result: 'value', price: $cartSingleItem['price']);
             $orderDetails = [
                 'order_id' => $orderId,
                 'product_id' => $cartSingleItem['product_id'],
                 'seller_id' => $cartSingleItem['seller_id'],
                 'product_details' => json_encode($product),
                 'qty' => $cartSingleItem['quantity'],
-                'price' => $cartSingleItem->isDirectTopUp() ? $cartSingleItem->getGrossPrice() : $cartSingleItem['price'],
+                'price' => $cartSingleItem['price'],
                 'custom_amount' => $cartSingleItem['custom_amount'] ?? null,
                 'supplier_denomination_id' => $cartSingleItem['supplier_denomination_id'] ?? null,
-                'direct_topup_account_id' => $cartSingleItem['direct_topup_account_id'] !== null && $cartSingleItem['direct_topup_account_id'] !== ''
-                    ? encrypt($cartSingleItem['direct_topup_account_id'], false)
-                    : $cartSingleItem['direct_topup_account_id'],
-                'direct_topup_quantity' => $cartSingleItem['direct_topup_quantity'] ?? null,
-                'discount' => $cartSingleItem->isDirectTopUp()
-                    ? $cartSingleItem->getTotalDiscountAmount()
-                    : $productDiscount * $cartSingleItem['quantity'],
+                'discount' => $productDiscount * $cartSingleItem['quantity'],
                 'discount_type' => 'discount_on_product',
                 'variant' => $cartSingleItem['variant'],
                 'variation' => $cartSingleItem['variations'],
@@ -1135,7 +1126,7 @@ class OrderManager
             $orderDetails['tax'] = $appliedTaxAmount;
             $orderDetails['tax_model'] = $taxConfig['is_included'] ? 'include' : 'exclude';
 
-            $finalAmount = $cartSingleItem->getLineTotal();
+            $finalAmount = ($cartSingleItem['price'] - $productDiscount) * $cartSingleItem['quantity'];
             $totalPrice += $finalAmount;
 
             if ($cartSingleItem['variant'] != null) {
@@ -1375,17 +1366,8 @@ class OrderManager
                     ]);
                 }
 
-                // ── Dispatch direct top-up fulfillment for any direct top-up products ──
-                $hasDirectTopUp = $order->orderDetails->contains(fn ($d) => $d->direct_topup_quantity !== null);
-                if ($hasDirectTopUp) {
-                    DirectTopUpFulfillmentJob::dispatch($order->id);
-                    Log::info('OrderManager: dispatched DirectTopUpFulfillmentJob for paid order', [
-                        'order_id' => $order->id,
-                    ]);
-                } else {
-                    // ── Dispatch supplier fetch for any unfulfilled digital codes ──
-                    self::dispatchSupplierFallbackIfNeeded($order);
-                }
+                // ── Dispatch supplier fetch for any unfulfilled digital codes ──
+                self::dispatchSupplierFallbackIfNeeded($order);
             }
 
             // ── Auto-deliver fully-digital orders that are already paid ──
@@ -2676,9 +2658,8 @@ class OrderManager
                 $productDetails = json_decode($detail->product_details ?? '{}');
                 $productType = $productDetails->product_type ?? null;
                 $digitalType = $productDetails->digital_product_type ?? null;
-                $isDirectTopUp = (bool) ($productDetails->is_direct_topup ?? false);
 
-                if ($productType !== 'digital' || $digitalType !== 'ready_product' || $isDirectTopUp) {
+                if ($productType !== 'digital' || $digitalType !== 'ready_product') {
                     continue;
                 }
 

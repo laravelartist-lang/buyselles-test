@@ -7,21 +7,19 @@ use App\DTOs\Supplier\BalanceResult;
 use App\Jobs\SupplierOrderPollJob;
 use App\Models\DigitalProductCode;
 use App\Models\Order;
-use App\Models\OrderDetail;
 use App\Models\Product;
 use App\Models\SupplierApi;
 use App\Models\SupplierOrder;
 use App\Models\SupplierProductDenomination;
 use App\Models\SupplierProductMapping;
 use App\Services\DigitalProductCodeService;
-use App\Services\DirectTopUp\DirectTopUpService;
 use App\Services\Supplier\Drivers\BambooDriver;
 use App\Services\Supplier\Drivers\GenericRestDriver;
+use App\Services\Supplier\Drivers\GolfApiDriver;
 use App\Services\Supplier\Drivers\KinguinDriver;
 use App\Services\Supplier\Drivers\ReloadlyDriver;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Mail;
 
 class SupplierManager
 {
@@ -36,6 +34,7 @@ class SupplierManager
         'reloadly' => ReloadlyDriver::class,
         'kinguin' => KinguinDriver::class,
         'bamboo' => BambooDriver::class,
+        'golf_api' => GolfApiDriver::class,
     ];
 
     public function __construct(
@@ -72,6 +71,29 @@ class SupplierManager
     }
 
     /**
+     * Get all registered drivers with their credential field and config schemas.
+     * Used by the admin add-supplier form to dynamically render credential/settings fields.
+     *
+     * @return array<string, array{credentials: array, settings: array}>
+     */
+    public function getAvailableDriversWithSchemas(): array
+    {
+        $result = [];
+
+        foreach ($this->drivers as $key => $class) {
+            /** @var SupplierDriverInterface $instance */
+            $instance = new $class;
+
+            $result[$key] = [
+                'credentials' => $instance->getRequiredCredentialFields(),
+                'settings' => $instance->getConfigSchema(),
+            ];
+        }
+
+        return $result;
+    }
+
+    /**
      * Fetch codes from suppliers and add them to the digital code pool.
      * Tries suppliers in priority order (fallback chain).
      *
@@ -91,10 +113,14 @@ class SupplierManager
             ->with('supplierApi')
             ->get();
 
+        $errors = [];
+
         foreach ($mappings as $mapping) {
             $supplier = $mapping->supplierApi;
 
             if (! $supplier->is_active || $supplier->isDown()) {
+                $errors[] = "Supplier '{$supplier->name}' is inactive or down.";
+
                 continue;
             }
 
@@ -103,6 +129,8 @@ class SupplierManager
                     'supplier_id' => $supplier->id,
                     'product_id' => $product->id,
                 ]);
+
+                $errors[] = "Supplier '{$supplier->name}' rate limited.";
 
                 continue;
             }
@@ -113,16 +141,25 @@ class SupplierManager
                 if ($result['inserted'] > 0 || $result['supplier_order_id']) {
                     return $result;
                 }
+
+                $errors[] = "Supplier '{$supplier->name}' returned no codes.";
             } catch (\Throwable $e) {
                 Log::error('SupplierManager: fetchAndStockCodes failed for supplier', [
                     'supplier_id' => $supplier->id,
                     'product_id' => $product->id,
                     'error' => $e->getMessage(),
                 ]);
+
+                $errors[] = "Supplier '{$supplier->name}' error: ".$e->getMessage();
             }
         }
 
-        return ['inserted' => 0, 'supplier_id' => null, 'supplier_order_id' => null];
+        return [
+            'inserted' => 0,
+            'supplier_id' => null,
+            'supplier_order_id' => null,
+            'error' => $errors ? implode(' ', $errors) : 'No available suppliers for this product.',
+        ];
     }
 
     /**
@@ -131,21 +168,17 @@ class SupplierManager
      *
      * @return bool True if codes were obtained and assigned
      */
-    public function fulfillOrder(Order $order): bool
+    public function fulfillOrder(Order $order): array
     {
         $order->loadMissing('orderDetails');
 
         $anyFulfilled = false;
+        $errors = [];
 
         foreach ($order->orderDetails as $detail) {
             $productDetails = json_decode($detail->product_details ?? '{}');
             $productType = $productDetails->product_type ?? null;
             $digitalType = $productDetails->digital_product_type ?? null;
-            $isDirectTopUp = (bool) ($productDetails->is_direct_topup ?? false);
-
-            if ($isDirectTopUp) {
-                continue;
-            }
 
             if ($productType !== 'digital' || $digitalType !== 'ready_product') {
                 continue;
@@ -156,7 +189,6 @@ class SupplierManager
                 continue;
             }
 
-            // Check how many codes are still needed
             $alreadyAssigned = DigitalProductCode::where('order_detail_id', $detail->id)
                 ->where('status', 'sold')
                 ->count();
@@ -167,7 +199,6 @@ class SupplierManager
                 continue;
             }
 
-            // Check if product has supplier mappings
             $hasSuppliers = SupplierProductMapping::where('product_id', $productId)
                 ->active()
                 ->exists();
@@ -183,7 +214,6 @@ class SupplierManager
 
             $result = $this->fetchAndStockCodes($product, $needed, $detail->custom_amount, $detail->supplier_denomination_id);
 
-            // Always link supplier order to platform order (even for async/V1 where codes come via webhook)
             if ($result['supplier_order_id']) {
                 SupplierOrder::where('id', $result['supplier_order_id'])->update([
                     'order_id' => $order->id,
@@ -194,8 +224,6 @@ class SupplierManager
             if ($result['inserted'] > 0) {
                 $anyFulfilled = true;
             } elseif ($result['supplier_order_id']) {
-                // Async supplier (e.g. Bamboo V1) — codes will arrive later.
-                // Dispatch a poll job to fetch codes from the supplier's GET order endpoint.
                 SupplierOrderPollJob::dispatch($result['supplier_order_id'])
                     ->delay(now()->addSeconds(30));
 
@@ -204,15 +232,166 @@ class SupplierManager
                     'order_id' => $order->id,
                     'product_id' => $productId,
                 ]);
+            } elseif (isset($result['error'])) {
+                $errors[] = "Product '{$product->name}': ".$result['error'];
             }
         }
 
         if ($anyFulfilled) {
-            // Re-run assignment now that new codes are in the pool
             $this->codeService->assignAndNotify($order);
         }
 
-        return $anyFulfilled;
+        return [
+            'fulfilled' => $anyFulfilled,
+            'error' => $errors ? implode(' ', $errors) : null,
+        ];
+    }
+
+    /**
+     * Fulfill a direct top-up order by calling the supplier's placeTopUpOrder.
+     *
+     * @return bool True if the top-up was successfully placed
+     */
+    public function fulfillDirectTopUpOrder(Order $order): array
+    {
+        $order->loadMissing('orderDetails');
+
+        $anyFulfilled = false;
+        $errors = [];
+
+        foreach ($order->orderDetails as $detail) {
+            if ($detail->direct_topup_quantity === null || empty($detail->direct_topup_account_id)) {
+                continue;
+            }
+
+            $productId = $detail->product_id;
+            if (! $productId) {
+                continue;
+            }
+
+            $product = Product::find($productId);
+            if (! $product) {
+                continue;
+            }
+
+            $mapping = SupplierProductMapping::where('product_id', $productId)
+                ->active()
+                ->byPriority()
+                ->with('supplierApi')
+                ->first();
+
+            if (! $mapping || ! $mapping->supplierApi) {
+                $errors[] = "Product '{$product->name}': No active supplier mapping.";
+
+                continue;
+            }
+
+            $supplier = $mapping->supplierApi;
+
+            if (! $supplier->is_active || $supplier->isDown()) {
+                $errors[] = "Product '{$product->name}': Supplier '{$supplier->name}' is inactive or down.";
+
+                continue;
+            }
+
+            if (! $supplier->supports_direct_top_up) {
+                Log::warning('SupplierManager: supplier does not support direct top-up', [
+                    'supplier_id' => $supplier->id,
+                    'supplier_name' => $supplier->name,
+                    'order_id' => $order->id,
+                ]);
+
+                $errors[] = "Product '{$product->name}': Supplier '{$supplier->name}' does not support direct top-up.";
+
+                continue;
+            }
+
+            if (! $this->rateLimiter->attempt($supplier->id, $supplier->rate_limit_per_minute)) {
+                $errors[] = "Product '{$product->name}': Supplier '{$supplier->name}' rate limited.";
+
+                continue;
+            }
+
+            $logId = $this->logger->logRequest(
+                supplierApiId: $supplier->id,
+                action: 'place_topup_order',
+                endpoint: $supplier->base_url,
+                method: 'POST',
+                requestPayload: [
+                    'supplier_product_id' => $mapping->supplier_product_id,
+                    'quantity' => (float) $detail->direct_topup_quantity,
+                    'account_id' => $detail->direct_topup_account_id,
+                ],
+            );
+
+            $startTime = microtime(true);
+
+            try {
+                $driver = $this->driver($supplier);
+                $unitPrice = (float) $detail->custom_amount;
+
+                $result = $driver->placeTopUpOrder(
+                    supplierProductId: $mapping->supplier_product_id,
+                    quantity: (float) $detail->direct_topup_quantity,
+                    accountId: $detail->direct_topup_account_id,
+                    unitPrice: $unitPrice > 0 ? $unitPrice : null,
+                );
+
+                $this->logger->logResponse(
+                    logId: $logId,
+                    httpStatusCode: 200,
+                    responsePayload: [
+                        'supplier_order_id' => $result->supplierOrderId,
+                        'status' => $result->status,
+                    ],
+                    responseTimeMs: (int) ((microtime(true) - $startTime) * 1000),
+                );
+
+                $costPerUnit = $unitPrice > 0 ? $unitPrice : (float) $mapping->cost_price;
+
+                $supplierOrder = SupplierOrder::create([
+                    'supplier_api_id' => $supplier->id,
+                    'supplier_product_mapping_id' => $mapping->id,
+                    'supplier_order_id' => $result->supplierOrderId,
+                    'order_id' => $order->id,
+                    'order_detail_id' => $detail->id,
+                    'quantity' => (int) $detail->direct_topup_quantity,
+                    'cost_per_unit' => $costPerUnit,
+                    'total_cost' => $costPerUnit * (float) $detail->direct_topup_quantity,
+                    'cost_currency' => $mapping->cost_currency,
+                    'status' => $result->status,
+                ]);
+
+                Log::info('SupplierManager: direct top-up order placed', [
+                    'supplier_order_id' => $supplierOrder->id,
+                    'order_id' => $order->id,
+                    'supplier_id' => $supplier->id,
+                    'status' => $result->status,
+                ]);
+
+                $anyFulfilled = true;
+
+            } catch (\Throwable $e) {
+                $this->logger->logError(
+                    logId: $logId,
+                    errorMessage: $e->getMessage(),
+                    responseTimeMs: (int) ((microtime(true) - $startTime) * 1000),
+                );
+
+                Log::error('SupplierManager: direct top-up fulfillment failed', [
+                    'order_id' => $order->id,
+                    'supplier_id' => $supplier->id,
+                    'error' => $e->getMessage(),
+                ]);
+
+                $errors[] = "Product '{$product->name}': Supplier error: ".$e->getMessage();
+            }
+        }
+
+        return [
+            'fulfilled' => $anyFulfilled,
+            'error' => $errors ? implode(' ', $errors) : null,
+        ];
     }
 
     /**
@@ -328,25 +507,11 @@ class SupplierManager
 
                 if ($supplierOrder) {
                     if ($result->hasCodes()) {
-                        // ── Replace any existing codes for this order ─────────────
-                        // The Bamboo GET order endpoint returns a fresh pool each time,
-                        // so codes saved by SupplierOrderPollJob may be incorrect.
-                        // The webhook delivers the ACTUAL historical codes, so we
-                        // replace any previously assigned codes with the real ones.
-                        if ($supplier->driver === 'bamboo' && $supplierOrder->order_id) {
-                            $this->replaceOrderCodes(
-                                orderId: $supplierOrder->order_id,
-                                supplierOrder: $supplierOrder,
-                                mapping: $supplierOrder->productMapping,
-                                realCodes: $result->codes,
-                            );
-                        } else {
-                            $this->processReceivedCodes(
-                                supplierOrder: $supplierOrder,
-                                mapping: $supplierOrder->productMapping,
-                                codes: $result->codes,
-                            );
-                        }
+                        $this->processReceivedCodes(
+                            supplierOrder: $supplierOrder,
+                            mapping: $supplierOrder->productMapping,
+                            codes: $result->codes,
+                        );
 
                         // If this supplier order is linked to a platform order, assign codes to customer
                         if ($supplierOrder->order_id) {
@@ -517,243 +682,5 @@ class SupplierManager
         }
 
         return $bulkResult['inserted'];
-    }
-
-    /**
-     * Fulfill direct top-up order details via supplier API (no code pool).
-     */
-    public function fulfillDirectTopUpOrder(Order $order): bool
-    {
-        $order->loadMissing(['orderDetails', 'customer']);
-        $directTopUpService = app(DirectTopUpService::class);
-        $anyCompleted = false;
-
-        foreach ($order->orderDetails as $detail) {
-            if ($detail->direct_topup_quantity === null || empty($detail->direct_topup_account_id)) {
-                continue;
-            }
-
-            if (SupplierOrder::query()
-                ->where('order_detail_id', $detail->id)
-                ->whereIn('status', ['fulfilled', 'processing', 'pending'])
-                ->exists()) {
-                continue;
-            }
-
-            $product = Product::find($detail->product_id);
-            if (! $product || ! $directTopUpService->isDirectTopUpProduct($product)) {
-                continue;
-            }
-
-            $mappings = SupplierProductMapping::query()
-                ->where('product_id', $product->id)
-                ->active()
-                ->with('supplierApi')
-                ->orderBy('priority')
-                ->get();
-
-            if ($mappings->isEmpty()) {
-                continue;
-            }
-
-            $accountId = (string) $detail->direct_topup_account_id;
-            $quantity = (float) $detail->direct_topup_quantity;
-            $errors = $directTopUpService->validatePurchase($product, $accountId, $quantity);
-
-            if ($errors !== []) {
-                Log::warning('SupplierManager: direct top-up validation failed', [
-                    'order_detail_id' => $detail->id,
-                    'errors' => $errors,
-                ]);
-
-                continue;
-            }
-
-            foreach ($mappings as $mapping) {
-                $supplier = $mapping->supplierApi;
-
-                if (! $supplier || ! $supplier->is_active || $supplier->isDown()) {
-                    continue;
-                }
-
-                if (! $this->rateLimiter->attempt($supplier->id, $supplier->rate_limit_per_minute)) {
-                    continue;
-                }
-
-                if ($this->placeDirectTopUpOrder($supplier, $mapping, $detail, $product, $accountId, $quantity, $order)) {
-                    $anyCompleted = true;
-                    break;
-                }
-            }
-        }
-
-        return $anyCompleted;
-    }
-
-    private function placeDirectTopUpOrder(
-        SupplierApi $supplier,
-        SupplierProductMapping $mapping,
-        OrderDetail $detail,
-        Product $product,
-        string $accountId,
-        float $quantity,
-        Order $order,
-    ): bool {
-        $directTopUpService = app(DirectTopUpService::class);
-        $unitPrice = $directTopUpService->getPricePerUnit($product);
-
-        $logId = $this->logger->logRequest(
-            supplierApiId: $supplier->id,
-            action: 'place_topup',
-            endpoint: $supplier->base_url,
-            method: 'POST',
-            requestPayload: [
-                'supplier_product_id' => $mapping->supplier_product_id,
-                'quantity' => $quantity,
-                'account_id' => $directTopUpService->sanitizeAccountIdForLogging($accountId),
-            ],
-            orderId: $order->id,
-        );
-
-        $startTime = microtime(true);
-
-        try {
-            $driver = $this->driver($supplier);
-            $result = $driver->placeTopUpOrder(
-                supplierProductId: $mapping->supplier_product_id,
-                quantity: $quantity,
-                accountId: $accountId,
-                unitPrice: $unitPrice,
-            );
-
-            $this->logger->logResponse(
-                logId: $logId,
-                httpStatusCode: 200,
-                responsePayload: [
-                    'supplier_order_id' => $result->supplierOrderId,
-                    'status' => $result->status,
-                ],
-                responseTimeMs: (int) ((microtime(true) - $startTime) * 1000),
-            );
-
-            $supplierOrder = SupplierOrder::create([
-                'supplier_api_id' => $supplier->id,
-                'supplier_product_mapping_id' => $mapping->id,
-                'supplier_order_id' => $result->supplierOrderId,
-                'order_id' => $order->id,
-                'order_detail_id' => $detail->id,
-                'quantity' => (int) ceil($quantity),
-                'cost_per_unit' => (float) $mapping->cost_price,
-                'total_cost' => (float) $mapping->cost_price * $quantity,
-                'cost_currency' => $mapping->cost_currency,
-                'status' => $result->status,
-                'fulfilled_at' => $result->isFulfilled() ? now() : null,
-            ]);
-
-            if (! $result->isFulfilled()) {
-                // For async suppliers (e.g., Bamboo V1), dispatch a poll job to fetch codes
-                if ($result->supplierOrderId) {
-                    SupplierOrderPollJob::dispatch($supplierOrder->id)
-                        ->delay(now()->addSeconds(30));
-
-                    Log::info('SupplierManager: dispatched poll job for async direct top-up', [
-                        'supplier_order_id' => $supplierOrder->id,
-                        'order_id' => $order->id,
-                    ]);
-                }
-
-                return false;
-            }
-
-            $detail->update([
-                'delivery_status' => 'delivered',
-                'payment_status' => 'paid',
-            ]);
-
-            Order::where('id', $order->id)->update([
-                'order_status' => 'delivered',
-            ]);
-
-            $this->sendDirectTopUpConfirmation($order, $detail, $product, $quantity);
-
-            Log::info('SupplierManager: direct top-up fulfilled', [
-                'order_id' => $order->id,
-                'order_detail_id' => $detail->id,
-                'supplier_order_id' => $supplierOrder->id,
-            ]);
-
-            return true;
-        } catch (\Throwable $e) {
-            $this->logger->logError(
-                logId: $logId,
-                errorMessage: $e->getMessage(),
-                responseTimeMs: (int) ((microtime(true) - $startTime) * 1000),
-            );
-
-            return false;
-        }
-    }
-
-    /**
-     * Replace all codes assigned to a platform order with the real historical
-     * codes delivered via supplier webhook.
-     *
-     * Bamboo's GET /orders/{id} endpoint returns a FRESH pool of codes each
-     * time (non-deterministic), so codes saved by SupplierOrderPollJob may be
-     * incorrect. The webhook delivers the ACTUAL historical codes, so we
-     * delete the poll-saved codes and insert the webhook codes instead.
-     *
-     * @param  array<int, string|array{code: string, pin?: string|null, serial_number?: string|null, expiry_date?: string|null}>  $realCodes
-     */
-    private function replaceOrderCodes(
-        int $orderId,
-        SupplierOrder $supplierOrder,
-        SupplierProductMapping $mapping,
-        array $realCodes,
-    ): void {
-        \Illuminate\Support\Facades\DB::transaction(function () use ($orderId, $supplierOrder, $mapping, $realCodes): void {
-            // Delete any existing codes that were previously assigned to this order
-            // (saved by SupplierOrderPollJob from the non-deterministic GET endpoint)
-            $deleted = DigitalProductCode::where('order_id', $orderId)->delete();
-
-            Log::info('SupplierManager: replaced poll-saved codes with webhook codes', [
-                'order_id' => $orderId,
-                'supplier_order_id' => $supplierOrder->id,
-                'deleted_count' => $deleted,
-                'incoming_count' => count($realCodes),
-            ]);
-
-            // Insert the real historical codes from the webhook
-            $this->processReceivedCodes(
-                supplierOrder: $supplierOrder,
-                mapping: $mapping,
-                codes: $realCodes,
-            );
-        });
-    }
-
-    private function sendDirectTopUpConfirmation(Order $order, OrderDetail $detail, Product $product, float $quantity): void
-    {
-        $customer = $order->customer;
-        $email = $customer?->email ?? null;
-
-        if (! $email) {
-            return;
-        }
-
-        try {
-            Mail::to($email)->send(new \App\Mail\DirectTopUpConfirmationMail([
-                'subject' => translate('direct_topup_order_completed'),
-                'customerName' => trim(($customer->f_name ?? '').' '.($customer->l_name ?? '')),
-                'orderId' => $order->id,
-                'productName' => $product->name,
-                'quantity' => $quantity,
-            ]));
-        } catch (\Throwable $e) {
-            Log::error('SupplierManager: direct top-up confirmation email failed', [
-                'order_id' => $order->id,
-                'error' => $e->getMessage(),
-            ]);
-        }
     }
 }

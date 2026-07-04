@@ -10,8 +10,13 @@ class DirectTopUpService
 {
     public function isDirectTopUpProduct(Product $product): bool
     {
-        return $product->product_type === 'digital'
-            && (bool) $product->is_direct_topup;
+        if ($product->product_type !== 'digital') {
+            return false;
+        }
+
+        $mapping = $this->getMapping($product);
+
+        return $mapping !== null && (bool) $mapping->is_direct_topup;
     }
 
     public function hasActiveSupplierMapping(Product $product): bool
@@ -50,12 +55,18 @@ class DirectTopUpService
             return;
         }
 
-        if (empty(trim((string) $product->direct_topup_account_label))) {
+        $mapping = $this->getMapping($product);
+
+        if ($mapping === null) {
+            return;
+        }
+
+        if (empty(trim((string) $mapping->direct_topup_account_label))) {
             throw new InvalidArgumentException(translate('direct_topup_account_label_is_required'));
         }
 
-        $min = (float) $product->direct_topup_min_quantity;
-        $max = (float) $product->direct_topup_max_quantity;
+        $min = (float) $mapping->direct_topup_min_quantity;
+        $max = (float) $mapping->direct_topup_max_quantity;
 
         if ($min <= 0 || $max <= 0) {
             throw new InvalidArgumentException(translate('direct_topup_configuration_invalid'));
@@ -99,8 +110,9 @@ class DirectTopUpService
             $errors['direct_topup_account_id'] = translate('direct_topup_account_id_invalid_format');
         }
 
-        $min = (float) $product->direct_topup_min_quantity;
-        $max = (float) $product->direct_topup_max_quantity;
+        $mapping = $this->getMapping($product);
+        $min = $mapping ? (float) $mapping->direct_topup_min_quantity : 0;
+        $max = $mapping ? (float) $mapping->direct_topup_max_quantity : 0;
 
         if ($quantity <= 0) {
             $errors['direct_topup_quantity'] = translate('direct_topup_quantity_must_be_positive');
@@ -112,22 +124,18 @@ class DirectTopUpService
     }
 
     /**
-     * Get the per-unit sell price derived from the active supplier mapping.
-     * Falls back to direct_topup_price_per_unit if no mapping exists.
+     * Get the per-unit sell price using the centralized effective price logic.
+     * Falls back to direct_topup_price_per_unit from the mapping.
      */
     public function getPricePerUnit(Product $product): float
     {
-        $mapping = SupplierProductMapping::query()
-            ->where('product_id', $product->id)
-            ->where('is_active', true)
-            ->whereHas('supplierApi', fn ($q) => $q->where('is_active', true))
-            ->first();
+        $mapping = $this->getMapping($product);
 
-        if ($mapping) {
-            return $mapping->calculateSellPrice();
+        if ($mapping && (float) $mapping->direct_topup_price_per_unit > 0) {
+            return (float) $mapping->direct_topup_price_per_unit;
         }
 
-        return (float) $product->direct_topup_price_per_unit;
+        return $product->getEffectiveSellPrice();
     }
 
     public function calculateTotalPrice(Product $product, float $quantity): float
@@ -141,9 +149,10 @@ class DirectTopUpService
     {
         $this->validateConfiguration($product);
 
+        $mapping = $this->getMapping($product);
         $pricePerUnit = $this->getPricePerUnit($product);
-        $min = (float) $product->direct_topup_min_quantity;
-        $max = (float) $product->direct_topup_max_quantity;
+        $min = $mapping ? (float) $mapping->direct_topup_min_quantity : 0;
+        $max = $mapping ? (float) $mapping->direct_topup_max_quantity : 0;
 
         if ($pricePerUnit <= 0) {
             return $min;
@@ -177,11 +186,17 @@ class DirectTopUpService
             return null;
         }
 
+        $mapping = $this->getMapping($product);
+
+        if ($mapping === null) {
+            return null;
+        }
+
         return [
             'enabled' => true,
-            'account_label' => (string) $product->direct_topup_account_label,
-            'min_quantity' => (float) $product->direct_topup_min_quantity,
-            'max_quantity' => (float) $product->direct_topup_max_quantity,
+            'account_label' => (string) $mapping->direct_topup_account_label,
+            'min_quantity' => (float) $mapping->direct_topup_min_quantity,
+            'max_quantity' => (float) $mapping->direct_topup_max_quantity,
             'price_per_unit' => $this->getPricePerUnit($product),
             'currency' => getWebConfig(name: 'currency_code') ?? 'USD',
         ];
@@ -196,5 +211,21 @@ class DirectTopUpService
         }
 
         return substr($accountId, 0, 2).str_repeat('*', max(0, strlen($accountId) - 4)).substr($accountId, -2);
+    }
+
+    private function getMapping(Product $product): ?SupplierProductMapping
+    {
+        if ($product->relationLoaded('supplierMapping')) {
+            return $product->supplierMapping;
+        }
+
+        if ($product->relationLoaded('mapping')) {
+            return $product->mapping;
+        }
+
+        return SupplierProductMapping::query()
+            ->where('product_id', $product->id)
+            ->where('is_active', true)
+            ->first();
     }
 }

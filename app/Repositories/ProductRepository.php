@@ -129,6 +129,7 @@ class ProductRepository implements ProductRepositoryInterface
             ->when(isset($withCount['wishList']), function ($query) use ($withCount) {
                 return $query->withCount($withCount['wishList']);
             })
+            ->with('supplierMapping')
             ->first();
     }
 
@@ -436,6 +437,9 @@ class ProductRepository implements ProductRepositoryInterface
                 );
             })->when(! empty($orderBy), function ($query) use ($orderBy) {
                 $query->orderBy(array_key_first($orderBy), array_values($orderBy)[0]);
+            })
+            ->when(isset($scope) && $scope == 'active', function ($query) {
+                return $query->with('supplierMapping');
             });
         $filters += ['searchValue' => $searchValue];
 

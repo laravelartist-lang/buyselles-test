@@ -600,36 +600,12 @@ class ProductService
             'meta_description' => $request['meta_description'],
             'meta_image' => $request->has('meta_image') ? $this->upload(dir: 'product/meta/', format: 'webp', image: $request['meta_image']) : $request->existing_meta_image,
             'sort_priority' => $request['sort_priority'] ?? 0,
-        ] + $this->getDirectTopUpProductFields($request);
+        ];
     }
 
     /**
      * @return array<string, mixed>
      */
-    protected function getDirectTopUpProductFields(object $request): array
-    {
-        $isDirectTopUp = $request['product_type'] === 'digital' && $request->boolean('is_direct_topup');
-
-        if (! $isDirectTopUp) {
-            return [
-                'is_direct_topup' => false,
-                'direct_topup_account_label' => null,
-                'direct_topup_min_quantity' => null,
-                'direct_topup_max_quantity' => null,
-                'direct_topup_price_per_unit' => null,
-            ];
-        }
-
-        return [
-            'is_direct_topup' => true,
-            'direct_topup_account_label' => $request['direct_topup_account_label'],
-            'direct_topup_min_quantity' => $request['direct_topup_min_quantity'],
-            'direct_topup_max_quantity' => $request['direct_topup_max_quantity'],
-            'direct_topup_price_per_unit' => currencyConverter(amount: $request['direct_topup_price_per_unit']),
-            'digital_product_type' => 'ready_product',
-        ];
-    }
-
     public function getUpdateProductData(object $request, object $product, string $updateBy): array
     {
         \Log::info('=== LOCATION DEBUG (update) ===', [
@@ -707,7 +683,7 @@ class ProductService
             'location_country_id' => $request['location_country_id'] ?: null,
             'location_city_id' => $request['product_type'] === 'physical' ? ($request['location_city_id'] ?: null) : null,
             'location_area_id' => $request['product_type'] === 'physical' ? ($request['location_area_id'] ?: null) : null,
-        ] + $this->getDirectTopUpProductFields($request);
+        ];
 
         if ($request->file('image')) {
             $dataArray += [

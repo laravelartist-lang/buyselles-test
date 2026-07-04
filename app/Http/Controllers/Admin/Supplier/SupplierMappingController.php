@@ -108,6 +108,11 @@ class SupplierMappingController extends BaseController
             'max_restock_qty' => 'required|integer|min:1',
             'auto_restock' => 'nullable|boolean',
             'is_customizable' => 'nullable|boolean',
+            'is_direct_topup' => 'nullable|boolean',
+            'direct_topup_account_label' => 'nullable|string|max:255',
+            'direct_topup_min_quantity' => 'nullable|numeric|min:0',
+            'direct_topup_max_quantity' => 'nullable|numeric|min:0',
+            'direct_topup_price_per_unit' => 'nullable|numeric|min:0',
             'min_amount' => 'nullable|numeric|min:0',
             'max_amount' => 'nullable|numeric|min:0|gte:min_amount',
         ]);
@@ -124,13 +129,12 @@ class SupplierMappingController extends BaseController
             return redirect()->back()->withInput();
         }
 
-        // Check for duplicate mapping
+        // A product can only be mapped to one supplier
         $exists = SupplierProductMapping::where('product_id', $request->input('product_id'))
-            ->where('supplier_api_id', $request->input('supplier_api_id'))
             ->exists();
 
         if ($exists) {
-            Toastr::error(translate('this_product_is_already_mapped_to_this_supplier'));
+            Toastr::error(translate('this_product_is_already_mapped_to_a_supplier') ?: 'This product is already mapped to a supplier. Each product can only have one supplier mapping.');
 
             return redirect()->back()->withInput();
         }
@@ -150,6 +154,11 @@ class SupplierMappingController extends BaseController
             'max_restock_qty' => $request->input('max_restock_qty', 50),
             'is_active' => true,
             'is_customizable' => (bool) $request->input('is_customizable', false),
+            'is_direct_topup' => (bool) $request->input('is_direct_topup', false),
+            'direct_topup_account_label' => $request->input('is_direct_topup') ? $request->input('direct_topup_account_label') : null,
+            'direct_topup_min_quantity' => $request->input('is_direct_topup') ? $request->input('direct_topup_min_quantity') : null,
+            'direct_topup_max_quantity' => $request->input('is_direct_topup') ? $request->input('direct_topup_max_quantity') : null,
+            'direct_topup_price_per_unit' => $request->input('is_direct_topup') ? $request->input('direct_topup_price_per_unit') : null,
             'min_amount' => $request->input('is_customizable') ? $request->input('min_amount') : null,
             'max_amount' => $request->input('is_customizable') ? $request->input('max_amount') : null,
         ]);
@@ -191,6 +200,11 @@ class SupplierMappingController extends BaseController
             'max_restock_qty' => 'required|integer|min:1',
             'auto_restock' => 'nullable|boolean',
             'is_customizable' => 'nullable|boolean',
+            'is_direct_topup' => 'nullable|boolean',
+            'direct_topup_account_label' => 'nullable|string|max:255',
+            'direct_topup_min_quantity' => 'nullable|numeric|min:0',
+            'direct_topup_max_quantity' => 'nullable|numeric|min:0',
+            'direct_topup_price_per_unit' => 'nullable|numeric|min:0',
             'min_amount' => 'nullable|numeric|min:0',
             'max_amount' => 'nullable|numeric|min:0|gte:min_amount',
         ]);
@@ -210,6 +224,19 @@ class SupplierMappingController extends BaseController
         $mapping = SupplierProductMapping::findOrFail($id);
         $supplierProductChanged = $mapping->supplier_product_id !== $request->input('supplier_product_id');
         $productChanged = (int) $mapping->product_id !== (int) $request->input('product_id');
+
+        if ($productChanged) {
+            $exists = SupplierProductMapping::where('product_id', $request->input('product_id'))
+                ->where('id', '!=', $id)
+                ->exists();
+
+            if ($exists) {
+                Toastr::error(translate('this_product_is_already_mapped_to_a_supplier') ?: 'This product is already mapped to a supplier.');
+
+                return redirect()->back()->withInput();
+            }
+        }
+
         $mapping->update([
             'product_id' => $request->input('product_id'),
             'supplier_product_id' => $request->input('supplier_product_id'),
@@ -223,6 +250,11 @@ class SupplierMappingController extends BaseController
             'min_stock_threshold' => $request->input('min_stock_threshold', 5),
             'max_restock_qty' => $request->input('max_restock_qty', 50),
             'is_customizable' => (bool) $request->input('is_customizable', false),
+            'is_direct_topup' => (bool) $request->input('is_direct_topup', false),
+            'direct_topup_account_label' => $request->input('is_direct_topup') ? $request->input('direct_topup_account_label') : null,
+            'direct_topup_min_quantity' => $request->input('is_direct_topup') ? $request->input('direct_topup_min_quantity') : null,
+            'direct_topup_max_quantity' => $request->input('is_direct_topup') ? $request->input('direct_topup_max_quantity') : null,
+            'direct_topup_price_per_unit' => $request->input('is_direct_topup') ? $request->input('direct_topup_price_per_unit') : null,
             'min_amount' => $request->input('is_customizable') ? $request->input('min_amount') : null,
             'max_amount' => $request->input('is_customizable') ? $request->input('max_amount') : null,
         ]);
@@ -247,6 +279,41 @@ class SupplierMappingController extends BaseController
         return response()->json([
             'success' => 1,
             'message' => translate('status_updated_successfully'),
+        ]);
+    }
+
+    /**
+     * AJAX: check if the selected supplier supports direct top-up.
+     */
+    public function validateDirectTopup(Request $request): JsonResponse
+    {
+        $supplierId = $request->input('supplier_api_id');
+
+        if (! $supplierId) {
+            return response()->json([
+                'supported' => false,
+                'message' => translate('please_select_a_supplier_first') ?: 'Please select a supplier first.',
+            ]);
+        }
+
+        $supplier = SupplierApi::find($supplierId);
+
+        if (! $supplier) {
+            return response()->json([
+                'supported' => false,
+                'message' => translate('supplier_not_found') ?: 'Supplier not found.',
+            ]);
+        }
+
+        if (! $supplier->supports_direct_top_up) {
+            return response()->json([
+                'supported' => false,
+                'message' => translate('supplier_does_not_support_direct_topup') ?: 'This supplier does not support direct top-up.',
+            ]);
+        }
+
+        return response()->json([
+            'supported' => true,
         ]);
     }
 

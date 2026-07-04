@@ -47,8 +47,17 @@ class SupplierController extends BaseController
     public function getAddView(): View
     {
         $drivers = $this->supplierManager->getAvailableDrivers();
+        $driverSchemas = $this->supplierManager->getAvailableDriversWithSchemas();
+        $defaultDriver = $drivers[0] ?? 'generic_rest';
 
-        return view('admin-views.supplier.add', compact('drivers'));
+        $defaultSchema = $driverSchemas[$defaultDriver] ?? ['credentials' => [], 'settings' => []];
+
+        return view('admin-views.supplier.add', compact(
+            'drivers',
+            'driverSchemas',
+            'defaultDriver',
+            'defaultSchema',
+        ));
     }
 
     /**
@@ -60,10 +69,11 @@ class SupplierController extends BaseController
             'name' => 'required|string|max:100',
             'driver' => 'required|string|in:'.implode(',', $this->supplierManager->getAvailableDrivers()),
             'base_url' => 'required|url|max:500',
-            'auth_type' => 'required|in:api_key,bearer_token,oauth2,basic,hmac',
+            'auth_type' => 'required|in:api_key,bearer_token,oauth2,basic,hmac,login_via',
             'rate_limit_per_minute' => 'required|integer|min:1|max:1000',
             'priority' => 'required|integer|min:0',
             'is_sandbox' => 'nullable|boolean',
+            'supports_direct_top_up' => 'nullable|boolean',
         ]);
 
         if ($validator->fails()) {
@@ -81,6 +91,7 @@ class SupplierController extends BaseController
         $supplier->priority = (int) $request->input('priority', 0);
         $supplier->is_active = true;
         $supplier->is_sandbox = (bool) $request->input('is_sandbox', false);
+        $supplier->supports_direct_top_up = (bool) $request->input('supports_direct_top_up', false);
         $supplier->health_status = 'unknown';
 
         // Encrypt credentials
@@ -138,10 +149,11 @@ class SupplierController extends BaseController
             'name' => 'required|string|max:100',
             'driver' => 'required|string|in:'.implode(',', $this->supplierManager->getAvailableDrivers()),
             'base_url' => 'required|url|max:500',
-            'auth_type' => 'required|in:api_key,bearer_token,oauth2,basic,hmac',
+            'auth_type' => 'required|in:api_key,bearer_token,oauth2,basic,hmac,login_via',
             'rate_limit_per_minute' => 'required|integer|min:1|max:1000',
             'priority' => 'required|integer|min:0',
             'is_sandbox' => 'nullable|boolean',
+            'supports_direct_top_up' => 'nullable|boolean',
         ]);
 
         if ($validator->fails()) {
@@ -158,6 +170,7 @@ class SupplierController extends BaseController
         $supplier->rate_limit_per_minute = (int) $request->input('rate_limit_per_minute', 60);
         $supplier->priority = (int) $request->input('priority', 0);
         $supplier->is_sandbox = (bool) $request->input('is_sandbox', false);
+        $supplier->supports_direct_top_up = (bool) $request->input('supports_direct_top_up', false);
 
         // Update credentials only if provided
         $credentials = $request->input('credentials', []);

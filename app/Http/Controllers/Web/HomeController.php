@@ -73,15 +73,15 @@ class HomeController extends Controller
         $bestSellProduct = $bestSellProduct->count() == 0 ? $latestProductsList : $bestSellProduct;
         $topRatedProducts = $topRatedProducts->count() == 0 ? $bestSellProduct : $topRatedProducts;
 
-        $featuredProductsList = ProductManager::getPriorityWiseFeaturedProductsQuery(query: $this->product->active()->with(['clearanceSale' => function ($query) {
+        $featuredProductsList = ProductManager::getPriorityWiseFeaturedProductsQuery(query: $this->product->active()->with(['supplierMapping', 'clearanceSale' => function ($query) {
             return $query->active();
         }]), dataLimit: 12);
-        $newArrivalProducts = ProductManager::getPriorityWiseNewArrivalProductsQuery(query: $this->product->active()->with(['clearanceSale' => function ($query) {
+        $newArrivalProducts = ProductManager::getPriorityWiseNewArrivalProductsQuery(query: $this->product->active()->with(['supplierMapping', 'clearanceSale' => function ($query) {
             return $query->active();
         }]), dataLimit: 8);
 
         $dealOfTheDay = DealOfTheDay::with(['product' => function ($query) {
-            return $query->active()->with(['clearanceSale' => function ($query) {
+            return $query->active()->with(['supplierMapping', 'clearanceSale' => function ($query) {
                 return $query->active();
             }]);
         }])
@@ -156,7 +156,7 @@ class HomeController extends Controller
         }
         $category_slider = array_chunk($final_category, 4);
 
-        $featuredProductsList = $this->product->active()->with(['seller.shop', 'flashDealProducts.flashDeal', 'clearanceSale' => function ($query) {
+        $featuredProductsList = $this->product->active()->with(['seller.shop', 'supplierMapping', 'flashDealProducts.flashDeal', 'clearanceSale' => function ($query) {
             return $query->active();
         }])
             ->where('featured', 1)
@@ -181,7 +181,7 @@ class HomeController extends Controller
             return $product;
         });
         $bestSellProduct = Product::active()->with([
-            'reviews', 'rating', 'seller.shop',
+            'reviews', 'rating', 'seller.shop', 'supplierMapping',
             'flashDealProducts.flashDeal',
         ])->withCount(['reviews']);
 

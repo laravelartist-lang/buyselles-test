@@ -1717,6 +1717,10 @@ function getViewByOnclick() {
 }
 getViewByOnclick();
 
+$(document).on("click", ".stopPropagation", function (e) {
+    e.stopPropagation();
+});
+
 function initTooltip() {
     let tooltipTriggerList = [].slice.call(
         document.querySelectorAll('[data-bs-toggle="tooltip"]')

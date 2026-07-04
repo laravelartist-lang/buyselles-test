@@ -171,6 +171,7 @@ trait CacheManagerTrait
                         'clearanceSale' => function ($query) {
                             return $query->active();
                         },
+                        'supplierMapping',
                     ])
                     ->withCount('reviews')
                     ->where('category_id', $data['id']);
@@ -243,7 +244,7 @@ trait CacheManagerTrait
             return $query->active();
         })->pluck('product_id')->toArray();
 
-        $products = Product::active()->with(['reviews', 'rating', 'clearanceSale' => function ($query) {
+        $products = Product::active()->with(['reviews', 'rating', 'supplierMapping', 'clearanceSale' => function ($query) {
             return $query->active();
         }])->withCount('reviews')->whereIn('id', $productIds);
 
@@ -363,7 +364,7 @@ trait CacheManagerTrait
     public function cacheHomePageJustForYouProductList()
     {
         return Cache::remember(CACHE_FOR_HOME_PAGE_JUST_FOR_YOU_PRODUCT_LIST, CACHE_FOR_3_HOURS, function () {
-            return Product::active()->with(['clearanceSale' => function ($query) {
+            return Product::active()->with(['supplierMapping', 'clearanceSale' => function ($query) {
                 $query->active();
             },
                 'reviews' => function ($query) {
@@ -400,7 +401,7 @@ trait CacheManagerTrait
     public function cacheTopRatedProductList()
     {
         return Cache::remember(CACHE_FOR_HOME_PAGE_TOP_RATED_PRODUCT_LIST, CACHE_FOR_3_HOURS, function () {
-            return Product::active()->with(['seller.shop', 'clearanceSale' => function ($query) {
+            return Product::active()->with(['seller.shop', 'supplierMapping', 'clearanceSale' => function ($query) {
                 return $query->active();
             }])
                 ->whereHas('reviews', function ($query) {
@@ -415,7 +416,7 @@ trait CacheManagerTrait
     {
         return Cache::remember(CACHE_FOR_HOME_PAGE_BEST_SELL_PRODUCT_LIST, CACHE_FOR_3_HOURS, function () {
             return Product::active()
-                ->with(['reviews', 'seller.shop', 'clearanceSale' => function ($query) {
+                ->with(['reviews', 'seller.shop', 'supplierMapping', 'clearanceSale' => function ($query) {
                     return $query->active();
                 }])
                 ->whereHas('orderDetails', function ($query) {
@@ -430,7 +431,7 @@ trait CacheManagerTrait
     public function cacheHomePageLatestProductList()
     {
         return Cache::remember(CACHE_FOR_HOME_PAGE_LATEST_PRODUCT_LIST, CACHE_FOR_3_HOURS, function () {
-            $latestProductsList = Product::active()->with(['seller.shop', 'flashDealProducts.flashDeal', 'clearanceSale' => function ($query) {
+            $latestProductsList = Product::active()->with(['seller.shop', 'supplierMapping', 'flashDealProducts.flashDeal', 'clearanceSale' => function ($query) {
                 return $query->active();
             }])->orderBy('id', 'desc')->take(10)->get();
 

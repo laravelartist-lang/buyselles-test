@@ -44,6 +44,10 @@ window.addEventListener("popstate", function () {
             renderProductCardIconFunctionality();
             productTagsActionForViewEvents()
 
+            $(".get-view-by-onclick").on("click", function () {
+                location.href = $(this).data("link");
+            });
+
             // resetAllInProductList();
         },
         complete: function () {
@@ -91,6 +95,10 @@ $('.product-list-filter').on('submit', function (event) {
 
                 renderProductCardIconFunctionality();
                 productTagsActionForViewEvents();
+
+                $(".get-view-by-onclick").on("click", function () {
+                    location.href = $(this).data("link");
+                });
             }
         },
         complete: function () {

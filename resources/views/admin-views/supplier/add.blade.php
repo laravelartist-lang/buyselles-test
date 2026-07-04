@@ -50,6 +50,7 @@
                             <select name="auth_type" class="form-control" required>
                                 <option value="api_key" {{ old('auth_type') == 'api_key' ? 'selected' : '' }}>API Key</option>
                                 <option value="bearer_token" {{ old('auth_type') == 'bearer_token' ? 'selected' : '' }}>Bearer Token</option>
+                                <option value="login_via" {{ old('auth_type') == 'login_via' ? 'selected' : '' }}>Login Via</option>
                                 <option value="oauth2" {{ old('auth_type') == 'oauth2' ? 'selected' : '' }}>OAuth2</option>
                                 <option value="basic" {{ old('auth_type') == 'basic' ? 'selected' : '' }}>Basic Auth</option>
                                 <option value="hmac" {{ old('auth_type') == 'hmac' ? 'selected' : '' }}>HMAC</option>
@@ -57,7 +58,7 @@
                         </div>
                     </div>
 
-                    <div class="col-lg-4">
+                    <div class="col-lg-3">
                         <div class="form-group">
                             <label class="form-label">{{ translate('rate_limit_per_minute') }} <span class="text-danger">*</span></label>
                             <input type="number" name="rate_limit_per_minute" class="form-control"
@@ -65,7 +66,7 @@
                         </div>
                     </div>
 
-                    <div class="col-lg-4">
+                    <div class="col-lg-3">
                         <div class="form-group">
                             <label class="form-label">{{ translate('priority') }} <span class="text-danger">*</span></label>
                             <input type="number" name="priority" class="form-control"
@@ -74,7 +75,7 @@
                         </div>
                     </div>
 
-                    <div class="col-lg-4">
+                    <div class="col-lg-3">
                         <div class="form-group">
                             <label class="form-label">{{ translate('sandbox_mode') }}</label>
                             <div class="form-check form-switch mt-2">
@@ -84,57 +85,66 @@
                             </div>
                         </div>
                     </div>
+
+                    <div class="col-lg-3">
+                        <div class="form-group">
+                            <label class="form-label">{{ translate('supports_direct_top_up') }}</label>
+                            <div class="form-check form-switch mt-2">
+                                <input class="form-check-input" type="checkbox" name="supports_direct_top_up" value="1"
+                                       id="topup-toggle" {{ old('supports_direct_top_up') ? 'checked' : '' }}>
+                                <label class="form-check-label" for="topup-toggle">{{ translate('enable_direct_top_up') }}</label>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 {{-- Credentials Section --}}
                 <hr class="my-4">
                 <h5 class="mb-3"><i class="fi fi-rr-lock"></i> {{ translate('credentials') }}</h5>
                 <div class="row gy-3" id="credentials-section">
-                    <div class="col-lg-6">
-                        <div class="form-group">
-                            <label class="form-label">{{ translate('api_key') }}</label>
-                            <input type="password" name="credentials[api_key]" class="form-control"
-                                   placeholder="{{ translate('enter_api_key') }}"
-                                   autocomplete="new-password">
+                    @forelse($defaultSchema['credentials'] as $fieldKey => $fieldConfig)
+                        <div class="col-lg-6">
+                            <div class="form-group">
+                                <label class="form-label">
+                                    {{ $fieldConfig['label'] ?? ucfirst(str_replace('_', ' ', $fieldKey)) }}
+                                    @if(!empty($fieldConfig['required']))
+                                        <span class="text-danger">*</span>
+                                    @endif
+                                </label>
+                                <input type="{{ ($fieldConfig['type'] ?? 'text') === 'password' ? 'password' : 'text' }}"
+                                       name="credentials[{{ $fieldKey }}]"
+                                       class="form-control"
+                                       placeholder="{{ translate('enter_value') }}"
+                                       autocomplete="new-password">
+                            </div>
                         </div>
-                    </div>
-                    <div class="col-lg-6">
-                        <div class="form-group">
-                            <label class="form-label">{{ translate('api_secret') }}</label>
-                            <input type="password" name="credentials[api_secret]" class="form-control"
-                                   placeholder="{{ translate('enter_api_secret') }}"
-                                   autocomplete="new-password">
+                    @empty
+                        <div class="col-lg-12">
+                            <p class="text-muted">{{ translate('no_credentials_needed_for_this_driver') }}</p>
                         </div>
-                    </div>
-                    <div class="col-lg-6">
-                        <div class="form-group">
-                            <label class="form-label">{{ translate('client_id') }}</label>
-                            <input type="text" name="credentials[client_id]" class="form-control"
-                                   placeholder="{{ translate('enter_client_id') }}">
-                        </div>
-                    </div>
-                    <div class="col-lg-6">
-                        <div class="form-group">
-                            <label class="form-label">{{ translate('client_secret') }}</label>
-                            <input type="password" name="credentials[client_secret]" class="form-control"
-                                   placeholder="{{ translate('enter_client_secret') }}"
-                                   autocomplete="new-password">
-                        </div>
-                    </div>
+                    @endforelse
                 </div>
 
                 {{-- Settings Section --}}
                 <hr class="my-4">
                 <h5 class="mb-3"><i class="fi fi-rr-settings"></i> {{ translate('driver_settings') }}</h5>
                 <div class="row gy-3" id="settings-section">
-                    <div class="col-lg-6">
-                        <div class="form-group">
-                            <label class="form-label">{{ translate('webhook_secret') }}</label>
-                            <input type="password" name="settings[webhook_secret]" class="form-control"
-                                   placeholder="{{ translate('for_webhook_signature_verification') }}"
-                                   autocomplete="new-password">
+                    @forelse($defaultSchema['settings'] as $settingKey => $settingConfig)
+                        <div class="col-lg-6">
+                            <div class="form-group">
+                                <label class="form-label">{{ $settingConfig['label'] ?? ucfirst(str_replace('_', ' ', $settingKey)) }}</label>
+                                <input type="{{ ($settingConfig['type'] ?? 'text') === 'number' ? 'number' : (($settingConfig['type'] ?? 'text') === 'password' ? 'password' : 'text') }}"
+                                       name="settings[{{ $settingKey }}]"
+                                       class="form-control"
+                                       value="{{ old("settings.{$settingKey}", $settingConfig['default'] ?? '') }}"
+                                       autocomplete="new-password">
+                            </div>
                         </div>
-                    </div>
+                    @empty
+                        <div class="col-lg-12">
+                            <p class="text-muted">{{ translate('no_settings_available_for_this_driver') }}</p>
+                        </div>
+                    @endforelse
                 </div>
 
                 <div class="d-flex gap-3 mt-4">

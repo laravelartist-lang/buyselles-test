@@ -84,11 +84,6 @@ class Product extends Model
         'brand_id',
         'unit',
         'digital_product_type',
-        'is_direct_topup',
-        'direct_topup_account_label',
-        'direct_topup_min_quantity',
-        'direct_topup_max_quantity',
-        'direct_topup_price_per_unit',
         'product_type',
         'details',
         'colors',
@@ -155,11 +150,6 @@ class Product extends Model
         'brand_id' => 'integer',
         'unit' => 'string',
         'digital_product_type' => 'string',
-        'is_direct_topup' => 'boolean',
-        'direct_topup_account_label' => 'string',
-        'direct_topup_min_quantity' => 'float',
-        'direct_topup_max_quantity' => 'float',
-        'direct_topup_price_per_unit' => 'float',
         'product_type' => 'string',
         'details' => 'string',
         'min_qty' => 'integer',
@@ -205,11 +195,22 @@ class Product extends Model
         'digital_file_ready_storage_type' => 'string',
     ];
 
-    protected $appends = ['is_shop_temporary_close', 'thumbnail_full_url', 'preview_file_full_url', 'color_images_full_url', 'meta_image_full_url', 'images_full_url', 'digital_file_ready_full_url', 'has_active_supplier_mapping'];
+    protected $appends = ['is_shop_temporary_close', 'thumbnail_full_url', 'preview_file_full_url', 'color_images_full_url', 'meta_image_full_url', 'images_full_url', 'digital_file_ready_full_url', 'has_active_supplier_mapping', 'is_direct_topup'];
 
     public function getHasActiveSupplierMappingAttribute(): bool
     {
+        if ($this->relationLoaded('supplierMapping')) {
+            $mapping = $this->getRelation('supplierMapping');
+
+            return $mapping !== null && $mapping->is_active === true;
+        }
+
         return \App\Models\SupplierProductMapping::where('product_id', $this->id)->where('is_active', 1)->exists();
+    }
+
+    public function supplierMapping(): HasOne
+    {
+        return $this->hasOne(SupplierProductMapping::class)->where('is_active', true)->orderBy('priority', 'asc');
     }
 
     public function translations(): MorphMany
@@ -556,6 +557,89 @@ class Product extends Model
         }
 
         return $images;
+    }
+
+    /**
+     * Return the effective sell price for this product.
+     *
+     * When the product has an active supplier mapping, the price is determined
+     * by the supplier's API price + markup. Otherwise, the product's local
+     * unit_price is used as a fallback.
+     *
+     * This is the centralized single source of truth for product pricing
+     * regardless of supplier driver — every supplier benefits from it.
+     */
+    public function getUnitPriceAttribute($value): float
+    {
+        if ($this->relationLoaded('supplierMapping')) {
+            $mapping = $this->getRelation('supplierMapping');
+
+            if ($mapping !== null && $mapping->is_active === true) {
+                $sellPrice = $mapping->calculateSellPrice();
+
+                if ($sellPrice > 0) {
+                    return $sellPrice;
+                }
+            }
+        }
+
+        return (float) $value;
+    }
+
+    public function getIsDirectTopupAttribute(): bool
+    {
+        if ($this->relationLoaded('supplierMapping')) {
+            $mapping = $this->getRelation('supplierMapping');
+
+            return $mapping !== null && $mapping->is_active === true && (bool) $mapping->is_direct_topup;
+        }
+
+        return false;
+    }
+
+    public function getLocalUnitPrice(): float
+    {
+        return (float) ($this->attributes['unit_price'] ?? 0);
+    }
+
+    public function getEffectiveSellPrice(): float
+    {
+        $mapping = SupplierProductMapping::query()
+            ->where('product_id', $this->id)
+            ->active()
+            ->byPriority()
+            ->whereHas('supplierApi', fn ($q) => $q->where('is_active', true))
+            ->first();
+
+        if ($mapping) {
+            $price = $mapping->calculateSellPrice();
+
+            if ($price > 0) {
+                return $price;
+            }
+        }
+
+        return (float) $this->attributes['unit_price'];
+    }
+
+    /**
+     * Return the effective cost/price from the supplier for this product.
+     * Falls back to the product's purchase_price when no mapping exists.
+     */
+    public function getEffectiveCostPrice(): float
+    {
+        $mapping = SupplierProductMapping::query()
+            ->where('product_id', $this->id)
+            ->active()
+            ->byPriority()
+            ->whereHas('supplierApi', fn ($q) => $q->where('is_active', true))
+            ->first();
+
+        if ($mapping) {
+            return (float) $mapping->cost_price;
+        }
+
+        return (float) ($this->attributes['purchase_price'] ?? 0);
     }
 
     protected static function boot(): void

@@ -310,9 +310,10 @@
                         $variableDenom = $denominationMapping ? $denominationMapping->activeDenominations->where('type', 'variable')->first() : null;
                         $hasFixedDenoms = $fixedDenoms->isNotEmpty();
                         $hasVariableDenom = $variableDenom !== null;
-                        $showLegacyCustom = !$hasFixedDenoms && !$hasVariableDenom && $denominationMapping && $denominationMapping->is_customizable;
+                        $isCustomizable = $denominationMapping && $denominationMapping->is_customizable;
+                        $showLegacyCustom = !$hasFixedDenoms && !$hasVariableDenom && $isCustomizable;
                     @endphp
-                    @if ($hasFixedDenoms)
+                    @if ($hasFixedDenoms && $isCustomizable)
                         <div class="denomination-selection-section mb-2">
                             <div class="d-flex align-items-start gap-3">
                                 <div class="product-description-label __color-9B9B9B fs-14 text-nowrap pt-1">
@@ -342,7 +343,7 @@
                             </div>
                         </div>
                     @endif
-                    @if ($hasVariableDenom)
+                    @if ($hasVariableDenom && $isCustomizable)
                         <div class="customizable-amount-section mb-2">
                             <input type="hidden" name="supplier_denomination_id" value="{{ $variableDenom->id }}">
                             <div class="d-flex align-items-center gap-3">

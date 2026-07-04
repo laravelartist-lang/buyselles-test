@@ -3,8 +3,6 @@
 namespace App\Models;
 
 use Carbon\Carbon;
-use Illuminate\Contracts\Encryption\DecryptException;
-use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
@@ -25,6 +23,8 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
  * @property int $quantity
  * @property float $price
  * @property float|null $custom_amount
+ * @property string|null $direct_topup_account_id
+ * @property float|null $direct_topup_quantity
  * @property float $tax
  * @property int $is_checked
  * @property float $discount
@@ -161,12 +161,7 @@ class Cart extends Model
                 : ($this->relationLoaded('allProducts') ? $this->allProducts : $this->product()->first());
 
             if ($product) {
-                return getProductPriceByType(
-                    product: $product,
-                    type: 'discounted_amount',
-                    result: 'value',
-                    price: $this->getGrossPrice()
-                );
+                return getProductPriceByType(product: $product, type: 'discounted_amount', result: 'value', price: $this->getGrossPrice());
             }
         }
 
@@ -180,44 +175,6 @@ class Cart extends Model
         }
 
         return ((float) $this->price - (float) $this->discount) * (float) $this->quantity;
-    }
-
-    protected function directTopupAccountId(): Attribute
-    {
-        return Attribute::make(
-            get: function (?string $value): ?string {
-                if ($value === null || $value === '') {
-                    return $value;
-                }
-
-                // Try with unserialize first (new format: encrypted + serialized)
-                try {
-                    $decrypted = decrypt($value, true);
-
-                    if ($decrypted !== false) {
-                        return $decrypted;
-                    }
-
-                    // Unserialize failed — value was stored as plain encrypted text (old format)
-                } catch (DecryptException) {
-                    // Decryption failed entirely, try without unserialize
-                }
-
-                // Fallback: old format where value was encrypted without serialization
-                try {
-                    return decrypt($value, false);
-                } catch (DecryptException) {
-                    return $value;
-                }
-            },
-            set: function (?string $value): ?string {
-                if ($value === null || $value === '') {
-                    return $value;
-                }
-
-                return encrypt($value);
-            },
-        );
     }
 
     protected static function boot(): void

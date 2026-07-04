@@ -234,18 +234,13 @@ class DigitalProductCodeService
                 continue;
             }
 
-            // For direct top-up products, use direct_topup_quantity instead of qty
-            $quantityTarget = $detail->direct_topup_quantity !== null
-                ? (int) ceil((float) $detail->direct_topup_quantity)
-                : (int) $detail->qty;
-
             // How many codes are already assigned for this order detail?
             $alreadyAssigned = DigitalProductCode::query()
                 ->where('order_detail_id', $detail->id)
                 ->where('status', 'sold')
                 ->count();
 
-            $needed = max(0, $quantityTarget - $alreadyAssigned);
+            $needed = max(0, (int) $detail->qty - $alreadyAssigned);
 
             if ($needed <= 0) {
                 continue; // Already fully assigned — idempotent
@@ -318,10 +313,6 @@ class DigitalProductCodeService
                 continue;
             }
 
-            if (SupplierProductMapping::hasActiveMapping($productId)) {
-                continue;
-            }
-
             $available = DigitalProductCode::query()
                 ->where('product_id', $productId)
                 ->where('status', 'available')
@@ -375,26 +366,23 @@ class DigitalProductCodeService
      * - Logs the price change so admins can audit it.
      * - Does nothing if no active supplier mapping exists.
      */
+    /**
+     * Sync the product's price from the supplier mapping.
+     *
+     * Uses the centralized Product::getEffectiveSellPrice() to determine
+     * the correct price, then writes it back to product.unit_price so it
+     * is reflected everywhere (cached queries, APIs, product listings).
+     */
     public function applyApiPriceIfManualDepleted(int $productId): void
     {
-        $manualStock = DigitalProductCode::query()
-            ->where('product_id', $productId)
-            ->where('source', 'manual')
-            ->where('status', 'available')
-            ->where('is_active', true)
-            ->where(function ($q): void {
-                $q->whereNull('expiry_date')
-                    ->orWhereDate('expiry_date', '>=', now()->toDateString());
-            })
-            ->count();
+        $product = Product::find($productId);
 
-        if ($manualStock > 0) {
-            // Manual stock still available — keep the current price
+        if (! $product) {
             return;
         }
 
-        // Find the highest-priority active mapping for this product
-        $mapping = SupplierProductMapping::where('product_id', $productId)
+        $mapping = SupplierProductMapping::query()
+            ->where('product_id', $productId)
             ->active()
             ->byPriority()
             ->whereHas('supplierApi', fn ($q) => $q->where('is_active', true))
@@ -404,37 +392,22 @@ class DigitalProductCodeService
             return;
         }
 
-        $apiPrice = $mapping->calculateSellPrice();
+        $newCostPrice = (float) $mapping->cost_price;
 
-        if ($apiPrice <= 0) {
+        if ((float) $product->purchase_price === $newCostPrice) {
             return;
         }
 
-        $product = Product::find($productId);
-
-        if (! $product) {
-            return;
-        }
-
-        // Avoid redundant writes if price is already correct
-        if ((float) $product->unit_price === $apiPrice) {
-            return;
-        }
-
-        $previousPrice = $product->unit_price;
+        $previousCostPrice = $product->purchase_price;
 
         Product::where('id', $productId)->update([
-            'unit_price' => $apiPrice,
-            'purchase_price' => $mapping->cost_price,
+            'purchase_price' => $newCostPrice,
         ]);
 
-        Log::info('DigitalProductCodeService: price switched to API price (manual stock depleted)', [
+        Log::info('DigitalProductCodeService: product cost price synced from supplier mapping', [
             'product_id' => $productId,
-            'previous_price' => $previousPrice,
-            'api_price' => $apiPrice,
-            'cost_price' => $mapping->cost_price,
-            'markup_type' => $mapping->markup_type,
-            'markup_value' => $mapping->markup_value,
+            'previous_cost_price' => $previousCostPrice,
+            'cost_price' => $newCostPrice,
             'mapping_id' => $mapping->id,
             'supplier_api_id' => $mapping->supplier_api_id,
         ]);

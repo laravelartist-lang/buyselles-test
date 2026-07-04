@@ -387,10 +387,7 @@
                                                 </div>
                                             @endforeach
 
-                                            {{-- ─── Direct Top-up OR Denomination Selection ──────────────────────────── --}}
-                                            @if ($product->is_direct_topup)
-                                                @include('web-views.products.partials._direct-topup-purchase')
-                                            @else
+                                            {{-- ─── Denomination Selection / Variable Amount ──────────────────────────── --}}
                                             @php
                                                 $denominationMapping = \App\Models\SupplierProductMapping::where('product_id', $product->id)
                                                     ->where('is_active', true)
@@ -400,9 +397,16 @@
                                                 $variableDenom = $denominationMapping ? $denominationMapping->activeDenominations->where('type', 'variable')->first() : null;
                                                 $hasFixedDenoms = $fixedDenoms->isNotEmpty();
                                                 $hasVariableDenom = $variableDenom !== null;
-                                                $showLegacyCustom = !$hasFixedDenoms && !$hasVariableDenom && $denominationMapping && $denominationMapping->is_customizable;
+                                                $isCustomizable = $denominationMapping && $denominationMapping->is_customizable;
+                                                $showLegacyCustom = !$hasFixedDenoms && !$hasVariableDenom && $isCustomizable;
+                                                $varMin = $hasVariableDenom
+                                                    ? ($variableDenom->min_face_value > 0 ? $variableDenom->min_face_value : $denominationMapping->min_amount)
+                                                    : 0;
+                                                $varMax = $hasVariableDenom
+                                                    ? ($variableDenom->max_face_value > 0 ? $variableDenom->max_face_value : $denominationMapping->max_amount)
+                                                    : 0;
                                             @endphp
-                                            @if ($hasFixedDenoms)
+                                            @if ($hasFixedDenoms && $isCustomizable)
                                                 <div class="denomination-selection-section">
                                                     <div class="d-flex align-items-start gap-3">
                                                         <div class="product-description-label __color-9B9B9B fs-14 text-nowrap pt-1">
@@ -432,35 +436,42 @@
                                                     </div>
                                                 </div>
                                             @endif
-                                            @if ($hasVariableDenom)
+                                            @if ($hasVariableDenom && $isCustomizable)
                                                 <div class="customizable-amount-section">
                                                     <input type="hidden" name="supplier_denomination_id" value="{{ $variableDenom->id }}">
                                                     <div class="d-flex align-items-center gap-3 mb-2">
                                                         <div class="product-description-label __color-9B9B9B fs-14">
                                                             {{ translate('amount') }}
                                                         </div>
-                                                        <div class="d-flex align-items-center gap-2">
-                                                            <input type="number"
-                                                                name="custom_amount"
-                                                                id="custom-amount-input"
-                                                                class="form-control w-180px text-center"
-                                                                step="0.01"
-                                                                min="{{ $variableDenom->min_face_value }}"
-                                                                max="{{ $variableDenom->max_face_value }}"
-                                                                placeholder="{{ $variableDenom->min_face_value }} - {{ $variableDenom->max_face_value }}"
-                                                                data-min="{{ $variableDenom->min_face_value }}"
-                                                                data-max="{{ $variableDenom->max_face_value }}"
-                                                                required>
-                                                            <span class="text-muted fs-12">
-                                                                ({{ webCurrencyConverter(amount: $variableDenom->min_face_value) }}
+                                                        <div class="d-flex flex-column gap-1">
+                                                            <div class="d-flex align-items-center gap-2">
+                                                                <input type="number"
+                                                                    name="custom_amount"
+                                                                    id="custom-amount-input"
+                                                                    class="form-control w-180px text-center"
+                                                                    step="0.01"
+                                                                    min="{{ $varMin }}"
+                                                                    max="{{ $varMax }}"
+                                                                    placeholder="{{ $varMin }} - {{ $varMax }}"
+                                                                    data-min="{{ $varMin }}"
+                                                                    data-max="{{ $varMax }}"
+                                                                    required>
+                                                            </div>
+                                                            <div class="text-primary fs-12 fw-semibold">
+                                                                <i class="czi-info-circle"></i>
+                                                                {{ translate('enter_amount_between') }}
+                                                                {{ webCurrencyConverter(amount: $varMin) }}
                                                                 —
-                                                                {{ webCurrencyConverter(amount: $variableDenom->max_face_value) }})
-                                                            </span>
+                                                                {{ webCurrencyConverter(amount: $varMax) }}
+                                                            </div>
+                                                            <div class="text-danger fs-11 custom-amount-error" style="display: none;">
+                                                                {{ translate('amount_must_be_between') }}
+                                                                {{ webCurrencyConverter(amount: $varMin) }}
+                                                                —
+                                                                {{ webCurrencyConverter(amount: $varMax) }}
+                                                            </div>
                                                         </div>
                                                     </div>
-                                                    <small class="text-muted">
-                                                        {{ translate('enter_your_desired_amount_between_the_range') }}
-                                                    </small>
                                                 </div>
                                             @elseif ($showLegacyCustom)
                                                 <div class="customizable-amount-section">
@@ -526,6 +537,12 @@
                                                                 </button>
                                                             </span>
                                                         </div>
+                                                        <input type="hidden" class="product-generated-variation-code"
+                                                            name="product_variation_code"
+                                                            data-product-id="{{ $product['id'] }}">
+                                                        <input type="hidden" value=""
+                                                            class="product-exist-in-cart-list form-control w-50"
+                                                            name="key">
                                                     </div>
                                                     <div class="product-details-chosen-price-section">
                                                         <div
@@ -542,40 +559,6 @@
                                                     </div>
                                                 </div>
                                             </div>
-                                            @endif
-
-                                            @if ($product->is_direct_topup)
-                                                @php
-                                                    $directTopUpInitialTotal = round(
-                                                        (float) $product->direct_topup_min_quantity * app(\App\Services\DirectTopUp\DirectTopUpService::class)->getPricePerUnit($product),
-                                                        2
-                                                    );
-                                                @endphp
-                                                <input type="hidden" class="product-generated-variation-code"
-                                                    name="product_variation_code"
-                                                    data-product-id="{{ $product['id'] }}">
-                                                <input type="hidden" value=""
-                                                    class="product-exist-in-cart-list form-control w-50"
-                                                    name="key">
-                                                <div class="product-details-chosen-price-section mb-3">
-                                                    <div class="d-flex align-items-center gap-4">
-                                                        <div
-                                                            class="product-description-label fs-20 text-dark font-bold text-capitalize">
-                                                            <strong>{{ translate('total_price') }}</strong>:
-                                                        </div>
-                                                        <strong class="text-base product-details-chosen-price-amount fs-20">
-                                                            {{ webCurrencyConverter(amount: $directTopUpInitialTotal) }}
-                                                        </strong>
-                                                    </div>
-                                                </div>
-                                            @else
-                                                <input type="hidden" class="product-generated-variation-code"
-                                                    name="product_variation_code"
-                                                    data-product-id="{{ $product['id'] }}">
-                                                <input type="hidden" value=""
-                                                    class="product-exist-in-cart-list form-control w-50"
-                                                    name="key">
-                                            @endif
 
                                             <div class="__btn-grp product-add-and-buy-section-parent">
 
@@ -1271,9 +1254,10 @@
             ->first();
         $scriptFixedDenoms = $denomMappingForScript ? $denomMappingForScript->activeDenominations->where('type', 'fixed') : collect();
         $scriptVariableDenom = $denomMappingForScript ? $denomMappingForScript->activeDenominations->where('type', 'variable')->first() : null;
-        $scriptShowLegacyCustom = $scriptFixedDenoms->isEmpty() && !$scriptVariableDenom && $denomMappingForScript && $denomMappingForScript->is_customizable;
+        $scriptIsCustomizable = $denomMappingForScript && $denomMappingForScript->is_customizable;
+        $scriptShowLegacyCustom = $scriptFixedDenoms->isEmpty() && !$scriptVariableDenom && $scriptIsCustomizable;
     @endphp
-    @if ($scriptFixedDenoms->isNotEmpty())
+    @if ($scriptFixedDenoms->isNotEmpty() && $scriptIsCustomizable)
     <script>
         $(document).ready(function () {
             const $priceDisplay = $('.product-details-chosen-price-amount');
@@ -1305,12 +1289,13 @@
         });
     </script>
     @endif
-    @if ($scriptVariableDenom || $scriptShowLegacyCustom)
+    @if (($scriptVariableDenom || $scriptShowLegacyCustom) && $scriptIsCustomizable)
     <script>
         $(document).ready(function () {
             const $input = $('#custom-amount-input');
             const $priceDisplay = $('.product-details-chosen-price-amount');
             const $unitPriceDisplay = $('.discounted-unit-price');
+            const $errorMsg = $('.custom-amount-error');
             const currencySymbol = @json(getCurrencySymbol());
             const symbolPosition = @json(getWebConfig('currency_symbol_position'));
             const decimalPoints = parseInt(@json(getWebConfig('decimal_point_settings'))) || 2;
@@ -1327,11 +1312,16 @@
 
                 if (!isNaN(amount) && amount >= min && amount <= max) {
                     $(this).removeClass('border-danger');
+                    $errorMsg.hide();
                     const qty = parseInt($('.product-details-cart-qty').val()) || 1;
                     $unitPriceDisplay.text(formatPrice(amount));
                     $priceDisplay.text(formatPrice(amount * qty));
                 } else if ($(this).val() !== '') {
                     $(this).addClass('border-danger');
+                    $errorMsg.show();
+                } else {
+                    $(this).removeClass('border-danger');
+                    $errorMsg.hide();
                 }
             });
 

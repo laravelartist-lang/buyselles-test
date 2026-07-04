@@ -27,6 +27,11 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property int $max_restock_qty
  * @property bool $is_active
  * @property bool $is_customizable
+ * @property bool $is_direct_topup
+ * @property string|null $direct_topup_account_label
+ * @property float|null $direct_topup_min_quantity
+ * @property float|null $direct_topup_max_quantity
+ * @property float|null $direct_topup_price_per_unit
  * @property float|null $min_amount
  * @property float|null $max_amount
  * @property Carbon|null $last_synced_at
@@ -55,6 +60,11 @@ class SupplierProductMapping extends Model
         'max_restock_qty',
         'is_active',
         'is_customizable',
+        'is_direct_topup',
+        'direct_topup_account_label',
+        'direct_topup_min_quantity',
+        'direct_topup_max_quantity',
+        'direct_topup_price_per_unit',
         'min_amount',
         'max_amount',
         'last_synced_at',
@@ -73,6 +83,11 @@ class SupplierProductMapping extends Model
             'max_restock_qty' => 'integer',
             'is_active' => 'boolean',
             'is_customizable' => 'boolean',
+            'is_direct_topup' => 'boolean',
+            'direct_topup_account_label' => 'string',
+            'direct_topup_min_quantity' => 'decimal:4',
+            'direct_topup_max_quantity' => 'decimal:4',
+            'direct_topup_price_per_unit' => 'decimal:8',
             'min_amount' => 'decimal:2',
             'max_amount' => 'decimal:2',
             'last_synced_at' => 'datetime',

@@ -181,7 +181,7 @@ class ProductController extends BaseController
         $shopId = getInHouseShopConfig('id');
         $dataArray = $service->getAddProductData(request: $request, addedBy: 'admin', shopId: $shopId);
         $savedProduct = $this->productRepo->add(data: $dataArray);
-        if ($request['product_type'] === 'digital' && ! empty($request['digital_product_code']) && ! $request->boolean('is_direct_topup')) {
+        if ($request['product_type'] === 'digital' && ! empty($request['digital_product_code'])) {
             app(DigitalProductCodeService::class)->addToPool(
                 $savedProduct->id,
                 $request['digital_product_code'],
@@ -295,7 +295,7 @@ class ProductController extends BaseController
         $this->updateProductAuthorAndPublishingHouse(request: $request, product: $product);
 
         $this->productRepo->update(id: $id, data: $dataArray);
-        if ($request['product_type'] === 'digital' && ! empty($request['digital_product_code']) && ! $request->boolean('is_direct_topup')) {
+        if ($request['product_type'] === 'digital' && ! empty($request['digital_product_code'])) {
             app(DigitalProductCodeService::class)->addToPool(
                 $id,
                 $request['digital_product_code'],

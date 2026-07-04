@@ -968,8 +968,7 @@ class OrderController extends Controller
 
                 $query['product_details'] = Helpers::product_data_formatting($product);
 
-                $query['is_direct_topup'] = ! empty($query['direct_topup_quantity'])
-                    || (bool) ($product['is_direct_topup'] ?? false);
+                $query['is_direct_topup'] = ! empty($query['direct_topup_quantity']);
 
                 return $query;
             });

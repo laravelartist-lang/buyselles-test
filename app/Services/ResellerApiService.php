@@ -28,6 +28,7 @@ class ResellerApiService
             ->where('status', 1)
             ->where('request_status', 1)
             ->where('partner_approved', 1)
+            ->with('supplierMapping')
             ->withCount(['digitalProductCodes as available_stock' => function ($q) {
                 $q->where('status', 'available')
                     ->where('is_active', true)
@@ -78,6 +79,7 @@ class ResellerApiService
             ->where('status', 1)
             ->where('request_status', 1)
             ->where('partner_approved', 1)
+            ->with('supplierMapping')
             ->withCount(['digitalProductCodes as available_stock' => function ($q) {
                 $q->where('status', 'available')
                     ->where('is_active', true)

@@ -81,7 +81,7 @@ class OrderObserver
                 $productDetails = json_decode($detail->product_details ?? '{}');
                 $productType = $productDetails->product_type ?? null;
                 $digitalType = $productDetails->digital_product_type ?? null;
-                $isDirectTopUp = (bool) ($productDetails->is_direct_topup ?? false);
+                $isDirectTopUp = ! empty($detail->direct_topup_quantity);
 
                 if ($productType !== 'digital' || $isDirectTopUp) {
                     continue;
@@ -154,7 +154,7 @@ class OrderObserver
                 $hasMapping = SupplierProductMapping::query()
                     ->where('product_id', $productId)
                     ->where('is_active', true)
-                    ->whereHas('supplierApi', fn ($q) => $q->where('is_active', true))
+                    ->whereHas('supplierApi', fn ($q) => $q->where('is_active', true)->where('supports_direct_top_up', true))
                     ->exists();
 
                 if ($hasMapping) {
