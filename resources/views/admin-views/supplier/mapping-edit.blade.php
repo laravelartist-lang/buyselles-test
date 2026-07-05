@@ -20,10 +20,12 @@
                     <div class="col-lg-6">
                         <div class="form-group">
                             <label class="form-label">{{ translate('supplier') }} <span class="text-danger">*</span></label>
-                            <select name="supplier_api_id" class="form-control" required>
+                            <select name="supplier_api_id" id="supplier-api-select" class="form-control" required>
                                 <option value="">{{ translate('select_supplier') }}</option>
                                 @foreach($suppliers as $supplier)
-                                    <option value="{{ $supplier->id }}" {{ old('supplier_api_id', $mapping->supplier_api_id) == $supplier->id ? 'selected' : '' }}>
+                                    <option value="{{ $supplier->id }}"
+                                            data-supports-direct-topup="{{ $supplier->supports_direct_top_up ? '1' : '0' }}"
+                                            {{ old('supplier_api_id', $mapping->supplier_api_id) == $supplier->id ? 'selected' : '' }}>
                                         {{ $supplier->name }} ({{ $supplier->driver }}){{ $supplier->is_active ? '' : ' — '.translate('inactive') }}
                                     </option>
                                 @endforeach
@@ -155,12 +157,12 @@
                     </div>
 
                     {{-- ─── Direct Top-Up ──────────────────────────────────────── --}}
-                    <div class="col-lg-12">
+                    <div class="col-lg-12" id="direct-topup-section">
                         <hr class="my-2">
                         <h5 class="mb-3">{{ translate('direct_topup_settings') ?: 'Direct Top-Up Settings' }}</h5>
                     </div>
 
-                    <div class="col-lg-12">
+                    <div class="col-lg-12 direct-topup-section-content">
                         <div class="form-check form-switch">
                             <input class="form-check-input" type="checkbox" name="is_direct_topup" value="1"
                                    id="direct-topup-toggle"
@@ -175,7 +177,7 @@
                         </div>
                     </div>
 
-                    <div class="col-lg-6 direct-topup-fields" style="{{ old('is_direct_topup', $mapping->is_direct_topup) ? '' : 'display:none;' }}">
+                    <div class="col-lg-6 direct-topup-fields direct-topup-section-content" style="{{ old('is_direct_topup', $mapping->is_direct_topup) ? '' : 'display:none;' }}">
                         <div class="form-group">
                             <label class="form-label">{{ translate('direct_topup_account_label') ?: 'Account ID Input Label' }}</label>
                             <input type="text" name="direct_topup_account_label" class="form-control"
@@ -184,7 +186,7 @@
                         </div>
                     </div>
 
-                    <div class="col-lg-3 direct-topup-fields" style="{{ old('is_direct_topup', $mapping->is_direct_topup) ? '' : 'display:none;' }}">
+                    <div class="col-lg-3 direct-topup-fields direct-topup-section-content" style="{{ old('is_direct_topup', $mapping->is_direct_topup) ? '' : 'display:none;' }}">
                         <div class="form-group">
                             <label class="form-label">{{ translate('direct_topup_min_quantity') ?: 'Minimum Quantity' }}</label>
                             <input type="number" step="0.0001" min="0" name="direct_topup_min_quantity" class="form-control"
@@ -192,7 +194,7 @@
                         </div>
                     </div>
 
-                    <div class="col-lg-3 direct-topup-fields" style="{{ old('is_direct_topup', $mapping->is_direct_topup) ? '' : 'display:none;' }}">
+                    <div class="col-lg-3 direct-topup-fields direct-topup-section-content" style="{{ old('is_direct_topup', $mapping->is_direct_topup) ? '' : 'display:none;' }}">
                         <div class="form-group">
                             <label class="form-label">{{ translate('direct_topup_max_quantity') ?: 'Maximum Quantity' }}</label>
                             <input type="number" step="0.0001" min="0" name="direct_topup_max_quantity" class="form-control"
@@ -200,7 +202,7 @@
                         </div>
                     </div>
 
-                    <div class="col-lg-6 direct-topup-fields" style="{{ old('is_direct_topup', $mapping->is_direct_topup) ? '' : 'display:none;' }}">
+                    <div class="col-lg-6 direct-topup-fields direct-topup-section-content" style="{{ old('is_direct_topup', $mapping->is_direct_topup) ? '' : 'display:none;' }}">
                         <div class="form-group">
                             <label class="form-label">{{ translate('direct_topup_price_per_unit') ?: 'Price Per Unit' }}</label>
                             <input type="number" step="0.00000001" min="0" name="direct_topup_price_per_unit" class="form-control"
@@ -236,8 +238,45 @@
         });
     }
 
+    const supplierSelect = document.getElementById('supplier-api-select');
+    const directTopupSection = document.getElementById('direct-topup-section');
+    const directTopupSectionContent = document.querySelectorAll('.direct-topup-section-content');
     const directTopupToggle = document.getElementById('direct-topup-toggle');
     const directTopupFields = document.querySelectorAll('.direct-topup-fields');
+
+    function selectedSupplierSupportsDirectTopup() {
+        if (!supplierSelect || !supplierSelect.value) {
+            return false;
+        }
+
+        const selectedOption = supplierSelect.options[supplierSelect.selectedIndex];
+
+        return selectedOption && selectedOption.getAttribute('data-supports-direct-topup') === '1';
+    }
+
+    function syncDirectTopupSectionVisibility() {
+        const supported = selectedSupplierSupportsDirectTopup();
+
+        if (directTopupSection) {
+            directTopupSection.style.display = supported ? '' : 'none';
+        }
+
+        directTopupSectionContent.forEach(el => {
+            if (!supported) {
+                el.style.display = 'none';
+            }
+        });
+
+        if (!supported && directTopupToggle) {
+            directTopupToggle.checked = false;
+            directTopupFields.forEach(el => { el.style.display = 'none'; });
+        }
+    }
+
+    if (supplierSelect) {
+        supplierSelect.addEventListener('change', syncDirectTopupSectionVisibility);
+        syncDirectTopupSectionVisibility();
+    }
 
     if (directTopupToggle) {
         let ajaxCheckInProgress = false;
@@ -248,12 +287,18 @@
                 return;
             }
 
+            if (!selectedSupplierSupportsDirectTopup()) {
+                toastr.error('{{ translate("supplier_does_not_support_direct_topup") ?: "This supplier does not support direct top-up." }}');
+                this.checked = false;
+                directTopupFields.forEach(el => { el.style.display = 'none'; });
+                return;
+            }
+
             if (ajaxCheckInProgress) return;
 
             ajaxCheckInProgress = true;
             const validateUrl = this.getAttribute('data-validate-url');
             const mappingId = this.getAttribute('data-mapping-id');
-            const supplierSelect = document.querySelector('select[name="supplier_api_id"]');
             const supplierId = supplierSelect ? supplierSelect.value : null;
 
             if (!supplierId) {

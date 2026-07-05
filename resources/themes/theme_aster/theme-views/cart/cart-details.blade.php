@@ -189,23 +189,11 @@
                                                 @endif
 
                                                 <?php
-                                                $getProductCurrentStock = $product->current_stock;
-                                                if (!empty($product->variation)) {
-                                                    foreach (json_decode($product->variation, true) as $productVariantSingle) {
-                                                        if ($productVariantSingle['type'] == $cartItem->variant) {
-                                                            $getProductCurrentStock = $productVariantSingle['qty'];
-                                                        }
-                                                    }
-                                                }
-
                                                 $isDirectTopUpItem = $cartItem->isDirectTopUp();
-                                                $displayQuantity = (int) floor($cartItem->getDisplayQuantity());
-                                                $minCartQuantity = $isDirectTopUpItem
-                                                    ? (int) floor((float) $product->direct_topup_min_quantity)
-                                                    : ($product->minimum_order_qty ?? 1);
-                                                $maxCartQuantity = $isDirectTopUpItem
-                                                    ? (int) floor((float) $product->direct_topup_max_quantity)
-                                                    : $getProductCurrentStock;
+                                                $quantityLimits = CartManager::getCartItemQuantityLimits($cartItem, $product);
+                                                $displayQuantity = $quantityLimits['display_quantity'];
+                                                $minCartQuantity = $quantityLimits['min'];
+                                                $maxCartQuantity = $quantityLimits['max'];
                                                 $lineTotal = $cartItem->getLineTotal();
                                                 $unitDisplayPrice = $isDirectTopUpItem
                                                     ? app(\App\Services\DirectTopUp\DirectTopUpService::class)->getPricePerUnit($product)
@@ -237,7 +225,7 @@
 
 
                                                                     @if (
-                                                                        ($product->product_type == 'physical' && ! $isDirectTopUpItem && $getProductCurrentStock < $cartItem['quantity']) ||
+                                                                        ($product->product_type == 'physical' && ! $isDirectTopUpItem && $maxCartQuantity < $cartItem['quantity']) ||
                                                                             $checkProductStatus == 0)
                                                                         <span
                                                                             class="temporary-closed position-absolute text-center p-2 fs-12">
@@ -270,7 +258,7 @@
                                                                         {{ webCurrencyConverter($unitDisplayPrice) }}
                                                                     </div>
 
-                                                                    @if ($product->product_type == 'physical' && ! $isDirectTopUpItem && $getProductCurrentStock < $cartItem['quantity'] && $checkProductStatus != 0)
+                                                                    @if ($product->product_type == 'physical' && ! $isDirectTopUpItem && $maxCartQuantity < $cartItem['quantity'] && $checkProductStatus != 0)
                                                                         <div class="d-flex text-danger fw-bold">
                                                                             <span>{{ translate('Out_Of_Stock') }}</span>
                                                                         </div>
@@ -281,7 +269,7 @@
                                                     </td>
                                                     <td class="text-center">
                                                         @if ($checkProductStatus == 1)
-                                                            @php($isProductCountChangeable = $isDirectTopUpItem || $product->product_type == 'digital' || ($product->product_type == 'physical' && $getProductCurrentStock >= $displayQuantity))
+                                                            @php($isProductCountChangeable = $isDirectTopUpItem || $product->product_type == 'digital' || ($product->product_type == 'physical' && $maxCartQuantity >= $displayQuantity))
                                                             <div
                                                                 class="quantity quantity--style-two border-primary-light d-inline-flex align-items-center min-h-35px rounded
                                                         {{ $isProductCountChangeable ? 'justify-content-between min-w-90px' : 'justify-content-center aspect-1' }}">
@@ -294,7 +282,7 @@
                                                                 @else
                                                                     data-action="delete"> @endif
                                                                     @if (
-                                                                        (! $isDirectTopUpItem && $getProductCurrentStock < $displayQuantity) ||
+                                                                        (! $isDirectTopUpItem && $maxCartQuantity < $displayQuantity) ||
                                                                             $displayQuantity == $minCartQuantity) <img width="17" height="17" src="{{ theme_asset(path: 'assets/img/icons/delete.svg') }}" alt="">
                                                                 @else
                                                                     <i class="bi bi-dash fs-22"></i> @endif
@@ -407,23 +395,11 @@
                                         @endif
 
                                         <?php
-                                        $getProductCurrentStock = $product->current_stock;
-                                        if (!empty($product->variation)) {
-                                            foreach (json_decode($product->variation, true) as $productVariantSingle) {
-                                                if ($productVariantSingle['type'] == $cartItem->variant) {
-                                                    $getProductCurrentStock = $productVariantSingle['qty'];
-                                                }
-                                            }
-                                        }
-
                                         $isDirectTopUpItem = $cartItem->isDirectTopUp();
-                                        $displayQuantity = (int) floor($cartItem->getDisplayQuantity());
-                                        $minCartQuantity = $isDirectTopUpItem
-                                            ? (int) floor((float) $product->direct_topup_min_quantity)
-                                            : ($product->minimum_order_qty ?? 1);
-                                        $maxCartQuantity = $isDirectTopUpItem
-                                            ? (int) floor((float) $product->direct_topup_max_quantity)
-                                            : $getProductCurrentStock;
+                                        $quantityLimits = CartManager::getCartItemQuantityLimits($cartItem, $product);
+                                        $displayQuantity = $quantityLimits['display_quantity'];
+                                        $minCartQuantity = $quantityLimits['min'];
+                                        $maxCartQuantity = $quantityLimits['max'];
                                         $lineTotal = $cartItem->getLineTotal();
                                         $unitDisplayPrice = $isDirectTopUpItem
                                             ? app(\App\Services\DirectTopUp\DirectTopUpService::class)->getPricePerUnit($product)
@@ -492,7 +468,7 @@
                                                             </div>
                                                         @endif
 
-                                                        @if ($product->product_type == 'physical' && ! $isDirectTopUpItem && $getProductCurrentStock < $cartItem['quantity'])
+                                                        @if ($product->product_type == 'physical' && ! $isDirectTopUpItem && $maxCartQuantity < $cartItem['quantity'])
                                                             <div class="d-flex text-danger fw-bold">
                                                                 <span>{{ translate('Out_Of_Stock') }}</span>
                                                             </div>
@@ -511,7 +487,7 @@
                                                         data-action="{{ $displayQuantity == $minCartQuantity ? 'delete' : 'minus' }}">
 
                                                         @if (
-                                                            (! $isDirectTopUpItem && $getProductCurrentStock < $displayQuantity) ||
+                                                            (! $isDirectTopUpItem && $maxCartQuantity < $displayQuantity) ||
                                                                 $displayQuantity == $minCartQuantity)
                                                             <img width="17" height="17"
                                                                 src="{{ theme_asset(path: 'assets/img/icons/delete.svg') }}"
@@ -520,7 +496,7 @@
                                                             <i class="bi bi-dash fs-22"></i>
                                                         @endif
                                                     </span>
-                                                    @if ($isDirectTopUpItem || $product->product_type == 'digital' || ($product->product_type == 'physical' && $getProductCurrentStock >= $displayQuantity))
+                                                    @if ($isDirectTopUpItem || $product->product_type == 'digital' || ($product->product_type == 'physical' && $maxCartQuantity >= $displayQuantity))
                                                         <input type="text"
                                                             class="quantity__qty update-cart-quantity-list-mobile-cart-data-input"
                                                             value="{{ $displayQuantity }}" name="quantity"

@@ -80,6 +80,10 @@ class ConnectGolfApiCommand extends Command
             'topup_order_id_response_path' => 'data.id',
             'topup_success_status_values' => ['completed'],
 
+            // Golf API top-up uses product custom_fields (Player ID), not account_id
+            'topup_use_product_custom_fields' => '1',
+            'topup_custom_fields_path' => 'data.custom_fields',
+
             // Balance
             'balance_endpoint' => '/balance',
             'balance_response_path' => 'data.balance',

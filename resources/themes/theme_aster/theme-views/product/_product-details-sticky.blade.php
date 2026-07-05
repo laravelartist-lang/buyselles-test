@@ -9,6 +9,19 @@
             @csrf
             <input type="hidden" name="id" value="{{ $productDetails->id }}">
             <input type="hidden" name="position" value="bottom">
+            @php
+                $stickyMapping = \App\Models\SupplierProductMapping::query()
+                    ->where('product_id', $productDetails->id)
+                    ->where('is_active', true)
+                    ->where('is_customizable', true)
+                    ->whereHas('supplierApi', fn ($q) => $q->where('is_active', true))
+                    ->with(['activeDenominations' => fn ($q) => $q->where('type', 'fixed')->orderBy('sort_order')->orderBy('face_value')])
+                    ->first();
+                $stickyDenom = $stickyMapping?->activeDenominations->first();
+            @endphp
+            @if ($stickyDenom)
+                <input type="hidden" name="supplier_denomination_id" value="{{ $stickyDenom->id }}">
+            @endif
 
             <div class="product-details-sticky-top">
                 <div class="border-bottom d-flex flex-column gap-3 mb-3 pb-3">

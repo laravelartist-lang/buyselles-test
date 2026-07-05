@@ -4,6 +4,7 @@ namespace App\Utils;
 
 use App\Events\OrderEditDuePaymentEvent;
 use App\Events\OrderPlacedEvent;
+use App\Jobs\DirectTopUpFulfillmentJob;
 use App\Jobs\SupplierCodeFetchJob;
 use App\Models\Admin;
 use App\Models\AdminWallet;
@@ -12,7 +13,6 @@ use App\Models\Cart;
 use App\Models\CartShipping;
 use App\Models\Color;
 use App\Models\Coupon;
-use App\Models\DigitalProductCode;
 use App\Models\DigitalProductVariation;
 use App\Models\OfflinePayments;
 use App\Models\Order;
@@ -1089,6 +1089,7 @@ class OrderManager
                 $product['storage_path'] = $product['digital_file_ready_storage_type'] ?? 'public';
             }
 
+            $isDirectTopUp = ! empty($cartSingleItem['direct_topup_quantity']);
             $productDiscount = getProductPriceByType(product: $product, type: 'discounted_amount', result: 'value', price: $cartSingleItem['price']);
             $orderDetails = [
                 'order_id' => $orderId,
@@ -1099,7 +1100,13 @@ class OrderManager
                 'price' => $cartSingleItem['price'],
                 'custom_amount' => $cartSingleItem['custom_amount'] ?? null,
                 'supplier_denomination_id' => $cartSingleItem['supplier_denomination_id'] ?? null,
-                'discount' => $productDiscount * $cartSingleItem['quantity'],
+                'direct_topup_account_id' => self::encryptDirectTopUpAccountId(
+                    is_array($cartSingleItem)
+                        ? ($cartSingleItem['direct_topup_account_id'] ?? null)
+                        : ($cartSingleItem->direct_topup_account_id ?? null)
+                ),
+                'direct_topup_quantity' => $cartSingleItem['direct_topup_quantity'] ?? null,
+                'discount' => $isDirectTopUp ? $productDiscount : $productDiscount * $cartSingleItem['quantity'],
                 'discount_type' => 'discount_on_product',
                 'variant' => $cartSingleItem['variant'],
                 'variation' => $cartSingleItem['variations'],
@@ -1126,7 +1133,9 @@ class OrderManager
             $orderDetails['tax'] = $appliedTaxAmount;
             $orderDetails['tax_model'] = $taxConfig['is_included'] ? 'include' : 'exclude';
 
-            $finalAmount = ($cartSingleItem['price'] - $productDiscount) * $cartSingleItem['quantity'];
+            $finalAmount = $isDirectTopUp
+                ? ($cartSingleItem['price'] - $productDiscount)
+                : ($cartSingleItem['price'] - $productDiscount) * $cartSingleItem['quantity'];
             $totalPrice += $finalAmount;
 
             if ($cartSingleItem['variant'] != null) {
@@ -1142,9 +1151,12 @@ class OrderManager
                     'variation' => json_encode($variationData),
                 ]);
             }
-            Product::where(['id' => $product['id']])->update([
-                'current_stock' => $product['current_stock'] - $cartSingleItem['quantity'],
-            ]);
+
+            if (! $isDirectTopUp) {
+                Product::where(['id' => $product['id']])->update([
+                    'current_stock' => $product['current_stock'] - $cartSingleItem['quantity'],
+                ]);
+            }
             $orderDetailsId = DB::table('order_details')->insertGetId($orderDetails);
 
             foreach ($vendorCart['applied_tax_cart_list'] as $cartItem) {
@@ -1368,13 +1380,17 @@ class OrderManager
 
                 // ── Dispatch supplier fetch for any unfulfilled digital codes ──
                 self::dispatchSupplierFallbackIfNeeded($order);
+                self::dispatchDirectTopUpIfNeeded($order);
             }
 
             // ── Auto-deliver fully-digital orders that are already paid ──
+            $hasDirectTopUp = collect($vendorWiseCart['cart_list'])->contains(
+                fn ($item) => ! empty($item->direct_topup_quantity ?? (is_array($item) ? ($item['direct_topup_quantity'] ?? null) : null))
+            );
             $isFullyDigital = collect($vendorWiseCart['cart_list'])->every(
                 fn ($item) => ($item->product_type ?? $item->product?->product_type ?? '') === 'digital'
             );
-            if ($isFullyDigital && ($data['payment_status'] ?? '') === 'paid') {
+            if ($isFullyDigital && ($data['payment_status'] ?? '') === 'paid' && ! $hasDirectTopUp) {
                 Order::where('id', $order_id)->update([
                     'order_status' => 'delivered',
                     'payment_status' => 'paid',
@@ -1427,11 +1443,45 @@ class OrderManager
             }
         }
 
-        if ($user != 'offline') {
-            ReferralCustomer::where('user_id', $user['id'])->update(['is_used' => 1]);
+        $deferCheckoutCompletion = ! empty($data['defer_checkout_completion']);
+
+        if ($deferCheckoutCompletion) {
+            session([
+                'deferred_checkout_completion' => [
+                    'notification_events' => $orderPlacedNotificationEvents,
+                    'mail_events' => $orderPlacedMailEvents,
+                    'cart_group_ids' => collect($vendorWiseCartList)?->pluck('cart_group_id')->filter()->values()->all() ?? [],
+                    'referral_user_id' => ($user != 'offline') ? ($user['id'] ?? null) : null,
+                ],
+            ]);
+        } else {
+            self::dispatchDeferredCheckoutSideEffects(
+                notificationEvents: $orderPlacedNotificationEvents,
+                mailEvents: $orderPlacedMailEvents,
+                cartGroupIds: collect($vendorWiseCartList)?->pluck('cart_group_id')->filter()->values()->all() ?? [],
+                referralUserId: ($user != 'offline') ? ($user['id'] ?? null) : null,
+            );
         }
 
-        foreach ($orderPlacedNotificationEvents as $orderPlacedEventGroup) {
+        return $orderPlacedIds;
+    }
+
+    /**
+     * @param  array<int, mixed>  $notificationEvents
+     * @param  array<int, mixed>  $mailEvents
+     * @param  array<int, int|string>  $cartGroupIds
+     */
+    public static function dispatchDeferredCheckoutSideEffects(
+        array $notificationEvents,
+        array $mailEvents,
+        array $cartGroupIds,
+        ?int $referralUserId = null,
+    ): void {
+        if ($referralUserId) {
+            ReferralCustomer::where('user_id', $referralUserId)->update(['is_used' => 1]);
+        }
+
+        foreach ($notificationEvents as $orderPlacedEventGroup) {
             foreach ($orderPlacedEventGroup as $orderPlacedEvent) {
                 if (! empty($orderPlacedEvent)) {
                     event(new OrderPlacedEvent(notification: $orderPlacedEvent['notificationData']));
@@ -1439,7 +1489,7 @@ class OrderManager
             }
         }
 
-        foreach ($orderPlacedMailEvents as $orderPlacedMailEventGroup) {
+        foreach ($mailEvents as $orderPlacedMailEventGroup) {
             foreach ($orderPlacedMailEventGroup as $orderPlacedMailEvent) {
                 try {
                     event(new OrderPlacedEvent(email: $orderPlacedMailEvent['email'], data: $orderPlacedMailEvent['data']));
@@ -1448,15 +1498,38 @@ class OrderManager
             }
         }
 
-        CartManager::cartCleanByCartGroupIds(cartGroupIDs: collect($vendorWiseCartList)?->pluck('cart_group_id')->toArray() ?? []);
+        if ($cartGroupIds !== []) {
+            CartManager::cartCleanByCartGroupIds(cartGroupIDs: $cartGroupIds);
+        }
 
         session()->forget('coupon_code');
         session()->forget('coupon_type');
         session()->forget('coupon_bearer');
         session()->forget('coupon_discount');
         session()->forget('coupon_seller_id');
+    }
 
-        return $orderPlacedIds;
+    public static function completeDeferredCheckout(): void
+    {
+        $deferred = session('deferred_checkout_completion');
+
+        if (! is_array($deferred)) {
+            return;
+        }
+
+        self::dispatchDeferredCheckoutSideEffects(
+            notificationEvents: $deferred['notification_events'] ?? [],
+            mailEvents: $deferred['mail_events'] ?? [],
+            cartGroupIds: $deferred['cart_group_ids'] ?? [],
+            referralUserId: $deferred['referral_user_id'] ?? null,
+        );
+
+        session()->forget('deferred_checkout_completion');
+    }
+
+    public static function discardDeferredCheckout(): void
+    {
+        session()->forget('deferred_checkout_completion');
     }
 
     public static function getLoyaltyPointKeys(): array
@@ -2652,40 +2725,53 @@ class OrderManager
     private static function dispatchSupplierFallbackIfNeeded(Order $order): void
     {
         try {
+            $eligibilityService = app(\App\Services\Supplier\SupplierOrderEligibilityService::class);
+
+            if ($eligibilityService->orderNeedsSupplierCodeFetch($order)) {
+                SupplierCodeFetchJob::dispatch($order->id);
+                Log::info('OrderManager: dispatched SupplierCodeFetchJob for unfulfilled codes', [
+                    'order_id' => $order->id,
+                ]);
+            }
+        } catch (\Throwable $e) {
+            Log::error('OrderManager: supplier fallback check failed', [
+                'order_id' => $order->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Dispatch direct top-up fulfillment for paid orders created via insertGetId
+     * (Eloquent OrderObserver::created does not run on that path).
+     */
+    private static function dispatchDirectTopUpIfNeeded(Order $order): void
+    {
+        try {
+            if (\App\Services\DirectTopUp\DirectTopUpWalletCheckoutService::isDirectTopUpAlreadyFulfilled($order)) {
+                return;
+            }
+
             $order->loadMissing('orderDetails');
 
             foreach ($order->orderDetails as $detail) {
-                $productDetails = json_decode($detail->product_details ?? '{}');
-                $productType = $productDetails->product_type ?? null;
-                $digitalType = $productDetails->digital_product_type ?? null;
-
-                if ($productType !== 'digital' || $digitalType !== 'ready_product') {
+                if ($detail->direct_topup_quantity === null) {
                     continue;
                 }
 
-                $productId = $detail->product_id ?? ($productDetails->id ?? null);
-                if (! $productId) {
-                    continue;
-                }
-
-                $assignedCount = DigitalProductCode::query()
-                    ->where('order_detail_id', $detail->id)
-                    ->where('status', 'sold')
-                    ->count();
-
-                if ((int) $detail->qty - $assignedCount <= 0) {
+                if (self::resolveDirectTopUpAccountId($detail) === null) {
                     continue;
                 }
 
                 $hasMapping = SupplierProductMapping::query()
-                    ->where('product_id', $productId)
+                    ->where('product_id', $detail->product_id)
                     ->where('is_active', true)
-                    ->whereHas('supplierApi', fn ($q) => $q->where('is_active', true))
+                    ->whereHas('supplierApi', fn ($q) => $q->where('is_active', true)->where('supports_direct_top_up', true))
                     ->exists();
 
                 if ($hasMapping) {
-                    SupplierCodeFetchJob::dispatch($order->id);
-                    Log::info('OrderManager: dispatched SupplierCodeFetchJob for unfulfilled codes', [
+                    DirectTopUpFulfillmentJob::dispatch($order->id);
+                    Log::info('OrderManager: dispatched DirectTopUpFulfillmentJob for paid order', [
                         'order_id' => $order->id,
                     ]);
 
@@ -2693,10 +2779,42 @@ class OrderManager
                 }
             }
         } catch (\Throwable $e) {
-            Log::error('OrderManager: supplier fallback check failed', [
+            Log::error('OrderManager: direct top-up dispatch failed', [
                 'order_id' => $order->id,
                 'error' => $e->getMessage(),
             ]);
+        }
+    }
+
+    private static function encryptDirectTopUpAccountId(?string $accountId): ?string
+    {
+        if ($accountId === null || $accountId === '') {
+            return null;
+        }
+
+        try {
+            decrypt($accountId);
+
+            return $accountId;
+        } catch (\Throwable) {
+            return encrypt($accountId);
+        }
+    }
+
+    public static function resolveDirectTopUpAccountId(OrderDetail $detail): ?string
+    {
+        $raw = \Illuminate\Support\Facades\DB::table('order_details')
+            ->where('id', $detail->id)
+            ->value('direct_topup_account_id');
+
+        if ($raw === null || $raw === '') {
+            return null;
+        }
+
+        try {
+            return decrypt($raw);
+        } catch (\Throwable) {
+            return (string) $raw;
         }
     }
 }

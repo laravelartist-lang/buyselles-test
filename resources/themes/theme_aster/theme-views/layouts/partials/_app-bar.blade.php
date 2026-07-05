@@ -87,26 +87,16 @@
                     @php($total_tax=0)
                     @foreach($cart_mobile as $cartItem)
                         @php($product=$cartItem->product)
-                        @php
-                            $getProductCurrentStock = $product?->current_stock ?? 0;
-                            if ($product && !empty($product->variation)) {
-                                foreach (json_decode($product->variation, true) as $productVariantSingle) {
-                                    if ($productVariantSingle['type'] == $cartItem->variant) {
-                                        $getProductCurrentStock = $productVariantSingle['qty'];
-                                    }
-                                }
-                            }
-
-                            $isDirectTopUpItem = $cartItem->isDirectTopUp();
-                            $displayQuantity = (int) floor($cartItem->getDisplayQuantity());
-                            $minCartQuantity = $isDirectTopUpItem
-                                ? (int) floor((float) $product->direct_topup_min_quantity)
-                                : ($product?->minimum_order_qty ?? 1);
-                            $maxCartQuantity = $isDirectTopUpItem
-                                ? (int) floor((float) $product->direct_topup_max_quantity)
-                                : $getProductCurrentStock;
-                            $lineTotal = $cartItem->getLineTotal();
-                        @endphp
+                        <?php
+                        $isDirectTopUpItem = $cartItem->isDirectTopUp();
+                        $quantityLimits = $product
+                            ? CartManager::getCartItemQuantityLimits($cartItem, $product)
+                            : ['min' => 1, 'max' => 0, 'display_quantity' => (int) floor($cartItem->getDisplayQuantity())];
+                        $displayQuantity = $quantityLimits['display_quantity'];
+                        $minCartQuantity = $quantityLimits['min'];
+                        $maxCartQuantity = $quantityLimits['max'];
+                        $lineTotal = $cartItem->getLineTotal();
+                        ?>
                         <li>
                             <div class="media gap-3">
                                 <div class="avatar avatar-xxl overflow-hidden position-relative rounded">
@@ -171,7 +161,7 @@
                                                     data-event="minus"
                                                     data-prevent="true">
 
-                                                    @if((! $isDirectTopUpItem && $getProductCurrentStock < $displayQuantity) || $displayQuantity == $minCartQuantity)
+                                                    @if((! $isDirectTopUpItem && $maxCartQuantity < $displayQuantity) || $displayQuantity == $minCartQuantity)
                                                         <i class="bi bi-trash3-fill text-danger fs-10"></i>
                                                     @else
                                                         <i class="bi bi-dash"></i>

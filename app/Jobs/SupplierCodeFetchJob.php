@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\Order;
+use App\Models\SupplierOrder;
 use App\Services\Supplier\SupplierManager;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -58,6 +59,19 @@ class SupplierCodeFetchJob implements ShouldQueue
             ]);
 
             if (! $result['fulfilled'] && $result['error']) {
+                $hasAsyncSupplierOrder = SupplierOrder::query()
+                    ->where('order_id', $order->id)
+                    ->whereIn('status', ['processing', 'pending', 'fulfilled'])
+                    ->exists();
+
+                if ($hasAsyncSupplierOrder) {
+                    Log::info('SupplierCodeFetchJob: async supplier order in progress, not marking order failed', [
+                        'order_id' => $this->orderId,
+                    ]);
+
+                    return;
+                }
+
                 $order->update([
                     'order_status' => 'failed',
                     'order_note' => 'Supplier fulfillment failed: '.$result['error'],

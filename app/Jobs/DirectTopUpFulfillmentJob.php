@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\Order;
+use App\Services\DirectTopUp\DirectTopUpWalletCheckoutService;
 use App\Services\Supplier\SupplierManager;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -26,8 +27,10 @@ class DirectTopUpFulfillmentJob implements ShouldQueue
         public readonly int $orderId,
     ) {}
 
-    public function handle(SupplierManager $manager): void
-    {
+    public function handle(
+        SupplierManager $manager,
+        DirectTopUpWalletCheckoutService $walletCheckoutService,
+    ): void {
         $order = Order::find($this->orderId);
 
         if (! $order) {
@@ -42,6 +45,12 @@ class DirectTopUpFulfillmentJob implements ShouldQueue
             return;
         }
 
+        if (DirectTopUpWalletCheckoutService::isDirectTopUpAlreadyFulfilled($order)) {
+            Log::info('DirectTopUpFulfillmentJob: already fulfilled, skipping', ['order_id' => $this->orderId]);
+
+            return;
+        }
+
         try {
             $result = $manager->fulfillDirectTopUpOrder($order);
 
@@ -51,11 +60,21 @@ class DirectTopUpFulfillmentJob implements ShouldQueue
                 'error' => $result['error'],
             ]);
 
-            if (! $result['fulfilled'] && $result['error']) {
-                $order->update([
-                    'order_status' => 'failed',
-                    'order_note' => 'Direct top-up fulfillment failed: '.$result['error'],
-                ]);
+            if ($result['fulfilled']) {
+                $walletCheckoutService->markDirectTopUpOrderDelivered(
+                    $order->fresh(),
+                    (int) $order->customer_id
+                );
+
+                return;
+            }
+
+            if ($result['error']) {
+                $walletCheckoutService->markDirectTopUpOrderFailed(
+                    $order->fresh(),
+                    $walletCheckoutService->formatFulfillmentError($result['error']),
+                    (int) $order->customer_id
+                );
 
                 Log::error('DirectTopUpFulfillmentJob: fulfillment failed', [
                     'order_id' => $this->orderId,
@@ -79,5 +98,17 @@ class DirectTopUpFulfillmentJob implements ShouldQueue
             'order_id' => $this->orderId,
             'error' => $exception?->getMessage(),
         ]);
+
+        $order = Order::find($this->orderId);
+
+        if ($order === null) {
+            return;
+        }
+
+        app(DirectTopUpWalletCheckoutService::class)->markDirectTopUpOrderFailed(
+            $order,
+            $exception?->getMessage() ?: translate('direct_topup_fulfillment_failed'),
+            (int) $order->customer_id
+        );
     }
 }

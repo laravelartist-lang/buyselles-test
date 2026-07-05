@@ -11167,6 +11167,7 @@ return [
     'direct_topup_account_id_invalid_format' => 'Account ID contains invalid characters.',
     'direct_topup_quantity_must_be_positive' => 'Quantity must be greater than zero.',
     'direct_topup_quantity_out_of_range' => 'Quantity must be between',
+    'direct_topup_fulfillment_failed' => 'Top-up could not be completed. Please try again.',
     'direct_topup_by_quantity' => 'By Quantity',
     'direct_topup_by_price' => 'By Price',
     'direct_topup_total_price' => 'Total Price',
@@ -11631,4 +11632,8 @@ return [
     'supplier_does_not_support_direct_topup' => 'Supplier does not support direct topup',
     'show_only_direct_top_up_products' => 'Show only direct top up products',
     'Direct_Top_Up' => 'Direct Top Up',
+    'please_select_a_supplier_first' => 'Please select a supplier first',
+    'direct_topup_mapping_hint' => 'Direct topup mapping hint',
+    'enable_direct_topup' => 'Enable direct topup',
+    'direct_topup_settings' => 'Direct topup settings',
 ];

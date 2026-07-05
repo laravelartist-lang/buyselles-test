@@ -575,7 +575,7 @@ class Product extends Model
             $mapping = $this->getRelation('supplierMapping');
 
             if ($mapping !== null && $mapping->is_active === true) {
-                $sellPrice = $mapping->calculateSellPrice();
+                $sellPrice = $mapping->getStartingDisplayPrice();
 
                 if ($sellPrice > 0) {
                     return $sellPrice;
@@ -591,7 +591,10 @@ class Product extends Model
         if ($this->relationLoaded('supplierMapping')) {
             $mapping = $this->getRelation('supplierMapping');
 
-            return $mapping !== null && $mapping->is_active === true && (bool) $mapping->is_direct_topup;
+            return $mapping !== null
+                && $mapping->is_active === true
+                && (bool) $mapping->is_direct_topup
+                && (bool) ($mapping->supplierApi?->supports_direct_top_up ?? false);
         }
 
         return false;
@@ -612,7 +615,7 @@ class Product extends Model
             ->first();
 
         if ($mapping) {
-            $price = $mapping->calculateSellPrice();
+            $price = $mapping->getStartingDisplayPrice();
 
             if ($price > 0) {
                 return $price;

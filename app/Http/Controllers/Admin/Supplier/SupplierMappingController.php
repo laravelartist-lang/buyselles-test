@@ -52,7 +52,7 @@ class SupplierMappingController extends BaseController
      */
     public function getAddView(): View
     {
-        $suppliers = SupplierApi::orderBy('name')->get(['id', 'name', 'driver', 'is_active']);
+        $suppliers = SupplierApi::orderBy('name')->get(['id', 'name', 'driver', 'is_active', 'supports_direct_top_up']);
         $categories = $this->categoryRepo->getListWhere(filters: ['position' => 0], dataLimit: 'all');
 
         return view('admin-views.supplier.mapping-add', compact('suppliers', 'categories'));
@@ -129,6 +129,8 @@ class SupplierMappingController extends BaseController
             return redirect()->back()->withInput();
         }
 
+        $directTopupAttributes = $this->resolveDirectTopupAttributesFromRequest($request);
+
         // A product can only be mapped to one supplier
         $exists = SupplierProductMapping::where('product_id', $request->input('product_id'))
             ->exists();
@@ -154,11 +156,7 @@ class SupplierMappingController extends BaseController
             'max_restock_qty' => $request->input('max_restock_qty', 50),
             'is_active' => true,
             'is_customizable' => (bool) $request->input('is_customizable', false),
-            'is_direct_topup' => (bool) $request->input('is_direct_topup', false),
-            'direct_topup_account_label' => $request->input('is_direct_topup') ? $request->input('direct_topup_account_label') : null,
-            'direct_topup_min_quantity' => $request->input('is_direct_topup') ? $request->input('direct_topup_min_quantity') : null,
-            'direct_topup_max_quantity' => $request->input('is_direct_topup') ? $request->input('direct_topup_max_quantity') : null,
-            'direct_topup_price_per_unit' => $request->input('is_direct_topup') ? $request->input('direct_topup_price_per_unit') : null,
+            ...$directTopupAttributes,
             'min_amount' => $request->input('is_customizable') ? $request->input('min_amount') : null,
             'max_amount' => $request->input('is_customizable') ? $request->input('max_amount') : null,
         ]);
@@ -177,7 +175,7 @@ class SupplierMappingController extends BaseController
     {
         $mapping = SupplierProductMapping::with(['product', 'supplierApi'])->findOrFail($id);
 
-        $suppliers = SupplierApi::orderBy('name')->get(['id', 'name', 'driver', 'is_active']);
+        $suppliers = SupplierApi::orderBy('name')->get(['id', 'name', 'driver', 'is_active', 'supports_direct_top_up']);
         $categories = $this->categoryRepo->getListWhere(filters: ['position' => 0], dataLimit: 'all');
 
         return view('admin-views.supplier.mapping-edit', compact('mapping', 'suppliers', 'categories'));
@@ -190,6 +188,7 @@ class SupplierMappingController extends BaseController
     {
         $validator = Validator::make($request->all(), [
             'product_id' => 'required|exists:products,id',
+            'supplier_api_id' => 'required|exists:supplier_apis,id',
             'supplier_product_id' => 'required|string|max:255',
             'cost_price' => 'required|numeric|min:0',
             'cost_currency' => 'required|string|max:3',
@@ -223,7 +222,9 @@ class SupplierMappingController extends BaseController
 
         $mapping = SupplierProductMapping::findOrFail($id);
         $supplierProductChanged = $mapping->supplier_product_id !== $request->input('supplier_product_id');
+        $supplierChanged = (int) $mapping->supplier_api_id !== (int) $request->input('supplier_api_id');
         $productChanged = (int) $mapping->product_id !== (int) $request->input('product_id');
+        $directTopupAttributes = $this->resolveDirectTopupAttributesFromRequest($request);
 
         if ($productChanged) {
             $exists = SupplierProductMapping::where('product_id', $request->input('product_id'))
@@ -239,6 +240,7 @@ class SupplierMappingController extends BaseController
 
         $mapping->update([
             'product_id' => $request->input('product_id'),
+            'supplier_api_id' => $request->input('supplier_api_id'),
             'supplier_product_id' => $request->input('supplier_product_id'),
             'supplier_product_name' => $request->input('supplier_product_name'),
             'cost_price' => $request->input('cost_price'),
@@ -250,16 +252,12 @@ class SupplierMappingController extends BaseController
             'min_stock_threshold' => $request->input('min_stock_threshold', 5),
             'max_restock_qty' => $request->input('max_restock_qty', 50),
             'is_customizable' => (bool) $request->input('is_customizable', false),
-            'is_direct_topup' => (bool) $request->input('is_direct_topup', false),
-            'direct_topup_account_label' => $request->input('is_direct_topup') ? $request->input('direct_topup_account_label') : null,
-            'direct_topup_min_quantity' => $request->input('is_direct_topup') ? $request->input('direct_topup_min_quantity') : null,
-            'direct_topup_max_quantity' => $request->input('is_direct_topup') ? $request->input('direct_topup_max_quantity') : null,
-            'direct_topup_price_per_unit' => $request->input('is_direct_topup') ? $request->input('direct_topup_price_per_unit') : null,
+            ...$directTopupAttributes,
             'min_amount' => $request->input('is_customizable') ? $request->input('min_amount') : null,
             'max_amount' => $request->input('is_customizable') ? $request->input('max_amount') : null,
         ]);
 
-        if ($supplierProductChanged || $productChanged || $mapping->activeDenominations()->count() === 0) {
+        if ($supplierChanged || $supplierProductChanged || $productChanged || $mapping->activeDenominations()->count() === 0) {
             SyncDenominationsJob::dispatch($mapping->id);
         }
 
@@ -355,6 +353,40 @@ class SupplierMappingController extends BaseController
             ->where('added_by', 'admin')
             ->where('product_type', 'digital')
             ->where('status', 1);
+    }
+
+    /**
+     * @return array{
+     *     is_direct_topup: bool,
+     *     direct_topup_account_label: ?string,
+     *     direct_topup_min_quantity: mixed,
+     *     direct_topup_max_quantity: mixed,
+     *     direct_topup_price_per_unit: mixed
+     * }
+     */
+    private function resolveDirectTopupAttributesFromRequest(Request $request): array
+    {
+        $supplier = SupplierApi::find($request->input('supplier_api_id'));
+
+        if (! $supplier || ! $supplier->supports_direct_top_up) {
+            return [
+                'is_direct_topup' => false,
+                'direct_topup_account_label' => null,
+                'direct_topup_min_quantity' => null,
+                'direct_topup_max_quantity' => null,
+                'direct_topup_price_per_unit' => null,
+            ];
+        }
+
+        $isDirectTopup = (bool) $request->input('is_direct_topup', false);
+
+        return [
+            'is_direct_topup' => $isDirectTopup,
+            'direct_topup_account_label' => $isDirectTopup ? $request->input('direct_topup_account_label') : null,
+            'direct_topup_min_quantity' => $isDirectTopup ? $request->input('direct_topup_min_quantity') : null,
+            'direct_topup_max_quantity' => $isDirectTopup ? $request->input('direct_topup_max_quantity') : null,
+            'direct_topup_price_per_unit' => $isDirectTopup ? $request->input('direct_topup_price_per_unit') : null,
+        ];
     }
 
     /**

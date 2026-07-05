@@ -54,6 +54,11 @@ class DirectTopUpCartTest extends TestCase
             $table->string('markup_type')->default('percent');
             $table->decimal('markup_value', 10, 2)->default(0);
             $table->boolean('is_active')->default(true);
+            $table->boolean('is_direct_topup')->default(false);
+            $table->string('direct_topup_account_label', 255)->nullable();
+            $table->decimal('direct_topup_min_quantity', 20, 4)->nullable();
+            $table->decimal('direct_topup_max_quantity', 20, 4)->nullable();
+            $table->decimal('direct_topup_price_per_unit', 24, 8)->nullable();
             $table->timestamps();
         });
 
@@ -163,6 +168,14 @@ class DirectTopUpCartTest extends TestCase
             $table->timestamps();
         });
 
+        $this->recreateTable('digital_product_variations', function (Blueprint $table): void {
+            $table->id();
+            $table->unsignedBigInteger('product_id')->nullable();
+            $table->string('variant_key')->nullable();
+            $table->decimal('price', 24, 2)->default(0);
+            $table->timestamps();
+        });
+
         $this->recreateTable('reviews', function (Blueprint $table): void {
             $table->id();
             $table->unsignedBigInteger('product_id')->nullable();
@@ -184,6 +197,11 @@ class DirectTopUpCartTest extends TestCase
             'markup_type' => 'percent',
             'markup_value' => 0,
             'is_active' => true,
+            'is_direct_topup' => true,
+            'direct_topup_account_label' => 'Player ID',
+            'direct_topup_min_quantity' => 100,
+            'direct_topup_max_quantity' => 10000,
+            'direct_topup_price_per_unit' => 0.01,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -219,6 +237,11 @@ class DirectTopUpCartTest extends TestCase
             'markup_type' => 'percent',
             'markup_value' => 0,
             'is_active' => true,
+            'is_direct_topup' => true,
+            'direct_topup_account_label' => 'Player ID',
+            'direct_topup_min_quantity' => 100,
+            'direct_topup_max_quantity' => 10000,
+            'direct_topup_price_per_unit' => 0.01,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -277,6 +300,11 @@ class DirectTopUpCartTest extends TestCase
             'markup_type' => 'percent',
             'markup_value' => 0,
             'is_active' => true,
+            'is_direct_topup' => true,
+            'direct_topup_account_label' => 'Player ID',
+            'direct_topup_min_quantity' => 100,
+            'direct_topup_max_quantity' => 10000,
+            'direct_topup_price_per_unit' => 0.01,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -402,6 +430,11 @@ class DirectTopUpCartTest extends TestCase
             'markup_type' => 'percent',
             'markup_value' => 0,
             'is_active' => true,
+            'is_direct_topup' => true,
+            'direct_topup_account_label' => 'Player ID',
+            'direct_topup_min_quantity' => 100,
+            'direct_topup_max_quantity' => 10000,
+            'direct_topup_price_per_unit' => 0.01,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -449,12 +482,8 @@ class DirectTopUpCartTest extends TestCase
             'code' => 'TOPUP'.$productId,
             'product_type' => 'digital',
             'digital_product_type' => 'ready_product',
-            'is_direct_topup' => true,
-            'direct_topup_account_label' => 'Player ID',
-            'direct_topup_min_quantity' => 100,
-            'direct_topup_max_quantity' => 10000,
-            'direct_topup_price_per_unit' => 0.01,
             'unit_price' => 1,
+            'variation' => '[]',
             'status' => 1,
         ]);
         $product->id = $productId;

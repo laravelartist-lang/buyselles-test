@@ -10,6 +10,7 @@ use App\DTOs\Supplier\SupplierOrderResult;
 use App\DTOs\Supplier\SupplierProductDTO;
 use App\DTOs\Supplier\WebhookResult;
 use App\Models\SupplierApi;
+use App\Services\Supplier\Concerns\MakesResilientHttpRequests;
 use Illuminate\Http\Client\Response;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -33,6 +34,8 @@ use Illuminate\Support\Facades\Log;
  */
 class GolfApiDriver implements SupplierDriverInterface
 {
+    use MakesResilientHttpRequests;
+
     private SupplierApi $supplier;
 
     /** @var array<string, mixed> */
@@ -40,6 +43,14 @@ class GolfApiDriver implements SupplierDriverInterface
 
     /** @var array<string, mixed> */
     private array $settings = [];
+
+    /**
+     * In-memory cache for product custom_fields, keyed by product ID.
+     * Avoids redundant API calls when the same product is queried multiple times in one request.
+     *
+     * @var array<int, array<int, array{id: int, name: string, desc: string|null, sort: int}>>
+     */
+    private array $productCustomFieldsCache = [];
 
     public function configure(SupplierApi $supplier): static
     {
@@ -106,7 +117,7 @@ class GolfApiDriver implements SupplierDriverInterface
         do {
             $params = array_merge($baseParams, ['page' => $currentPage]);
 
-            $response = $this->get('/products', $params);
+            $response = $this->get('/products', $params, timeout: 120);
 
             if ($response->failed()) {
                 throw new \RuntimeException("GolfApi fetchProducts failed: HTTP {$response->status()} — {$response->body()}");
@@ -217,6 +228,12 @@ class GolfApiDriver implements SupplierDriverInterface
      *
      * For "code" type products, the response includes cards inline.
      * For "charge" type products, the response indicates direct top-up status.
+     *
+     * When the product defines custom_fields, they are included with empty
+     * string values since this method is called for bulk restocking where
+     * no end-user account ID is available. If the API rejects empty values,
+     * the call will throw and the SupplierManager's fallback chain will
+     * attempt the next supplier.
      */
     public function placeOrder(string $supplierProductId, int $quantity, ?float $unitPrice = null): SupplierOrderResult
     {
@@ -224,6 +241,18 @@ class GolfApiDriver implements SupplierDriverInterface
             'product_id' => (int) $supplierProductId,
             'quantity' => $quantity,
         ];
+
+        // Include custom_fields with empty values if the product defines them
+        $customFields = $this->fetchProductCustomFields($supplierProductId);
+
+        if (! empty($customFields)) {
+            $body['custom_fields'] = array_map(function (array $field): array {
+                return [
+                    'id' => (int) ($field['id'] ?? 0),
+                    'value' => '',
+                ];
+            }, $customFields);
+        }
 
         $response = $this->post('/order', $body);
 
@@ -239,6 +268,10 @@ class GolfApiDriver implements SupplierDriverInterface
      *
      * Endpoint: POST /order (same as placeOrder — the Golf API handles
      * both "code" and "charge" product types via the same endpoint).
+     *
+     * For products that require custom_fields (identified from the product's
+     * custom_fields array), the method fetches the product definition from
+     * the API and includes the accountId as the value for each custom field.
      */
     public function placeTopUpOrder(
         string $supplierProductId,
@@ -250,6 +283,18 @@ class GolfApiDriver implements SupplierDriverInterface
             'product_id' => (int) $supplierProductId,
             'quantity' => (int) ceil($quantity),
         ];
+
+        // Fetch product custom_fields and include accountId as the value
+        $customFields = $this->fetchProductCustomFields($supplierProductId);
+
+        if (! empty($customFields)) {
+            $body['custom_fields'] = array_map(function (array $field) use ($accountId): array {
+                return [
+                    'id' => (int) ($field['id'] ?? 0),
+                    'value' => $accountId,
+                ];
+            }, $customFields);
+        }
 
         $response = $this->post('/order', $body);
 
@@ -304,6 +349,42 @@ class GolfApiDriver implements SupplierDriverInterface
             verified: false,
             rawPayload: $request->all(),
         );
+    }
+
+    /**
+     * Validate a player ID (e.g. Jawaker player ID) before placing a top-up order.
+     *
+     * Endpoint: POST /order/jawaker/validate
+     *
+     * @return array{valid: bool, playerId: string|null, username: string|null, error: string|null}
+     */
+    public function validatePlayerId(string $playerId): array
+    {
+        $response = $this->post('/order/jawaker/validate', [
+            'playerID' => $playerId,
+        ]);
+
+        if ($response->failed()) {
+            $body = $response->json() ?? [];
+            $message = (string) ($body['message'] ?? 'Player ID validation failed');
+
+            return [
+                'valid' => false,
+                'playerId' => null,
+                'username' => null,
+                'error' => $message,
+            ];
+        }
+
+        $result = $this->unwrapResponse($response);
+        $data = $result['data'] ?? [];
+
+        return [
+            'valid' => true,
+            'playerId' => (string) ($data['userId'] ?? $playerId),
+            'username' => $data['username'] ?? null,
+            'error' => null,
+        ];
     }
 
     /**
@@ -400,6 +481,56 @@ class GolfApiDriver implements SupplierDriverInterface
     }
 
     // ─── Internal helpers ─────────────────────────────────────────────────────
+
+    /**
+     * Fetch custom fields for a product from the Golf API.
+     *
+     * Calls GET /products/{id} to retrieve the product definition and extract
+     * its custom_fields array. Results are cached in-memory per request to
+     * avoid redundant API calls when the same product is queried multiple times.
+     *
+     * @param  string  $supplierProductId  The supplier's product ID (integer)
+     * @return array<int, array{id: int, name: string, desc: string|null, sort: int}>
+     */
+    private function fetchProductCustomFields(string $supplierProductId): array
+    {
+        $productId = (int) $supplierProductId;
+
+        // Return from in-memory cache if already fetched this request
+        if (isset($this->productCustomFieldsCache[$productId])) {
+            return $this->productCustomFieldsCache[$productId];
+        }
+
+        $response = $this->get("/products/{$productId}");
+
+        if ($response->failed()) {
+            Log::warning('GolfApiDriver: failed to fetch product custom_fields', [
+                'product_id' => $productId,
+                'status' => $response->status(),
+            ]);
+
+            return [];
+        }
+
+        $result = $this->unwrapResponse($response);
+        $product = $result['data'] ?? [];
+        $customFields = $product['custom_fields'] ?? [];
+
+        // Normalise: ensure each entry has the expected keys
+        $normalised = [];
+        foreach ($customFields as $field) {
+            $normalised[] = [
+                'id' => (int) ($field['id'] ?? 0),
+                'name' => (string) ($field['name'] ?? ''),
+                'desc' => isset($field['desc']) ? (string) $field['desc'] : null,
+                'sort' => (int) ($field['sort'] ?? 0),
+            ];
+        }
+
+        $this->productCustomFieldsCache[$productId] = $normalised;
+
+        return $normalised;
+    }
 
     /**
      * Resolve the Sanctum Bearer token to use for API requests.
@@ -580,14 +711,17 @@ class GolfApiDriver implements SupplierDriverInterface
      *
      * @param  array<string, mixed>  $query
      */
-    private function get(string $path, array $query = [], bool $retried = false): Response
+    private function get(string $path, array $query = [], bool $retried = false, int $timeout = 30): Response
     {
         $token = $this->resolveToken();
 
-        $response = Http::withToken($token)
-            ->acceptJson()
-            ->timeout(30)
-            ->get($this->url($path), $query);
+        $request = $this->applyResilientHttpDefaults(
+            Http::withToken($token)->acceptJson(),
+            $this->settings,
+            $timeout,
+        );
+
+        $response = $request->get($this->url($path), $query);
 
         // Auto-retry once on 401 (expired token)
         if ($response->status() === 401 && ! $retried) {

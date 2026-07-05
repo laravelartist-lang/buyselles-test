@@ -15,6 +15,7 @@ use App\Models\OrderDetail;
 use App\Models\Product;
 use App\Models\Shop;
 use App\Models\Wishlist;
+use App\Services\DirectTopUp\DirectTopUpService;
 use App\Services\RestockProductService;
 use App\Utils\CartManager;
 use App\Utils\CustomerManager;
@@ -49,10 +50,49 @@ class CartController extends Controller
         $discountedUnitPrice = 0;
         $color_name = '';
         $requestQuantity = $request['quantity'];
-        $product = Product::with(['digitalVariation', 'clearanceSale' => function ($query) {
+        $product = Product::with(['supplierMapping', 'digitalVariation', 'clearanceSale' => function ($query) {
             return $query->active();
         }])->where(['id' => $request['id']])->first();
         $productVariationCode = $request['product_variation_code'];
+
+        $directTopUpService = app(DirectTopUpService::class);
+        if ($directTopUpService->canAddToCart($product)) {
+            $directTopUpConfig = $directTopUpService->buildApiPayload($product);
+            $minQuantity = (float) ($directTopUpConfig['min_quantity'] ?? 1);
+            $maxQuantity = (float) ($directTopUpConfig['max_quantity'] ?? 1);
+            $pricePerUnit = (float) ($directTopUpConfig['price_per_unit'] ?? 0);
+            $directTopUpQuantity = (int) floor($minQuantity);
+            $lineTotal = $directTopUpService->calculateTotalPrice($product, $directTopUpQuantity);
+            $discount = getProductPriceByType(product: $product, type: 'discounted_amount', result: 'value', price: $lineTotal);
+            $discountType = getProductPriceByType(product: $product, type: 'discount_type', result: 'string');
+
+            return [
+                'price' => webCurrencyConverter($lineTotal - $discount),
+                'discount' => $discountType == 'flat' ? webCurrencyConverter($discount) : getProductPriceByType(product: $product, type: 'discount', result: 'value').'%',
+                'discount_type' => $discountType,
+                'discount_amount' => $discount,
+                'quantity' => (int) floor($maxQuantity),
+                'show_out_of_stock' => false,
+                'is_supplier_mapped' => true,
+                'is_direct_topup' => true,
+                'direct_topup_quantity' => $directTopUpQuantity,
+                'direct_topup_min_quantity' => $minQuantity,
+                'direct_topup_max_quantity' => $maxQuantity,
+                'price_per_unit' => $pricePerUnit,
+                'delivery_cost' => 0,
+                'unit_price' => webCurrencyConverter($pricePerUnit),
+                'total_unit_price' => webCurrencyConverter($pricePerUnit),
+                'discounted_unit_price' => webCurrencyConverter($pricePerUnit),
+                'color_name' => '',
+                'stock_limit' => getWebConfig(name: 'stock_limit'),
+                'in_cart_status' => 0,
+                'in_cart_quantity' => 1,
+                'in_cart_key' => null,
+                'variation_code' => '',
+                'product_type' => $product['product_type'],
+                'restock_request_status' => 0,
+            ];
+        }
 
         if ($request->has('color')) {
             $string = Color::where('code', $request['color'])->first()->name;
@@ -118,7 +158,6 @@ class CartController extends Controller
             }
         }
 
-        // Override price with denomination sell price when a denomination is selected
         if ($request->filled('supplier_denomination_id')) {
             $denomination = \App\Models\SupplierProductDenomination::find($request['supplier_denomination_id']);
             if ($denomination && $denomination->is_active) {
@@ -127,6 +166,25 @@ class CartController extends Controller
                 $price = $denomPrice;
                 $discountedUnitPrice = $denomPrice;
                 $unit_price = $denomPrice;
+            }
+        } elseif (! $request->filled('supplier_denomination_id') && $request->has('id')) {
+            $mapping = \App\Models\SupplierProductMapping::query()
+                ->where('product_id', $request['id'])
+                ->where('is_active', true)
+                ->where('is_customizable', true)
+                ->whereHas('supplierApi', fn ($q) => $q->where('is_active', true))
+                ->with(['activeDenominations' => fn ($q) => $q->where('type', 'fixed')->orderBy('sort_order')->orderBy('face_value')])
+                ->first();
+
+            if ($mapping) {
+                $firstDenom = $mapping->activeDenominations->first();
+                if ($firstDenom) {
+                    $denomPrice = $firstDenom->calculateSellPrice();
+                    $discount = 0;
+                    $price = $denomPrice;
+                    $discountedUnitPrice = $denomPrice;
+                    $unit_price = $denomPrice;
+                }
             }
         }
 
@@ -154,6 +212,7 @@ class CartController extends Controller
         }
 
         $discountType = getProductPriceByType(product: $product, type: 'discount_type', result: 'string');
+        $stockPresentation = CartManager::getProductDetailsStockPresentation($product, $string !== '' ? $string : null);
 
         return [
             'price' => webCurrencyConverter($price * $requestQuantity),
@@ -162,9 +221,10 @@ class CartController extends Controller
             'discount_amount' => $discount,
             'quantity' => $product['product_type'] == 'physical'
                 ? $quantity
-                : (\App\Models\SupplierProductMapping::hasActiveMapping((int) $product['id'])
-                    ? 100
-                    : CartManager::getAvailableDigitalCodeCount((int) $product['id'])),
+                : $stockPresentation['available_quantity'],
+            'show_out_of_stock' => $stockPresentation['show_out_of_stock'],
+            'is_supplier_mapped' => $stockPresentation['is_supplier_mapped'],
+            'is_direct_topup' => $stockPresentation['is_direct_topup'] ?? false,
             'delivery_cost' => isset($deliveryInfo['delivery_cost']) ? webCurrencyConverter($deliveryInfo['delivery_cost']) : 0,
             'unit_price' => webCurrencyConverter($price), // fashion theme
             'total_unit_price' => webCurrencyConverter($unit_price), // fashion theme
@@ -507,10 +567,14 @@ class CartController extends Controller
     public function addToCartDigitalProduct($request, $product): array
     {
         if ($product['product_type'] === 'digital') {
-            $available = CartManager::getAvailableDigitalCodeCount((int) $product['id']);
+            $hasSupplierMapping = \App\Models\SupplierProductMapping::hasActiveMapping((int) $product['id']);
 
-            if ($available < $request['quantity']) {
-                return ['status' => 0, 'message' => translate('out_of_stock!')];
+            if (! $hasSupplierMapping) {
+                $available = CartManager::getAvailableDigitalCodeCount((int) $product['id']);
+
+                if ($available < $request['quantity']) {
+                    return ['status' => 0, 'message' => translate('out_of_stock!')];
+                }
             }
         }
 

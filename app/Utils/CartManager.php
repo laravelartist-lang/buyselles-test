@@ -12,6 +12,8 @@ use App\Models\Product;
 use App\Models\ShippingMethod;
 use App\Models\ShippingType;
 use App\Models\Shop;
+use App\Services\DirectTopUp\DirectTopUpService;
+use App\Services\Supplier\SupplierManager;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Str;
 use Modules\TaxModule\app\Traits\VatTaxManagement;
@@ -55,7 +57,7 @@ class CartManager
         self::updateOrderSummaryShippingCost($groupId, $type);
 
         $cartItems = Cart::with(['product' => function ($query) {
-            return $query->active()->with(['category' => function ($query) {
+            return $query->active()->with(['supplierMapping', 'category' => function ($query) {
                 return $query->with(['taxVats' => function ($query) {
                     return $query->with(['tax'])->wherehas('tax', function ($query) {
                         return $query->where('is_active', 1);
@@ -100,7 +102,7 @@ class CartManager
         ProductManager::updateProductPriceInCartList(request: $request ?? request()->all());
 
         $cartItems = Cart::with(['product' => function ($query) {
-            return $query->active()->with(['clearanceSale' => function ($query) {
+            return $query->active()->with(['supplierMapping', 'clearanceSale' => function ($query) {
                 return $query->active();
             }]);
         }])
@@ -132,7 +134,7 @@ class CartManager
     public static function getCartListGroupQuery($groupId = null, $type = null): Collection|array
     {
         $cartItems = Cart::with(['product' => function ($query) {
-            return $query->active()->with(['clearanceSale' => function ($query) {
+            return $query->active()->with(['supplierMapping', 'clearanceSale' => function ($query) {
                 return $query->active();
             }]);
         }])
@@ -598,6 +600,13 @@ class CartManager
             && $mapping->supplierApi
             && $mapping->supplierApi->is_active;
 
+        $directTopUpService = app(DirectTopUpService::class);
+
+        if ($directTopUpService->canAddToCart($product)
+            && ($request->filled('direct_topup_account_id') || $request->filled('direct_topup_quantity'))) {
+            return self::addDirectTopUpToCart($request, $product, $shippingType, $directTopUpService);
+        }
+
         if ($product['product_type'] === 'digital' && ! $hasSupplierMapping) {
             $available = self::getAvailableDigitalCodeCount((int) $product['id']);
 
@@ -672,6 +681,11 @@ class CartManager
                 ];
             }
             $price = $customAmount;
+        } elseif ($hasSupplierMapping) {
+            $mappingSellPrice = $product->getEffectiveSellPrice();
+            if ($mappingSellPrice > 0) {
+                $price = $mappingSellPrice;
+            }
         }
 
         $user = Helpers::getCustomerInformation($request);
@@ -698,6 +712,8 @@ class CartManager
             'price' => $price,
             'custom_amount' => $customAmount,
             'supplier_denomination_id' => $supplierDenominationId,
+            'direct_topup_account_id' => null,
+            'direct_topup_quantity' => null,
             'discount' => $getProductDiscount,
             'is_checked' => 1,
             'slug' => $product['slug'],
@@ -720,7 +736,8 @@ class CartManager
             $cartArray['cart_group_id'] = ($user == 'offline' ? 'guest' : $user['id']).'-'.Str::random(5).'-'.time();
         }
 
-        $cartQuery = Cart::where(['product_id' => $request->id, 'customer_id' => $customerId, 'is_guest' => $isGuest, 'variant' => $request['variant_key']]);
+        $cartQuery = Cart::where(['product_id' => $request->id, 'customer_id' => $customerId, 'is_guest' => $isGuest, 'variant' => $request['variant_key']])
+            ->whereNull('direct_topup_quantity');
         if ($supplierDenominationId !== null) {
             $cartQuery->where('supplier_denomination_id', $supplierDenominationId);
         } elseif ($customAmount !== null) {
@@ -771,7 +788,7 @@ class CartManager
     {
         cacheRemoveByType(type: 'carts');
 
-        $product = Product::with(['digitalVariation', 'clearanceSale' => function ($query) {
+        $product = Product::with(['supplierMapping', 'digitalVariation', 'clearanceSale' => function ($query) {
             return $query->active();
         }])->where(['id' => $request['id']])->first();
 
@@ -832,7 +849,11 @@ class CartManager
             ];
         }
 
-        $product = Product::find($cart['product_id']);
+        if ($cart->isDirectTopUp()) {
+            return self::updateDirectTopUpCartQty($request, $cart, $user, $guest_id);
+        }
+
+        $product = Product::with('supplierMapping')->find($cart['product_id']);
         $count = count(json_decode($product->variation));
         if ($count) {
             for ($i = 0; $i < $count; $i++) {
@@ -847,11 +868,26 @@ class CartManager
             $status = 0;
             $qty = $cart['quantity'];
         } elseif ($product['product_type'] == 'digital') {
-            $available = self::getAvailableDigitalCodeCount((int) $product['id']);
+            $mapping = $product->relationLoaded('supplierMapping') ? $product->supplierMapping : null;
+            $hasActiveMapping = $mapping !== null
+                && $mapping->is_active
+                && $mapping->supplierApi
+                && $mapping->supplierApi->is_active;
 
-            if ($available < $request->quantity) {
-                $status = 0;
-                $qty = $cart['quantity'];
+            if ($hasActiveMapping && ! $cart->isDirectTopUp()) {
+                $available = app(SupplierManager::class)->getAvailableStockForMapping($mapping);
+
+                if ($available < $request->quantity) {
+                    $status = 0;
+                    $qty = $cart['quantity'];
+                }
+            } elseif (! $hasActiveMapping) {
+                $available = self::getAvailableDigitalCodeCount((int) $product['id']);
+
+                if ($available < $request->quantity) {
+                    $status = 0;
+                    $qty = $cart['quantity'];
+                }
             }
         }
 
@@ -978,6 +1014,10 @@ class CartManager
                 } elseif ($product['product_type'] == 'physical' && $product['current_stock'] < $cart->quantity) {
                     $status = false;
                 } elseif ($product['product_type'] == 'digital') {
+                    if ($cart->isDirectTopUp()) {
+                        continue;
+                    }
+
                     $hasSupplierMapping = \App\Models\SupplierProductMapping::hasActiveMapping((int) $product['id']);
 
                     if (! $hasSupplierMapping) {
@@ -994,6 +1034,176 @@ class CartManager
         }
 
         return $status;
+    }
+
+    /**
+     * @return array{min: int, max: int, display_quantity: int}
+     */
+    public static function getCartItemQuantityLimits(Cart $cart, Product $product): array
+    {
+        $min = (int) ($product->minimum_order_qty ?? 1);
+        $displayQuantity = (int) floor($cart->getDisplayQuantity());
+
+        if ($cart->isDirectTopUp()) {
+            $mapping = self::resolveSupplierMapping($product);
+
+            if ($mapping !== null) {
+                return [
+                    'min' => (int) floor((float) $mapping->direct_topup_min_quantity),
+                    'max' => (int) floor((float) $mapping->direct_topup_max_quantity),
+                    'display_quantity' => $displayQuantity,
+                ];
+            }
+
+            return [
+                'min' => max(1, $min),
+                'max' => max(1, $displayQuantity),
+                'display_quantity' => $displayQuantity,
+            ];
+        }
+
+        if ($product->product_type === 'physical') {
+            $maxStock = (int) $product->current_stock;
+
+            if (! empty($product->variation)) {
+                foreach (json_decode($product->variation, true) as $productVariantSingle) {
+                    if (($productVariantSingle['type'] ?? null) === $cart->variant) {
+                        $maxStock = (int) ($productVariantSingle['qty'] ?? 0);
+                        break;
+                    }
+                }
+            }
+
+            return [
+                'min' => max(1, $min),
+                'max' => max(0, $maxStock),
+                'display_quantity' => $displayQuantity,
+            ];
+        }
+
+        $mapping = self::resolveSupplierMapping($product);
+        $hasActiveMapping = $mapping !== null
+            && $mapping->is_active
+            && $mapping->supplierApi
+            && $mapping->supplierApi->is_active;
+
+        if ($hasActiveMapping) {
+            $maxStock = app(SupplierManager::class)->getAvailableStockForMapping($mapping);
+
+            return [
+                'min' => max(1, $min),
+                'max' => max(0, $maxStock),
+                'display_quantity' => $displayQuantity,
+            ];
+        }
+
+        return [
+            'min' => max(1, $min),
+            'max' => self::getAvailableDigitalCodeCount((int) $product->id),
+            'display_quantity' => $displayQuantity,
+        ];
+    }
+
+    public static function getMaxPurchasableQuantity(Product $product, ?string $variant = null): int
+    {
+        if ($product->product_type === 'physical') {
+            $maxStock = (int) $product->current_stock;
+
+            if (! empty($product->variation)) {
+                foreach (json_decode($product->variation, true) as $productVariantSingle) {
+                    if ($variant !== null && ($productVariantSingle['type'] ?? null) === $variant) {
+                        return max(0, (int) ($productVariantSingle['qty'] ?? 0));
+                    }
+                }
+            }
+
+            return max(0, $maxStock);
+        }
+
+        $mapping = self::resolveSupplierMapping($product);
+        $hasActiveMapping = $mapping !== null
+            && $mapping->is_active
+            && $mapping->supplierApi
+            && $mapping->supplierApi->is_active;
+
+        if ($hasActiveMapping) {
+            return max(0, app(SupplierManager::class)->getAvailableStockForMapping($mapping));
+        }
+
+        return self::getAvailableDigitalCodeCount((int) $product->id);
+    }
+
+    /**
+     * @return array{available_quantity: int, show_out_of_stock: bool, is_supplier_mapped: bool}
+     */
+    public static function getProductDetailsStockPresentation(Product $product, ?string $variant = null): array
+    {
+        $directTopUpService = app(DirectTopUpService::class);
+
+        if ($directTopUpService->canAddToCart($product)) {
+            $mapping = self::resolveSupplierMapping($product);
+            $maxQuantity = $mapping ? (int) floor((float) $mapping->direct_topup_max_quantity) : 1;
+
+            return [
+                'available_quantity' => max(1, $maxQuantity),
+                'show_out_of_stock' => false,
+                'is_supplier_mapped' => true,
+                'is_direct_topup' => true,
+            ];
+        }
+
+        if ($product->product_type === 'physical') {
+            $availableQuantity = self::getMaxPurchasableQuantity($product, $variant);
+
+            return [
+                'available_quantity' => $availableQuantity,
+                'show_out_of_stock' => $availableQuantity <= 0,
+                'is_supplier_mapped' => false,
+            ];
+        }
+
+        if (self::hasActiveSupplierMapping($product)) {
+            $supplierStock = self::getMaxPurchasableQuantity($product, $variant);
+            $stockLimit = (int) (getWebConfig(name: 'stock_limit') ?: 0);
+            $fallbackMax = max(1, $stockLimit);
+
+            return [
+                'available_quantity' => $supplierStock > 0 ? $supplierStock : $fallbackMax,
+                'show_out_of_stock' => false,
+                'is_supplier_mapped' => true,
+            ];
+        }
+
+        $availableQuantity = self::getAvailableDigitalCodeCount((int) $product->id);
+
+        return [
+            'available_quantity' => $availableQuantity,
+            'show_out_of_stock' => $availableQuantity <= 0,
+            'is_supplier_mapped' => false,
+        ];
+    }
+
+    public static function hasActiveSupplierMapping(Product $product): bool
+    {
+        $mapping = self::resolveSupplierMapping($product);
+
+        return $mapping !== null
+            && $mapping->is_active
+            && $mapping->supplierApi
+            && $mapping->supplierApi->is_active;
+    }
+
+    private static function resolveSupplierMapping(Product $product): ?\App\Models\SupplierProductMapping
+    {
+        if ($product->relationLoaded('supplierMapping')) {
+            return $product->supplierMapping;
+        }
+
+        return \App\Models\SupplierProductMapping::query()
+            ->where('product_id', $product->id)
+            ->where('is_active', true)
+            ->whereHas('supplierApi', fn ($query) => $query->where('is_active', true))
+            ->first();
     }
 
     public static function getAvailableDigitalCodeCount(int $productId): int
@@ -1107,6 +1317,167 @@ class CartManager
         return [
             'item_tax' => $totalTaxAmount,
             'shipping_cost_tax' => $totalShippingTaxAmount,
+        ];
+    }
+
+    private static function addDirectTopUpToCart($request, $product, $shippingType, DirectTopUpService $directTopUpService): array
+    {
+        $accountId = trim((string) ($request['direct_topup_account_id'] ?? ''));
+        $directTopUpQuantity = (float) ($request['direct_topup_quantity'] ?? 0);
+
+        $errors = $directTopUpService->validatePurchase($product, $accountId, $directTopUpQuantity);
+        if ($errors !== []) {
+            return ['status' => 0, 'message' => (string) reset($errors)];
+        }
+
+        $lineTotal = $directTopUpService->calculateTotalPrice($product, $directTopUpQuantity);
+        $getProductDiscount = getProductPriceByType(product: $product, type: 'discounted_amount', result: 'value', price: $lineTotal);
+
+        $user = Helpers::getCustomerInformation($request);
+        $guestId = session('guest_id') ?? ($request->guest_id ?? 0);
+
+        if ($user == 'offline') {
+            $customerId = $guestId;
+            $isGuest = 1;
+        } else {
+            $customerId = $user['id'];
+            $isGuest = 0;
+        }
+
+        $cartArray = [
+            'customer_id' => $customerId,
+            'product_id' => $request['id'],
+            'product_type' => $product['product_type'],
+            'digital_product_type' => $product['digital_product_type'],
+            'choices' => json_encode([]),
+            'variations' => json_encode([]),
+            'variant' => $request['variant_key'] ?? '',
+            'quantity' => 1,
+            'direct_topup_account_id' => $accountId,
+            'direct_topup_quantity' => $directTopUpQuantity,
+            'price' => $lineTotal,
+            'custom_amount' => null,
+            'supplier_denomination_id' => null,
+            'discount' => $getProductDiscount,
+            'is_checked' => 1,
+            'slug' => $product['slug'],
+            'name' => $product['name'],
+            'thumbnail' => $product['thumbnail'],
+            'seller_id' => ($product->added_by == 'admin') ? 1 : $product->user_id,
+            'seller_is' => $product['added_by'],
+            'shop_info' => $product->added_by == 'admin' ? getInHouseShopConfig(key: 'name') : Shop::where(['seller_id' => $product->user_id])->first()->name,
+            'shipping_cost' => 0,
+            'shipping_type' => $shippingType,
+            'is_guest' => $isGuest,
+        ];
+
+        $cartCheck = Cart::where([
+            'customer_id' => $customerId,
+            'is_guest' => $isGuest,
+            'seller_id' => ($product->added_by == 'admin') ? 1 : $product->user_id,
+            'seller_is' => $product->added_by,
+            'product_type' => 'digital',
+        ])->first();
+
+        if ($cartCheck) {
+            $cartArray['cart_group_id'] = $cartCheck['cart_group_id'];
+        } else {
+            $cartArray['cart_group_id'] = ($user == 'offline' ? 'guest' : $user['id']).'-'.Str::random(5).'-'.time();
+        }
+
+        $cart = Cart::where([
+            'product_id' => $request['id'],
+            'customer_id' => $customerId,
+            'is_guest' => $isGuest,
+            'variant' => $request['variant_key'] ?? '',
+        ])->whereNotNull('direct_topup_quantity')->first();
+
+        if ($cart) {
+            $cart->fill($cartArray)->save();
+        } else {
+            $cart = Cart::create($cartArray);
+        }
+
+        if ($request['buy_now'] == 1) {
+            $productTotalPrice = $lineTotal - $getProductDiscount;
+            $verifyStatus = OrderManager::checkSingleProductMinimumOrderAmountVerify(request: $request, product: $product, totalAmount: $productTotalPrice);
+            if ($verifyStatus['status'] == 0) {
+                return ['status' => 0, 'message' => $verifyStatus['message']];
+            }
+
+            Cart::where(['customer_id' => ($user == 'offline' ? $guestId : $user['id']), 'is_guest' => ($user == 'offline' ? 1 : 0)])
+                ->update(['is_checked' => 0]);
+
+            Cart::where(['id' => $cart['id']])->update(['is_checked' => 1]);
+
+            return [
+                'status' => 1,
+                'redirect_to' => 'checkout',
+                'cart' => $cart->fresh(),
+                'message' => translate('successfully_added').'!',
+            ];
+        }
+
+        return [
+            'status' => 1,
+            'in_cart_key' => $cart['id'],
+            'cart' => $cart->fresh(),
+            'message' => translate('successfully_added').'!',
+            'product_variant_type' => count(json_decode($product['variation'], true)) > 0 ? 'multi_variant' : 'single_variant',
+        ];
+    }
+
+    private static function updateDirectTopUpCartQty($request, Cart $cart, $user, $guest_id): array
+    {
+        $product = Product::with('supplierMapping')->find($cart['product_id']);
+
+        if (! $product) {
+            return [
+                'status' => 0,
+                'qty' => $cart->direct_topup_quantity,
+                'message' => translate('Product_not_found_in_cart'),
+            ];
+        }
+
+        $directTopUpService = app(DirectTopUpService::class);
+        $directTopUpQuantity = (float) ($request['direct_topup_quantity'] ?? $cart->direct_topup_quantity);
+
+        if ($request->has('direct_topup_account_id')) {
+            $accountId = trim((string) $request['direct_topup_account_id']);
+        } else {
+            $accountId = trim((string) ($cart->direct_topup_account_id ?? ''));
+        }
+
+        $errors = $directTopUpService->validatePurchase($product, $accountId, $directTopUpQuantity);
+        if ($errors !== []) {
+            return [
+                'status' => 0,
+                'qty' => $cart->direct_topup_quantity,
+                'message' => (string) reset($errors),
+            ];
+        }
+
+        $lineTotal = $directTopUpService->calculateTotalPrice($product, $directTopUpQuantity);
+        $getProductDiscount = getProductPriceByType(product: $product, type: 'discounted_amount', result: 'value', price: $lineTotal);
+
+        $cart->quantity = 1;
+        $cart->direct_topup_quantity = $directTopUpQuantity;
+        $cart->direct_topup_account_id = $accountId;
+        $cart->price = $lineTotal;
+        $cart->discount = $getProductDiscount;
+        $cart->shipping_cost = 0;
+        $cart->save();
+
+        if ($request['buy_now'] == 1) {
+            Cart::where(['customer_id' => ($user == 'offline' ? $guest_id : $user['id']), 'is_guest' => ($user == 'offline' ? 1 : 0)])
+                ->update(['is_checked' => 0]);
+            Cart::where(['id' => $request->key, 'customer_id' => ($user == 'offline' ? $guest_id : $user['id'])])->update(['is_checked' => 1]);
+        }
+
+        return [
+            'status' => 1,
+            'qty' => $directTopUpQuantity,
+            'message' => translate('successfully_updated!'),
         ];
     }
 }

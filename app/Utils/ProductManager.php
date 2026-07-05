@@ -24,6 +24,7 @@ use App\Models\ShippingMethod;
 use App\Models\ShippingType;
 use App\Models\Shop;
 use App\Models\StockClearanceProduct;
+use App\Models\SupplierProductMapping;
 use App\Models\Tag;
 use App\Models\Translation;
 use App\Models\Wishlist;
@@ -40,7 +41,7 @@ class ProductManager
     public static function get_product($id)
     {
         return Product::active()
-            ->with(['rating', 'seller.shop', 'tags', 'seoInfo', 'digitalVariation', 'digitalProductAuthors.author', 'digitalProductPublishingHouse.publishingHouse', 'clearanceSale' => function ($query) {
+            ->with(['rating', 'supplierMapping', 'seller.shop', 'tags', 'seoInfo', 'digitalVariation', 'digitalProductAuthors.author', 'digitalProductPublishingHouse.publishingHouse', 'clearanceSale' => function ($query) {
                 return $query->active();
             }])
             ->where('id', $id)->first();
@@ -2199,7 +2200,7 @@ class ProductManager
         $productListData = Product::active()
             ->with(['category', 'reviews' => function ($query) {
                 $query->active();
-            }, 'rating', 'seller.shop', 'clearanceSale' => function ($query) {
+            }, 'rating', 'seller.shop', 'supplierMapping', 'clearanceSale' => function ($query) {
                 return $query->active()->with(['setup']);
             }])
             ->withAvg('reviews', 'rating')
@@ -2557,7 +2558,7 @@ class ProductManager
 
     public static function getAllProductsData($request, $productUserID = null, $productAddedBy = null): mixed
     {
-        return Product::active()->with('rating')->withCount('reviews')
+        return Product::active()->with(['rating', 'supplierMapping'])->withCount('reviews')
             ->when($productAddedBy == 'admin', function ($query) use ($productAddedBy) {
                 return $query->where(['added_by' => $productAddedBy]);
             })
@@ -2670,7 +2671,7 @@ class ProductManager
         self::cacheCartListAllUserKeys(cacheKey: $cacheKey);
 
         $cartItemsList = Cache::remember($cacheKey, CACHE_FOR_3_HOURS, function () use ($request, $user) {
-            return Cart::with(['product.digitalVariation'])->whereHas('product', function ($query) {
+            return Cart::with(['product.supplierMapping', 'product.digitalVariation'])->whereHas('product', function ($query) {
                 return $query->active();
             })->when($user == 'offline', function ($query) use ($request) {
                 return $query->where(['customer_id' => session('guest_id') ?? ($request->guest_id ?? 0), 'is_guest' => 1]);
@@ -2831,6 +2832,12 @@ class ProductManager
 
         $price = $product['unit_price'];
         $discount = getProductPriceByType(product: $product, type: 'discounted_amount', result: 'value', price: $product['unit_price']);
+
+        $denominationPrice = self::getPreferredDenominationPrice($product);
+        if ($denominationPrice !== null) {
+            $price = $denominationPrice;
+            $discount = 0;
+        }
 
         if ($product['product_type'] == 'digital') {
             $digitalVariation = DigitalProductVariation::where([
@@ -3031,5 +3038,23 @@ class ProductManager
         }
 
         return $finalImages->all();
+    }
+
+    private static function getPreferredDenominationPrice($product): ?float
+    {
+        $mapping = SupplierProductMapping::query()
+            ->where('product_id', $product['id'])
+            ->where('is_active', true)
+            ->whereHas('supplierApi', fn ($q) => $q->where('is_active', true))
+            ->with(['activeDenominations' => fn ($q) => $q->orderBy('sort_order')->orderBy('face_value')])
+            ->first();
+
+        if (! $mapping || ! $mapping->is_customizable) {
+            return null;
+        }
+
+        $startingPrice = $mapping->getStartingDisplayPrice();
+
+        return $startingPrice > 0 ? $startingPrice : null;
     }
 }

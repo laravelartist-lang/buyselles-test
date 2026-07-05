@@ -431,13 +431,17 @@ class OrderController extends Controller
                 }
             }
 
+            $directTopUpCheckout = app(\App\Services\DirectTopUp\DirectTopUpWalletCheckoutService::class);
+            $requiresFulfillmentBeforePayment = $directTopUpCheckout->requiresFulfillmentBeforePayment($carts);
+
             $orderIds = OrderManager::generateOrder(data: [
                 'is_guest' => 0,
                 'guest_id' => 0,
                 'customer_id' => $user['id'],
-                'order_status' => 'confirmed',
+                'order_status' => $requiresFulfillmentBeforePayment ? 'pending' : 'confirmed',
                 'payment_method' => 'pay_by_wallet',
-                'payment_status' => 'paid',
+                'payment_status' => $requiresFulfillmentBeforePayment ? 'unpaid' : 'paid',
+                'defer_checkout_completion' => $requiresFulfillmentBeforePayment,
                 'transaction_ref' => '',
                 'address_id' => $request['address_id'],
                 'billing_address_id' => $request['billing_address_id'],
@@ -447,7 +451,25 @@ class OrderController extends Controller
                 'requestObj' => $request,
             ]);
 
-            CustomerManager::create_wallet_transaction($user->id, Convert::default($paymentAmount), 'order_place', 'order payment', [], $orderIds);
+            if ($requiresFulfillmentBeforePayment) {
+                $checkoutResult = $directTopUpCheckout->completeWalletPaymentAfterFulfillment(
+                    $orderIds,
+                    (int) $user['id'],
+                    $paymentAmount
+                );
+
+                if (! $checkoutResult['success']) {
+                    return response()->json([
+                        'message' => $checkoutResult['error'],
+                    ], 422);
+                }
+            } elseif ($directTopUpCheckout->requiresFulfillmentBeforePayment($carts)) {
+                return response()->json([
+                    'message' => translate('direct_topup_fulfillment_failed'),
+                ], 422);
+            } else {
+                CustomerManager::create_wallet_transaction($user->id, Convert::default($paymentAmount), 'order_place', 'order payment', [], $orderIds);
+            }
 
             return response()->json([
                 'messages' => translate('order_placed_successfully'),

@@ -16,7 +16,9 @@ class DirectTopUpService
 
         $mapping = $this->getMapping($product);
 
-        return $mapping !== null && (bool) $mapping->is_direct_topup;
+        return $mapping !== null
+            && (bool) $mapping->is_direct_topup
+            && (bool) ($mapping->supplierApi?->supports_direct_top_up ?? false);
     }
 
     public function hasActiveSupplierMapping(Product $product): bool
@@ -226,6 +228,7 @@ class DirectTopUpService
         return SupplierProductMapping::query()
             ->where('product_id', $product->id)
             ->where('is_active', true)
+            ->with('supplierApi')
             ->first();
     }
 }

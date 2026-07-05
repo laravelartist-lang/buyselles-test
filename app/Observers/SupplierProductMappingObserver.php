@@ -3,24 +3,26 @@
 namespace App\Observers;
 
 use App\Models\SupplierProductMapping;
-use App\Services\DigitalProductCodeService;
+use App\Services\Supplier\MappedProductCacheService;
 
 class SupplierProductMappingObserver
 {
     public function __construct(
-        private readonly DigitalProductCodeService $codeService,
+        private readonly MappedProductCacheService $mappedProductCacheService,
     ) {}
 
-    /**
-     * When a mapping is created or updated, sync the product's price
-     * from the mapping so the frontend always shows the correct value.
-     */
     public function saved(SupplierProductMapping $mapping): void
+    {
+        $this->mappedProductCacheService->bustForMapping($mapping);
+    }
+
+    public function deleted(SupplierProductMapping $mapping): void
     {
         if (! $mapping->product_id) {
             return;
         }
 
-        $this->codeService->applyApiPriceIfManualDepleted($mapping->product_id);
+        cacheRemoveByType(type: 'products');
+        \Illuminate\Support\Facades\Cache::forget('supplier_stock:'.$mapping->id);
     }
 }

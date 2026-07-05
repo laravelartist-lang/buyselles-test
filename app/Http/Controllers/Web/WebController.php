@@ -35,6 +35,7 @@ use App\Models\User;
 use App\Models\Wishlist;
 use App\Services\CustomerServiceFeeService;
 use App\Services\DigitalCodeCustomerExportService;
+use App\Services\DirectTopUp\DirectTopUpWalletCheckoutService;
 use App\Services\ProductService;
 use App\Services\RecaptchaService;
 use App\Services\ShopService;
@@ -1073,10 +1074,14 @@ class WebController extends Controller
                 return redirect()->route('shop-cart');
             }
 
+            $directTopUpCheckout = app(DirectTopUpWalletCheckoutService::class);
+            $requiresFulfillmentBeforePayment = $directTopUpCheckout->requiresFulfillmentBeforePayment($carts);
+
             $order_ids = OrderManager::generateOrder(data: [
-                'order_status' => 'confirmed',
+                'order_status' => $requiresFulfillmentBeforePayment ? 'pending' : 'confirmed',
                 'payment_method' => 'pay_by_wallet',
-                'payment_status' => 'paid',
+                'payment_status' => $requiresFulfillmentBeforePayment ? 'unpaid' : 'paid',
+                'defer_checkout_completion' => $requiresFulfillmentBeforePayment,
                 'transaction_ref' => '',
                 'coupon_code' => session('coupon_code'),
                 'address_id' => session('address_id'),
@@ -1084,11 +1089,30 @@ class WebController extends Controller
                 'requestObj' => $request,
             ]);
 
+            if ($requiresFulfillmentBeforePayment) {
+                $checkoutResult = $directTopUpCheckout->completeWalletPaymentAfterFulfillment(
+                    $order_ids,
+                    (int) $user->id,
+                    $paymentAmount
+                );
+
+                if (! $checkoutResult['success']) {
+                    Toastr::error($checkoutResult['error']);
+                    session()->flash('direct_topup_checkout_error', $checkoutResult['error']);
+
+                    return redirect()->route('shop-cart');
+                }
+            } elseif ($directTopUpCheckout->requiresFulfillmentBeforePayment($carts)) {
+                Toastr::error(translate('direct_topup_fulfillment_failed'));
+
+                return redirect()->route('shop-cart');
+            } else {
+                CustomerManager::create_wallet_transaction($user->id, Convert::default($paymentAmount), 'order_place', 'order payment', [], $order_ids);
+            }
+
             foreach ($order_ids as $order_id) {
                 OrderManager::generateReferBonusForFirstOrder(orderId: $order_id);
             }
-
-            CustomerManager::create_wallet_transaction($user->id, Convert::default($paymentAmount), 'order_place', 'order payment', [], $order_ids);
         }
 
         if (session()->has('payment_mode') && session('payment_mode') == 'app') {

@@ -194,7 +194,8 @@
                         @endif
                     </div>
                 @endif
-                <form class="addToCartDynamicForm add-to-cart-details-form d-flex flex-column gap-3">
+                <form class="addToCartDynamicForm add-to-cart-details-form d-flex flex-column gap-3"
+                      data-amount-error="{{ translate('amount_must_be_between') }}">
                     @csrf
 
                     <div>

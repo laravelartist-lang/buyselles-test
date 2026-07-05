@@ -16,27 +16,17 @@
             @php($sub_total=0)
             @php($total_tax=0)
             @foreach($cart as  $cartItem)
-                @php($product=Product::find($cartItem['product_id']))
-                @php
-                    $getProductCurrentStock = $product?->current_stock ?? 0;
-                    if ($product && !empty($product->variation)) {
-                        foreach (json_decode($product->variation, true) as $productVariantSingle) {
-                            if ($productVariantSingle['type'] == $cartItem->variant) {
-                                $getProductCurrentStock = $productVariantSingle['qty'];
-                            }
-                        }
-                    }
-
-                    $isDirectTopUpItem = $cartItem->isDirectTopUp();
-                    $displayQuantity = (int) floor($cartItem->getDisplayQuantity());
-                    $minCartQuantity = $isDirectTopUpItem
-                        ? (int) floor((float) $product->direct_topup_min_quantity)
-                        : ($product?->minimum_order_qty ?? 1);
-                    $maxCartQuantity = $isDirectTopUpItem
-                        ? (int) floor((float) $product->direct_topup_max_quantity)
-                        : $getProductCurrentStock;
-                    $lineTotal = $cartItem->getLineTotal();
-                @endphp
+                @php($product = $cartItem->product)
+                <?php
+                $isDirectTopUpItem = $cartItem->isDirectTopUp();
+                $quantityLimits = $product
+                    ? CartManager::getCartItemQuantityLimits($cartItem, $product)
+                    : ['min' => 1, 'max' => 0, 'display_quantity' => (int) floor($cartItem->getDisplayQuantity())];
+                $displayQuantity = $quantityLimits['display_quantity'];
+                $minCartQuantity = $quantityLimits['min'];
+                $maxCartQuantity = $quantityLimits['max'];
+                $lineTotal = $cartItem->getLineTotal();
+                ?>
                 <li>
                     <div class="media gap-3">
                         <div class="avatar avatar-xxl position-relative overflow-hidden rounded">
@@ -76,15 +66,6 @@
                                     </div>
                                 </div>
                                 <div class="d-flex flex-column align-items-end gap-1">
-                                    @if ($product && $product->status == 1)
-                                        <button type="button"
-                                            class="btn btn-link p-0 border-0 action-remove-from-cart"
-                                            data-cart-id="{{ $cartItem['id'] }}"
-                                            data-product-id="{{ $cartItem['product_id'] }}"
-                                            title="{{ translate('remove') }}">
-                                            <i class="bi bi-trash3-fill text-danger fs-12"></i>
-                                        </button>
-                                    @endif
                                     <div class="quantity">
                                     @if ($product && $product->status == 1)
                                         <span
@@ -95,7 +76,7 @@
                                             data-event="minus"
                                             data-prevent="true">
 
-                                            @if((! $isDirectTopUpItem && $getProductCurrentStock < $displayQuantity) || $displayQuantity == $minCartQuantity)
+                                            @if((! $isDirectTopUpItem && $maxCartQuantity < $displayQuantity) || $displayQuantity == $minCartQuantity)
                                                 <i class="bi bi-trash3-fill text-danger fs-10"></i>
                                             @else
                                                 <i class="bi bi-dash"></i>
@@ -136,7 +117,7 @@
                                                data-cart-id="{{ $cartItem['id'] }}"
                                                data-product-id="{{ $cartItem['product_id'] }}"
                                                data-value=0
-                                               data-current-stock="{{ $getProductCurrentStock ?? 0 }}"
+                                               data-current-stock="{{ $maxCartQuantity }}"
                                                data-prevent="true">
                                     @endif
                                 </div>

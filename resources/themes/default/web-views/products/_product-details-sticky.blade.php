@@ -8,6 +8,19 @@
             @csrf
             <input type="hidden" name="id" value="{{ $productDetails->id }}">
             <input type="hidden" name="position" value="bottom">
+            @php
+                $stickyMapping = \App\Models\SupplierProductMapping::query()
+                    ->where('product_id', $productDetails->id)
+                    ->where('is_active', true)
+                    ->where('is_customizable', true)
+                    ->whereHas('supplierApi', fn ($q) => $q->where('is_active', true))
+                    ->with(['activeDenominations' => fn ($q) => $q->where('type', 'fixed')->orderBy('sort_order')->orderBy('face_value')])
+                    ->first();
+                $stickyDenom = $stickyMapping?->activeDenominations->first();
+            @endphp
+            @if ($stickyDenom)
+                <input type="hidden" name="supplier_denomination_id" value="{{ $stickyDenom->id }}">
+            @endif
             <div class="product-details-sticky-top">
                 <div class="border-bottom d-flex flex-column gap-3 mb-3 pb-3">
                     @if (count(json_decode($productDetails->colors)) > 0)
@@ -135,6 +148,7 @@
                 </div>
 
                 <div class="d-flex align-items-center gap-2 gap-sm-3 gap-xl-4">
+                    @if (empty($isDirectTopUpProduct))
                     <div class="d-flex justify-content-between align-items-center quantity-box border rounded border-base web-text-primary w-130px h-40px overflow-hidden">
                         <span class="input-group-btn h-100">
                             <button class="btn btn-number __p-10 web-text-primary bg-ECF1F6 rounded-0 h-100 w-32px d-flex align-items-center" type="button" data-type="minus" data-field="quantity" disabled="disabled">-</button>
@@ -145,12 +159,13 @@
                         value="{{ $initialProductConfig['quantity'] ?? 1 }}"
                         data-producttype="{{ $productDetails->product_type }}"
                         min="{{ $productDetails->minimum_order_qty ?? 1 }}"
-                        max="{{$productDetails['product_type'] == 'physical' ? $productDetails->current_stock : 100}}">
+                        max="{{$productDetails['product_type'] == 'physical' ? $productDetails->current_stock : ($productDetailsStock['available_quantity'] ?? $firstVariationQuantity)}}">
 
                         <span class="input-group-btn h-100">
                             <button class="btn btn-number __p-10 web-text-primary bg-ECF1F6 rounded-0 h-100 w-32px d-flex align-items-center" type="button" data-producttype="physical" data-type="plus" data-field="quantity">+</button>
                         </span>
                     </div>
+                    @endif
 
                     <div class="font-weight-normal text-accent align-items-end gap-2 d-none d-lg-flex">
                         <span class="product-bottom-section-price fs-24 font-bold user-select-none text-nowrap">{{$initialProductConfig['price']}}</span>
@@ -165,12 +180,14 @@
                         <div class="product-add-and-buy-section d-flex gap-2">
                             <button type="button" class="btn btn-secondary element-center btn-gap-right product-buy-now-button"
                                     data-form=".add-to-cart-sticky-form"
+                                    @if(!empty($isDirectTopUpProduct)) data-is-direct-topup="1" @endif
                                     data-auth="{{( getWebConfig(name: 'guest_checkout') == 1 || Auth::guard('customer')->check() ? 'true':'false')}}"
                                     data-route="{{ route('shop-cart') }}"
                             >
                                 <span class="string-limit">{{ translate('buy_now') }}</span>
                             </button>
 
+                            @if (empty($isDirectTopUpProduct))
                             <button class="btn btn--primary element-center product-add-to-cart-button"
                                     type="button"
                                     data-form=".add-to-cart-sticky-form"
@@ -179,10 +196,11 @@
                             >
                                 {{ translate('add_to_cart') }}
                             </button>
+                            @endif
                         </div>
 
                         @if(($productDetails['product_type'] == 'physical'))
-                            <div class="product-restock-request-section collapse" {!! $firstVariationQuantity <= 0 ? 'style="display: block;"' : '' !!}>
+                            <div class="product-restock-request-section collapse" {!! ($productDetailsStock['show_out_of_stock'] ?? false) ? 'style="display: block;"' : '' !!}>
                                 <button type="button"
                                         class="btn request-restock-btn btn-outline-primary fw-semibold product-restock-request-button"
                                         data-auth="{{ auth('customer')->check() }}"
@@ -194,7 +212,7 @@
                                 </button>
                             </div>
                         @elseif(($productDetails['product_type'] == 'digital'))
-                            <div class="product-out-of-stock-section collapse" {!! $firstVariationQuantity <= 0 ? 'style="display: block;"' : '' !!}>
+                            <div class="product-out-of-stock-section collapse" {!! ($productDetailsStock['show_out_of_stock'] ?? false) ? 'style="display: block;"' : '' !!}>
                                 <button class="btn btn-secondary fw-semibold" type="button" disabled>
                                     <i class="tio-clear-circle-outlined me-1"></i>
                                     {{ translate('Out_of_Stock') }}

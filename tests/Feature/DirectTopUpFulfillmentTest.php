@@ -36,6 +36,7 @@ class DirectTopUpFulfillmentTest extends TestCase
             $table->unsignedBigInteger('supplier_api_id')->nullable();
             $table->string('supplier_product_id')->nullable();
             $table->boolean('is_active')->default(true);
+            $table->boolean('is_direct_topup')->default(false);
             $table->timestamps();
         });
 
@@ -48,10 +49,35 @@ class DirectTopUpFulfillmentTest extends TestCase
             $table->boolean('is_active')->default(true);
             $table->timestamps();
         });
+
+        $this->recreateTable('supplier_orders', function (Blueprint $table): void {
+            $table->id();
+            $table->unsignedBigInteger('order_id')->nullable();
+            $table->string('status')->nullable();
+            $table->timestamps();
+        });
     }
 
     public function test_supplier_code_fetch_is_skipped_for_direct_topup_order_details(): void
     {
+        $this->app['db']->table('supplier_apis')->insert([
+            'id' => 1,
+            'is_active' => true,
+            'supports_direct_top_up' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->app['db']->table('supplier_product_mappings')->insert([
+            'product_id' => 55,
+            'supplier_api_id' => 1,
+            'supplier_product_id' => 'SUP-55',
+            'is_active' => true,
+            'is_direct_topup' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
         $order = new Order(['payment_status' => 'paid']);
         $order->id = 10;
 
@@ -92,6 +118,7 @@ class DirectTopUpFulfillmentTest extends TestCase
             'supplier_api_id' => 1,
             'supplier_product_id' => 'SUP-55',
             'is_active' => true,
+            'is_direct_topup' => true,
             'created_at' => now(),
             'updated_at' => now(),
         ]);

@@ -85,30 +85,16 @@
                     @php($sub_total = 0)
                     @php($total_tax = 0)
                     @foreach ($cart as $cartItem)
-                        @php($product = \App\Models\Product::where(['id' => $cartItem['product_id']])->with([
-            'clearanceSale' => function ($query) {
-                return $query->active();
-            },
-        ])->first())
+                        @php($product = $cartItem->product)
 
                         <?php
-                        $getProductCurrentStock = $product->current_stock;
-                        if (!empty($product->variation)) {
-                            foreach (json_decode($product->variation, true) as $productVariantSingle) {
-                                if ($productVariantSingle['type'] == $cartItem->variant) {
-                                    $getProductCurrentStock = $productVariantSingle['qty'];
-                                }
-                            }
-                        }
-
                         $isDirectTopUpItem = $cartItem->isDirectTopUp();
-                        $displayQuantity = (int) floor($cartItem->getDisplayQuantity());
-                        $minCartQuantity = $isDirectTopUpItem
-                            ? (int) floor((float) $product->direct_topup_min_quantity)
-                            : (isset($product->minimum_order_qty) ? $product->minimum_order_qty : 1);
-                        $maxCartQuantity = $isDirectTopUpItem
-                            ? (int) floor((float) $product->direct_topup_max_quantity)
-                            : $getProductCurrentStock;
+                        $quantityLimits = $product
+                            ? \App\Utils\CartManager::getCartItemQuantityLimits($cartItem, $product)
+                            : ['min' => 1, 'max' => 0, 'display_quantity' => (int) floor($cartItem->getDisplayQuantity())];
+                        $displayQuantity = $quantityLimits['display_quantity'];
+                        $minCartQuantity = $quantityLimits['min'];
+                        $maxCartQuantity = $quantityLimits['max'];
                         $lineTotal = $cartItem->getLineTotal();
                         ?>
 
@@ -151,20 +137,13 @@
                                     </div>
                                     @if (isset($product->status) && $product->status == 1)
                                         <div class="d-flex flex-column align-items-end gap-1">
-                                            <button type="button"
-                                                class="btn btn-link p-0 border-0 action-remove-from-cart"
-                                                data-cart-id="{{ $cartItem['id'] }}"
-                                                data-product-id="{{ $cartItem['product_id'] }}"
-                                                title="{{ translate('remove') }}">
-                                                <span class="fi fi-rr-trash text-danger fs-14"></span>
-                                            </button>
                                             <div class="__quantity">
                                             <div class="quantity__minus cart-qty-btn action-update-cart-quantity quantity__minus{{ $cartItem['id'] }}"
                                                 data-cart-id="{{ $cartItem['id'] }}"
                                                 data-product-id="{{ $cartItem['product_id'] }}" data-action="-1"
                                                 data-event="minus">
                                                 @if (
-                                                    (! $isDirectTopUpItem && $getProductCurrentStock < $displayQuantity) ||
+                                                    (! $isDirectTopUpItem && $maxCartQuantity < $displayQuantity) ||
                                                         $displayQuantity == $minCartQuantity)
                                                     <span class="fi fi-rr-trash text-danger fs-14"></span>
                                                 @else
@@ -262,7 +241,7 @@
             @endif
         </div>
     </div>
-</div>
+</div> 
 
 @push('script')
     <script>

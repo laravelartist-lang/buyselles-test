@@ -273,14 +273,17 @@ class SupplierController extends BaseController
     /**
      * Dispatch a background job to sync the supplier catalog.
      */
-    public function dispatchCatalogSync(int $id): JsonResponse
+    public function dispatchCatalogSync(int $id, Request $request): JsonResponse
     {
         $supplier = SupplierApi::findOrFail($id);
 
+        $syncService = app(\App\Services\Supplier\SupplierCatalogSyncService::class);
         $statusKey = \App\Jobs\SyncSupplierCatalogJob::statusCacheKey($supplier->id);
         $current = \Cache::get($statusKey);
 
-        // Don't dispatch if already running (unless stale — started > 20 min ago)
+        $freshStart = $request->boolean('fresh', false);
+        $resume = $request->boolean('resume', false);
+
         if ($current && ($current['state'] ?? '') === 'running') {
             $startedAt = $current['started_at'] ?? null;
             $isStale = $startedAt && now()->diffInMinutes(\Carbon\Carbon::parse($startedAt)) > 20;
@@ -294,9 +297,16 @@ class SupplierController extends BaseController
             }
         }
 
-        // Clear old catalog cache and set status to 'running' immediately
-        // to prevent race condition where poll sees stale 'done' status
-        \Cache::forget(\App\Jobs\SyncSupplierCatalogJob::catalogCacheKey($supplier->id));
+        if ($freshStart) {
+            \Cache::forget(\App\Jobs\SyncSupplierCatalogJob::catalogCacheKey($supplier->id));
+            \Cache::forget(\App\Services\Supplier\SupplierCatalogSyncService::checkpointCacheKey($supplier->id));
+        } elseif (! $resume && ($current['state'] ?? '') === 'failed' && $syncService->hasResumableCheckpoint($supplier->id)) {
+            $resume = true;
+        }
+
+        if (! $resume && ! $freshStart) {
+            \Cache::forget(\App\Jobs\SyncSupplierCatalogJob::catalogCacheKey($supplier->id));
+        }
 
         \Cache::put($statusKey, [
             'state' => 'running',
@@ -304,14 +314,16 @@ class SupplierController extends BaseController
             'total_brands' => null,
             'pages_fetched' => 0,
             'total_pages' => 0,
+            'resumed' => $resume,
             'started_at' => now()->toIso8601String(),
         ], now()->addMinutes(30));
 
-        \App\Jobs\SyncSupplierCatalogJob::dispatch($supplier->id);
+        \App\Jobs\SyncSupplierCatalogJob::dispatch($supplier->id, freshStart: $freshStart);
 
         return response()->json([
             'success' => true,
-            'message' => 'dispatched',
+            'message' => $resume ? 'resumed' : 'dispatched',
+            'resumed' => $resume,
         ]);
     }
 

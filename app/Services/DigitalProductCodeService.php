@@ -229,6 +229,10 @@ class DigitalProductCodeService
                 continue;
             }
 
+            if (! empty($detail->direct_topup_quantity)) {
+                continue;
+            }
+
             $productId = $detail->product_id ?? ($productDetails->id ?? null);
             if (! $productId) {
                 continue;
@@ -308,8 +312,20 @@ class DigitalProductCodeService
                 continue;
             }
 
+            if ($cart instanceof \App\Models\Cart && $cart->isDirectTopUp()) {
+                continue;
+            }
+
+            if (($cart->direct_topup_quantity ?? null) !== null) {
+                continue;
+            }
+
             $productId = $cart->product_id ?? null;
             if (! $productId) {
+                continue;
+            }
+
+            if (SupplierProductMapping::hasActiveMapping((int) $productId)) {
                 continue;
             }
 

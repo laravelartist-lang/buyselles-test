@@ -192,6 +192,9 @@ class SyncDenominationsJob implements ShouldQueue
 
         $mapping->update(['last_synced_at' => now()]);
 
+        app(\App\Services\Supplier\MappedProductCacheService::class)
+            ->bustForMapping($mapping->fresh(['supplierApi']));
+
         Log::info('SyncDenominationsJob: completed', [
             'mapping_id' => $mapping->id,
             'brand_id' => $brandId,

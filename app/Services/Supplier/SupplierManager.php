@@ -18,6 +18,7 @@ use App\Services\Supplier\Drivers\GenericRestDriver;
 use App\Services\Supplier\Drivers\GolfApiDriver;
 use App\Services\Supplier\Drivers\KinguinDriver;
 use App\Services\Supplier\Drivers\ReloadlyDriver;
+use App\Utils\OrderManager;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
@@ -41,6 +42,7 @@ class SupplierManager
         private readonly DigitalProductCodeService $codeService,
         private readonly SupplierApiLogger $logger,
         private readonly SupplierRateLimiter $rateLimiter,
+        private readonly SupplierOrderEligibilityService $orderEligibilityService,
     ) {}
 
     /**
@@ -176,36 +178,18 @@ class SupplierManager
         $errors = [];
 
         foreach ($order->orderDetails as $detail) {
+            if (! $this->orderEligibilityService->orderDetailNeedsSupplierCodeFetch($detail)) {
+                continue;
+            }
+
             $productDetails = json_decode($detail->product_details ?? '{}');
-            $productType = $productDetails->product_type ?? null;
-            $digitalType = $productDetails->digital_product_type ?? null;
-
-            if ($productType !== 'digital' || $digitalType !== 'ready_product') {
-                continue;
-            }
-
-            $productId = $detail->product_id ?? ($productDetails->id ?? null);
-            if (! $productId) {
-                continue;
-            }
+            $productId = (int) ($detail->product_id ?? ($productDetails->id ?? 0));
 
             $alreadyAssigned = DigitalProductCode::where('order_detail_id', $detail->id)
                 ->where('status', 'sold')
                 ->count();
 
             $needed = max(0, (int) $detail->qty - $alreadyAssigned);
-
-            if ($needed <= 0) {
-                continue;
-            }
-
-            $hasSuppliers = SupplierProductMapping::where('product_id', $productId)
-                ->active()
-                ->exists();
-
-            if (! $hasSuppliers) {
-                continue;
-            }
 
             $product = Product::find($productId);
             if (! $product) {
@@ -224,6 +208,8 @@ class SupplierManager
             if ($result['inserted'] > 0) {
                 $anyFulfilled = true;
             } elseif ($result['supplier_order_id']) {
+                $anyFulfilled = true;
+
                 SupplierOrderPollJob::dispatch($result['supplier_order_id'])
                     ->delay(now()->addSeconds(30));
 
@@ -330,12 +316,35 @@ class SupplierManager
                 $driver = $this->driver($supplier);
                 $unitPrice = (float) $detail->custom_amount;
 
+                $accountId = OrderManager::resolveDirectTopUpAccountId($detail) ?? '';
+
                 $result = $driver->placeTopUpOrder(
                     supplierProductId: $mapping->supplier_product_id,
                     quantity: (float) $detail->direct_topup_quantity,
-                    accountId: $detail->direct_topup_account_id,
+                    accountId: $accountId,
                     unitPrice: $unitPrice > 0 ? $unitPrice : null,
                 );
+
+                $httpStatus = 200;
+                $envelopeStatus = strtolower((string) data_get($result->rawResponse, 'status', ''));
+                if ($result->status !== 'fulfilled' || $envelopeStatus === 'error' || $result->supplierOrderId === '') {
+                    $httpStatus = 422;
+                    $this->logger->logResponse(
+                        logId: $logId,
+                        httpStatusCode: $httpStatus,
+                        responsePayload: [
+                            'supplier_order_id' => $result->supplierOrderId,
+                            'status' => $result->status,
+                            'raw_response' => $result->rawResponse,
+                        ],
+                        responseTimeMs: (int) ((microtime(true) - $startTime) * 1000),
+                    );
+
+                    $apiMessage = (string) data_get($result->rawResponse, 'message', 'Supplier top-up failed.');
+                    $errors[] = "Product '{$product->name}': {$apiMessage}";
+
+                    continue;
+                }
 
                 $this->logger->logResponse(
                     logId: $logId,
@@ -343,6 +352,7 @@ class SupplierManager
                     responsePayload: [
                         'supplier_order_id' => $result->supplierOrderId,
                         'status' => $result->status,
+                        'raw_response' => $result->rawResponse,
                     ],
                     responseTimeMs: (int) ((microtime(true) - $startTime) * 1000),
                 );
@@ -392,6 +402,39 @@ class SupplierManager
             'fulfilled' => $anyFulfilled,
             'error' => $errors ? implode(' ', $errors) : null,
         ];
+    }
+
+    /**
+     * Fetch available stock for a product-supplier mapping via the configured driver.
+     * Results are cached briefly to avoid hammering supplier APIs on cart renders.
+     */
+    public function getAvailableStockForMapping(SupplierProductMapping $mapping): int
+    {
+        $supplier = $mapping->supplierApi;
+
+        if (! $supplier || ! $supplier->is_active || $supplier->isDown()) {
+            return 0;
+        }
+
+        $cacheKey = 'supplier_stock:'.$mapping->id;
+        $ttl = (int) config('supplier.stock_cache_ttl', 60);
+
+        return (int) Cache::remember($cacheKey, $ttl, function () use ($mapping, $supplier): int {
+            try {
+                if (! $this->rateLimiter->attempt($supplier->id, $supplier->rate_limit_per_minute)) {
+                    return 0;
+                }
+
+                $driver = $this->driver($supplier);
+                $stockResult = $driver->fetchStock($mapping->supplier_product_id);
+
+                return max(0, $stockResult->available);
+            } catch (\Throwable $e) {
+                Log::warning('Supplier stock fetch failed for mapping '.$mapping->id.': '.$e->getMessage());
+
+                return 0;
+            }
+        });
     }
 
     /**

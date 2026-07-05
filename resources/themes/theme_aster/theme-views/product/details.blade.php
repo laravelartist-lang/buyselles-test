@@ -1291,8 +1291,22 @@
                 } else {
                     $(this).removeClass('border-danger');
                     $errorMsg.hide();
+                    setInitialVariablePrice();
                 }
             });
+
+            function setInitialVariablePrice() {
+                const min = parseFloat($input.data('min'));
+                if (isNaN(min) || min <= 0) {
+                    return;
+                }
+
+                const qty = parseInt($('.product-details-cart-qty, .product_quantity__qty').val()) || 1;
+                if ($unitPriceDisplay.length) $unitPriceDisplay.text(formatPrice(min));
+                $priceDisplay.text(formatPrice(min * qty));
+            }
+
+            setInitialVariablePrice();
 
             $(document).on('input change', '.product-details-cart-qty, .product_quantity__qty', function () {
                 if ($input.val()) {
@@ -1310,7 +1324,6 @@
             $(this).easyZoom();
         });
         getVariantPrice(".add-to-cart-details-form");
-        getVariantPrice(".add-to-cart-sticky-form");
 
         $(document).ready(function() {
             $('#review_tab_trigger').on('click', function() {

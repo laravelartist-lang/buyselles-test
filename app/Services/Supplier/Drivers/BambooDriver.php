@@ -10,6 +10,7 @@ use App\DTOs\Supplier\SupplierOrderResult;
 use App\DTOs\Supplier\SupplierProductDTO;
 use App\DTOs\Supplier\WebhookResult;
 use App\Models\SupplierApi;
+use App\Services\Supplier\Concerns\MakesResilientHttpRequests;
 use Illuminate\Http\Client\Response;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -33,6 +34,8 @@ use Illuminate\Support\Facades\Log;
  */
 class BambooDriver implements SupplierDriverInterface
 {
+    use MakesResilientHttpRequests;
+
     private SupplierApi $supplier;
 
     /** @var array<string, mixed> */
@@ -766,14 +769,16 @@ class BambooDriver implements SupplierDriverInterface
      *
      * @param  array<string, mixed>  $query
      */
-    private function get(string $path, array $query = [], int $timeout = 30): Response
+    private function get(string $path, array $query = [], int $timeout = 120): Response
     {
-        $request = Http::withBasicAuth(
-            $this->credentials['client_id'] ?? '',
-            $this->credentials['client_secret'] ?? ''
-        )
-            ->acceptJson()
-            ->timeout($timeout);
+        $request = $this->applyResilientHttpDefaults(
+            Http::withBasicAuth(
+                $this->credentials['client_id'] ?? '',
+                $this->credentials['client_secret'] ?? ''
+            )->acceptJson(),
+            $this->settings,
+            $timeout,
+        );
 
         $url = $this->url($path);
 
@@ -787,13 +792,16 @@ class BambooDriver implements SupplierDriverInterface
      */
     private function post(string $path, array $body = []): Response
     {
-        return Http::withBasicAuth(
-            $this->credentials['client_id'] ?? '',
-            $this->credentials['client_secret'] ?? ''
-        )
-            ->acceptJson()
-            ->timeout(60)
-            ->post($this->url($path), $body);
+        $request = $this->applyResilientHttpDefaults(
+            Http::withBasicAuth(
+                $this->credentials['client_id'] ?? '',
+                $this->credentials['client_secret'] ?? ''
+            )->acceptJson(),
+            $this->settings,
+            60,
+        );
+
+        return $request->post($this->url($path), $body);
     }
 
     private function url(string $path): string

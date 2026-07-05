@@ -10,6 +10,7 @@ use App\DTOs\Supplier\SupplierOrderResult;
 use App\DTOs\Supplier\SupplierProductDTO;
 use App\DTOs\Supplier\WebhookResult;
 use App\Models\SupplierApi;
+use App\Services\Supplier\Concerns\MakesResilientHttpRequests;
 use Illuminate\Http\Client\Response;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -34,6 +35,8 @@ use Illuminate\Support\Facades\Http;
  */
 class GenericRestDriver implements SupplierDriverInterface
 {
+    use MakesResilientHttpRequests;
+
     private SupplierApi $supplier;
 
     /** @var array<string, mixed> */
@@ -88,8 +91,16 @@ class GenericRestDriver implements SupplierDriverInterface
         }
 
         $response = $this->makeRequest('GET', $endpoint, $filters);
-        $data = $this->unwrapResponseData($response->json() ?? []);
+        $raw = $response->json() ?? [];
+        $data = $this->unwrapResponseData($raw);
         $items = data_get($data, $this->getSetting('products_response_path', 'data'), []);
+
+        $onPage = $filters['on_page'] ?? null;
+        if (is_callable($onPage)) {
+            $totalPath = $this->getSetting('pagination_total_path', 'meta.total');
+            $total = (int) data_get($data, $totalPath, count($items));
+            $onPage($startPage, count($items), $total);
+        }
 
         return $this->mapProducts($items);
     }
@@ -120,7 +131,7 @@ class GenericRestDriver implements SupplierDriverInterface
                 $perPageParam => $perPage,
             ]);
 
-            $response = $this->makeRequest('GET', $endpoint, $params);
+            $response = $this->makeRequest('GET', $endpoint, $params, timeout: 120);
 
             if ($response->failed()) {
                 throw new \RuntimeException("fetchProducts failed: HTTP {$response->status()} — {$response->body()}");
@@ -261,8 +272,32 @@ class GenericRestDriver implements SupplierDriverInterface
         $extraFields = $this->getSetting('topup_extra_fields', $this->getSetting('order_extra_fields', []));
         $payload = array_merge($payload, $extraFields);
 
+        if ($this->getSetting('topup_use_product_custom_fields')) {
+            unset($payload[$accountField]);
+            $customFields = $this->fetchProductCustomFieldsForTopUp($supplierProductId);
+
+            if ($customFields !== []) {
+                $payload['custom_fields'] = array_map(function (array $field) use ($accountId): array {
+                    return [
+                        'id' => (int) ($field['id'] ?? 0),
+                        'value' => $accountId,
+                    ];
+                }, $customFields);
+            }
+        }
+
         $response = $this->makeRequest('POST', $endpoint, $payload);
-        $data = $this->unwrapResponseData($response->json() ?? []);
+        $fullBody = $response->json() ?? [];
+        $envelopeStatus = strtolower((string) ($fullBody['status'] ?? ''));
+
+        if ($response->failed() || $envelopeStatus === 'error') {
+            throw new \RuntimeException(
+                'GenericRest placeTopUpOrder failed: HTTP '.$response->status()
+                .' — '.($fullBody['message'] ?? $response->body())
+            );
+        }
+
+        $data = $this->unwrapResponseData($fullBody);
 
         $orderIdPath = $this->getSetting('topup_order_id_response_path', $this->getSetting('order_id_response_path', 'order_id'));
         $statusPath = $this->getSetting('topup_status_response_path', $this->getSetting('order_status_response_path', 'status'));
@@ -469,12 +504,15 @@ class GenericRestDriver implements SupplierDriverInterface
      *
      * @param  array<string, mixed>  $data
      */
-    private function makeRequest(string $method, string $endpoint, array $data = [], bool $retried = false): Response
+    private function makeRequest(string $method, string $endpoint, array $data = [], bool $retried = false, int $timeout = 30): Response
     {
         $url = rtrim($this->supplier->base_url, '/').'/'.ltrim($endpoint, '/');
 
-        $request = Http::timeout(30)
-            ->acceptJson();
+        $request = $this->applyResilientHttpDefaults(
+            Http::acceptJson(),
+            $this->settings,
+            $timeout,
+        );
 
         $request = $this->applyAuth($request);
 
@@ -721,6 +759,31 @@ class GenericRestDriver implements SupplierDriverInterface
         }
 
         return $codes;
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function fetchProductCustomFieldsForTopUp(string $supplierProductId): array
+    {
+        $endpoint = $this->getSetting('stock_endpoint', '/products/{product_id}');
+        $endpoint = str_replace('{product_id}', $supplierProductId, (string) $endpoint);
+        $fieldsPath = (string) $this->getSetting('topup_custom_fields_path', 'data.custom_fields');
+
+        try {
+            $response = $this->makeRequest('GET', $endpoint);
+
+            if ($response->failed()) {
+                return [];
+            }
+
+            $data = $this->unwrapResponseData($response->json() ?? []);
+            $customFields = data_get($data, $fieldsPath, []);
+
+            return is_array($customFields) ? $customFields : [];
+        } catch (\Throwable) {
+            return [];
+        }
     }
 
     /**

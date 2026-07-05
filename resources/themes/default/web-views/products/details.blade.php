@@ -250,7 +250,8 @@
                                         @endif
 
                                         <form
-                                            class="addToCartDynamicForm add-to-cart-details-form d-flex flex-column gap-4">
+                                            class="addToCartDynamicForm add-to-cart-details-form d-flex flex-column gap-4"
+                                            data-amount-error="{{ translate('amount_must_be_between') }}">
 
                                             <div class="">
                                                 <h3
@@ -269,6 +270,9 @@
 
                                             @csrf
                                             <input type="hidden" name="id" value="{{ $product->id }}">
+                                            @if (!empty($isDirectTopUpProduct))
+                                                <input type="hidden" name="quantity" value="1">
+                                            @endif
                                             <div class="position-relative">
                                                 @if (count(json_decode($product->colors)) > 0)
                                                     <div class="d-flex align-items-center gap-3 my-0">
@@ -505,6 +509,7 @@
                                             @endif
 
                                             <div class="">
+                                                @if (empty($isDirectTopUpProduct))
                                                 <div class="product-quantity d-flex flex-column __gap-15">
                                                     <div class="d-flex align-items-center gap-4">
                                                         <div class="product-description-label __color-9B9B9B fs-14">
@@ -526,7 +531,7 @@
                                                                 value="{{ $initialProductConfig['quantity'] ?? 1 }}"
                                                                 data-producttype="{{ $product->product_type }}"
                                                                 min="{{ $product->minimum_order_qty ?? 1 }}"
-                                                                max="{{ $product['product_type'] == 'physical' ? $product->current_stock : 100 }}">
+                                                                max="{{ $product['product_type'] == 'physical' ? $product->current_stock : $productDetailsStock['available_quantity'] }}">
                                                             <span class="input-group-btn h-100">
                                                                 <button
                                                                     class="btn btn-number __p-10 web-text-primary bg-ECF1F6 rounded-0 h-100 w-32px"
@@ -558,6 +563,7 @@
                                                         </div>
                                                     </div>
                                                 </div>
+                                                @endif
                                             </div>
 
                                             <div class="__btn-grp product-add-and-buy-section-parent">
@@ -577,8 +583,8 @@
                                                 }
                                                 ?>
 
-                                                <div class="product-add-and-buy-section gap-2 {!! $firstVariationQuantity <= 0 ? '' : 'd-flex' !!}"
-                                                    {!! $firstVariationQuantity <= 0 ? 'style="display: none;"' : '' !!}>
+                                                <div class="product-add-and-buy-section gap-2 {!! $productDetailsStock['show_out_of_stock'] ? '' : 'd-flex' !!}"
+                                                    {!! $productDetailsStock['show_out_of_stock'] ? 'style="display: none;"' : '' !!}>
 
                                                     @if ($isTemporaryClose || $isVacationMode)
                                                         <button class="btn btn-secondary" type="button" disabled>
@@ -592,10 +598,12 @@
                                                         <button type="button"
                                                             class="btn btn-secondary element-center btn-gap-{{ Session::get('direction') === 'rtl' ? 'left' : 'right' }} product-buy-now-button"
                                                             data-form=".add-to-cart-details-form"
+                                                            @if(!empty($isDirectTopUpProduct)) data-is-direct-topup="1" @endif
                                                             data-auth="{{ getWebConfig(name: 'guest_checkout') == 1 || Auth::guard('customer')->check() ? 'true' : 'false' }}"
                                                             data-route="{{ route('shop-cart') }}">
                                                             <span class="string-limit">{{ translate('buy_now') }}</span>
                                                         </button>
+                                                        @if (empty($isDirectTopUpProduct))
                                                         <button
                                                             class="btn btn--primary element-center product-add-to-cart-button"
                                                             type="button" data-form=".add-to-cart-details-form"
@@ -605,12 +613,13 @@
                                                                 {{ $initialProductConfig['first_variant_in_cart'] ? translate('update_cart') : translate('add_to_cart') }}
                                                             </span>
                                                         </button>
+                                                        @endif
                                                     @endif
                                                 </div>
 
                                                 @if ($product['product_type'] == 'physical')
                                                     <div class="product-restock-request-section collapse"
-                                                        {!! $firstVariationQuantity <= 0 ? 'style="display: block;"' : '' !!}>
+                                                        {!! $productDetailsStock['show_out_of_stock'] ? 'style="display: block;"' : '' !!}>
                                                         <button type="button"
                                                             class="btn request-restock-btn btn-outline-primary fw-semibold product-restock-request-button"
                                                             data-auth="{{ auth('customer')->check() }}"
@@ -622,7 +631,7 @@
                                                     </div>
                                                 @elseif ($product['product_type'] == 'digital')
                                                     <div class="product-out-of-stock-section collapse"
-                                                        {!! $firstVariationQuantity <= 0 ? 'style="display: block;"' : '' !!}>
+                                                        {!! $productDetailsStock['show_out_of_stock'] ? 'style="display: block;"' : '' !!}>
                                                         <button class="btn btn-secondary fw-semibold" type="button" disabled>
                                                             <i class="tio-clear-circle-outlined me-1"></i>
                                                             {{ translate('Out_of_Stock') }}
@@ -1229,7 +1238,12 @@
 
     </div>
 
-    @include('web-views.products._product-details-sticky', ['productDetails' => $product])
+    @include('web-views.products._product-details-sticky', [
+        'productDetails' => $product,
+        'isDirectTopUpProduct' => $isDirectTopUpProduct ?? false,
+        'directTopUpConfig' => $directTopUpConfig ?? null,
+    ])
+    @include('layouts.front-end.partials.modal._direct-topup-buy-now')
 
     @if ($product?->preview_file_full_url['path'])
         @include('web-views.partials._product-preview-modal', ['previewFileInfo' => $previewFileInfo])
@@ -1322,8 +1336,22 @@
                 } else {
                     $(this).removeClass('border-danger');
                     $errorMsg.hide();
+                    setInitialVariablePrice();
                 }
             });
+
+            function setInitialVariablePrice() {
+                const min = parseFloat($input.data('min'));
+                if (isNaN(min) || min <= 0) {
+                    return;
+                }
+
+                const qty = parseInt($('.product-details-cart-qty').val()) || 1;
+                $unitPriceDisplay.text(formatPrice(min));
+                $priceDisplay.text(formatPrice(min * qty));
+            }
+
+            setInitialVariablePrice();
 
             $(document).on('input change', '.product-details-cart-qty', function () {
                 if ($input.val()) {

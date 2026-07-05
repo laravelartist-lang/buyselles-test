@@ -74,6 +74,11 @@ class KinguinDriver implements SupplierDriverInterface
         }
 
         $items = $response->json('results', []);
+        $total = (int) ($response->json('item_count') ?? count($items));
+
+        if (is_callable($filters['on_page'] ?? null)) {
+            $filters['on_page']((int) ($params['page'] ?? 0), count($items), $total);
+        }
 
         return array_map(function ($item): SupplierProductDTO {
             return new SupplierProductDTO(

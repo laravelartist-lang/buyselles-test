@@ -1301,6 +1301,289 @@ function syncDirectTopUpFormFields(formSelector = ".add-to-cart-details-form") {
     $("#direct-topup-quantity-hidden").val(qty);
 }
 
+function initDirectTopUpModalBehavior($root) {
+    const $section = $root.find("#direct-topup-purchase-section");
+    if (!$section.length) {
+        return;
+    }
+
+    const minQty = parseFloat($section.data("min-quantity")) || 0;
+    const maxQty = parseFloat($section.data("max-quantity")) || 0;
+    const perUnit = parseFloat($section.data("price-per-unit")) || 0;
+
+    const $qtyPane = $root.find("#direct-topup-qty-pane");
+    const $pricePane = $root.find("#direct-topup-price-pane");
+    const $qtyInput = $root.find("#direct-topup-quantity-input");
+    const $priceInput = $root.find("#direct-topup-price-input");
+    const $hiddenQty = $root.find("#direct-topup-quantity-hidden");
+    const $qtyFromPr = $root.find("#direct-topup-qty-from-price");
+    const $actualT = $root.find("#direct-topup-actual-total");
+    const $actualRow = $root.find("#direct-topup-actual-row");
+    const $modalTotal = $root.find("#direct-topup-modal-total");
+
+    let currencyConfig = {};
+    try {
+        currencyConfig = JSON.parse($("#direct-topup-config-json").text() || "{}");
+    } catch (e) {
+        currencyConfig = {};
+    }
+
+    const currencySymbol = currencyConfig.currency_symbol || "";
+    const symbolPosition = currencyConfig.symbol_position || "left";
+    const decimalPoints = parseInt(currencyConfig.decimal_points, 10) || 2;
+
+    let currentQty = minQty;
+    let syncing = false;
+
+    function formatPrice(value) {
+        const num = Number(value).toFixed(decimalPoints);
+        return symbolPosition === "left" ? currencySymbol + num : num + currencySymbol;
+    }
+
+    function totalFor(q) {
+        return Math.round(q * perUnit * 100) / 100;
+    }
+
+    function clampQ(q) {
+        if (q < minQty) {
+            return minQty;
+        }
+        if (q > maxQty) {
+            return maxQty;
+        }
+        return Math.round(q);
+    }
+
+    function refresh() {
+        const q = clampQ(currentQty);
+        const t = totalFor(q);
+        $hiddenQty.val(q);
+        $qtyFromPr.text(q);
+        $modalTotal.text(formatPrice(t));
+    }
+
+    function switchToQty() {
+        if (syncing) {
+            return;
+        }
+        syncing = true;
+        $qtyPane.removeClass("d-none");
+        $pricePane.addClass("d-none");
+        $qtyInput.val(Math.floor(clampQ(currentQty)));
+        refresh();
+        $actualRow.addClass("d-none");
+        syncing = false;
+    }
+
+    function switchToPrice() {
+        if (syncing) {
+            return;
+        }
+        syncing = true;
+        $pricePane.removeClass("d-none");
+        $qtyPane.addClass("d-none");
+        $priceInput.val(totalFor(clampQ(currentQty)).toFixed(decimalPoints));
+        refresh();
+        $actualRow.addClass("d-none");
+        syncing = false;
+    }
+
+    $qtyInput.off("input.directTopUp").on("input.directTopUp", function () {
+        if (syncing) {
+            return;
+        }
+        syncing = true;
+        let v = parseInt(String(this.value).replace(/[^0-9]/g, ""), 10);
+        if (isNaN(v) || v < 1) {
+            v = minQty;
+        }
+        currentQty = clampQ(v);
+        this.value = Math.floor(currentQty);
+        refresh();
+        $actualRow.addClass("d-none");
+        syncing = false;
+    });
+
+    $qtyInput.off("change.directTopUp blur.directTopUp").on("change.directTopUp blur.directTopUp", refresh);
+
+    $priceInput.off("input.directTopUp").on("input.directTopUp", function () {
+        if (syncing) {
+            return;
+        }
+        syncing = true;
+        let v = parseFloat(String(this.value).replace(/[^0-9.]/g, ""));
+        if (isNaN(v) || v <= 0) {
+            v = totalFor(minQty);
+        }
+        const lo = totalFor(minQty);
+        const hi = totalFor(maxQty);
+        if (v > hi) {
+            v = hi;
+        }
+        if (v < lo) {
+            v = lo;
+        }
+
+        currentQty = perUnit > 0 ? clampQ(v / perUnit) : minQty;
+        refresh();
+
+        const a = totalFor(clampQ(currentQty));
+        if (Math.abs(a - v) > 0.001) {
+            $actualT.text(formatPrice(a));
+            $actualRow.removeClass("d-none");
+        } else {
+            $actualRow.addClass("d-none");
+        }
+        syncing = false;
+    });
+
+    $root.find('input[name="direct_topup_mode"]').off("change.directTopUp").on("change.directTopUp", function () {
+        if ($(this).val() === "price") {
+            switchToPrice();
+        } else {
+            switchToQty();
+        }
+    });
+
+    currentQty = minQty;
+    refresh();
+}
+
+function openDirectTopUpBuyNowModal($button) {
+    const template = $("#direct-topup-buy-now-modal-template").html();
+    if (!template) {
+        return false;
+    }
+
+    $("#buyNowModal")
+        .data("auth", $button.data("auth")?.toString() ?? "true")
+        .data("route", $button.data("route") ?? $("#route-shop-cart").data("url"));
+
+    $("#buyNowModal-body").html(template);
+    initDirectTopUpModalBehavior($("#buyNowModal-body"));
+    $("#buyNowModal").modal("show");
+    return true;
+}
+
+function submitDirectTopUpBuyNowModal() {
+    const $form = $("#direct-topup-buy-now-form");
+    if (!$form.length) {
+        return;
+    }
+
+    const authStatus = $("#buyNowModal").data("auth")?.toString() ?? "true";
+    const fallbackRoute = $("#buyNowModal").data("route");
+
+    if (authStatus === "false") {
+        if (fallbackRoute) {
+            location.href = fallbackRoute;
+        } else {
+            $("#login-alert-modal").modal("show");
+        }
+        return;
+    }
+
+    const accountId = $.trim($form.find("#direct-topup-account-input").val() || "");
+    const directTopUpQty = parseFloat($form.find("#direct-topup-quantity-hidden").val()) || 0;
+    const productId = $form.find('input[name="id"]').val();
+    const cartAddUrl = $("#route-cart-add").data("url");
+
+    if (!cartAddUrl) {
+        toastr.error("Cart route is unavailable.", {
+            CloseButton: true,
+            ProgressBar: true,
+        });
+        return;
+    }
+
+    if (accountId === "") {
+        toastr.error($("#message-direct-topup-account-required").data("text") || "Account ID is required.", {
+            CloseButton: true,
+            ProgressBar: true,
+        });
+        return;
+    }
+
+    if (directTopUpQty <= 0) {
+        toastr.error($("#message-direct-topup-quantity-required").data("text") || "Quantity is required.", {
+            CloseButton: true,
+            ProgressBar: true,
+        });
+        return;
+    }
+
+    $.ajax({
+        type: "POST",
+        url: cartAddUrl,
+        dataType: "json",
+        headers: {
+            "X-CSRF-TOKEN": $('meta[name="_token"]').attr("content"),
+            "X-Requested-With": "XMLHttpRequest",
+        },
+        data: {
+            _token: $('meta[name="_token"]').attr("content"),
+            id: productId,
+            quantity: 1,
+            buy_now: 1,
+            direct_topup_account_id: accountId,
+            direct_topup_quantity: directTopUpQty,
+        },
+        beforeSend: function () {
+            $("#loading").show();
+        },
+        success: function (response) {
+            if (response.status == 1) {
+                $("#buyNowModal").modal("hide");
+                updateNavCart(true);
+
+                if (response.redirect_to_url) {
+                    location.href = response.redirect_to_url;
+                    return;
+                }
+
+                if (response.redirect_to === "checkout") {
+                    location.href = $("#route-checkout-details").data("url");
+                    return;
+                }
+
+                toastr.success(response.message || "Added to cart.", {
+                    CloseButton: true,
+                    ProgressBar: true,
+                });
+                return;
+            }
+
+            toastr.error(response.message || "Unable to add to cart.", {
+                CloseButton: true,
+                ProgressBar: true,
+            });
+        },
+        error: function (xhr) {
+            let message = "Unable to add to cart.";
+            if (xhr.responseJSON && xhr.responseJSON.message) {
+                message = xhr.responseJSON.message;
+            }
+            toastr.error(message, {
+                CloseButton: true,
+                ProgressBar: true,
+            });
+        },
+        complete: function () {
+            $("#loading").hide();
+        },
+    });
+}
+
+$(document).on("submit", "#direct-topup-buy-now-form", function (event) {
+    event.preventDefault();
+    submitDirectTopUpBuyNowModal();
+});
+
+$(document).on("click", "#direct-topup-proceed-btn", function (event) {
+    event.preventDefault();
+    submitDirectTopUpBuyNowModal();
+});
+
 function addToCart(
     formSelector = ".add-to-cart-details-form",
     redirect_to_checkout = false,
@@ -1317,7 +1600,7 @@ function addToCart(
 
         if (isNaN(amount) || amount < min || amount > max) {
             toastr.error(
-                @json(translate('amount_must_be_between')) + ' ' + min + ' - ' + max,
+                ( $(formSelector).data('amount-error') || 'Amount must be between' ) + ' ' + min + ' - ' + max,
                 { CloseButton: true, ProgressBar: true }
             );
             customAmountInput.addClass('border-danger');
@@ -1478,7 +1761,13 @@ function addToCart(
 }
 
 function commonFunctionalityForProductView() {
-    $(".product-buy-now-button").on("click", function () {
+    $(".product-buy-now-button").off("click.directTopUp").on("click.directTopUp", function () {
+        if (parseInt($(this).data("is-direct-topup"), 10) === 1) {
+            if (openDirectTopUpBuyNowModal($(this))) {
+                return;
+            }
+        }
+
         let parentForm = $(this).data("form");
         let redirectStatus = $(this).data("auth")?.toString();
         let url = $(this).data("route");
@@ -1998,7 +2287,7 @@ function debounce(func, delay) {
         debounceTimer = setTimeout(() => func.apply(context, args), delay);
     };
 }
-let currentPriceRequest = null;
+let currentPriceRequests = {};
 const debouncedGetVariantPrice = debounce(getVariantPrice, 300);
 
 $(".add-to-cart-details-form input").on("input change", function (e) {
@@ -2040,20 +2329,39 @@ function updateCartQuantity(cart_id, product_id, action, event) {
     let segment_array = window.location.pathname.split("/");
     let segment = segment_array[segment_array.length - 1];
 
+    const minQty = isDirectTopUp
+        ? parseInt(cart_quantity_of.data("min"), 10) || 1
+        : parseInt(cart_quantity_of.data("min"), 10) || 1;
+    const maxQty = isDirectTopUp
+        ? parseInt(cart_quantity_of.data("max"), 10) ||
+          parseInt(cart_quantity_of.data("current-stock"), 10) ||
+          999999
+        : parseInt(cart_quantity_of.data("max"), 10) ||
+          parseInt(cart_quantity_of.data("current-stock"), 10) ||
+          999999;
+
     if (isDirectTopUp) {
-        const minQty = parseInt(cart_quantity_of.data("min"), 10) || 1;
-        const maxQty =
-            parseInt(cart_quantity_of.data("max"), 10) ||
-            parseInt(cart_quantity_of.data("current-stock"), 10) ||
-            product_qyt;
         product_qyt = Math.max(minQty, Math.min(maxQty, product_qyt));
     }
 
     if (
         !isDirectTopUp &&
-        cart_quantity_of.val() > cart_quantity_of.data("current-stock")
+        cart_quantity_of.val() > cart_quantity_of.data("current-stock") &&
+        event === "minus"
     ) {
         cartItemRemoveFunction(remove_url, token, cart_id, segment);
+        return false;
+    }
+
+    if (
+        !isDirectTopUp &&
+        parseInt(action, 10) > 0 &&
+        product_qyt > maxQty
+    ) {
+        toastr.error(
+            $("#message-sorry-stock-is-limited").data("text") ||
+                "Sorry, stock is limited"
+        );
         return false;
     }
 
@@ -2064,6 +2372,7 @@ function updateCartQuantity(cart_id, product_id, action, event) {
         });
         cart_quantity_of.val(cart_quantity_of.data("min"));
     } else if (
+        parseInt(action, 10) < 0 &&
         cart_quantity_of.val() == cart_quantity_of.data("min") &&
         event == "minus"
     ) {
@@ -2237,11 +2546,11 @@ function getVariantPrice(formSelector = ".add-to-cart-details-form") {
             },
         });
 
-        if (currentPriceRequest) {
-            currentPriceRequest.abort();
+        if (currentPriceRequests[formSelector]) {
+            currentPriceRequests[formSelector].abort();
         }
 
-        currentPriceRequest = $.ajax({
+        currentPriceRequests[formSelector] = $.ajax({
             type: "POST",
             url: $("#route-cart-variant-price").data("url"),
             data: $(formSelector).serializeArray().concat([
@@ -2287,7 +2596,7 @@ function getVariantPrice(formSelector = ".add-to-cart-details-form") {
                 }, 3000)
             },
             error: function () {
-                currentPriceRequest = null;
+                delete currentPriceRequests[formSelector];
             },
         });
     }
@@ -2378,7 +2687,7 @@ function updateProductDetailsBottomSection(formSelector, response) {
         }
     }
     if (response?.product_type?.toString() === "digital") {
-        if (response?.quantity <= 0) {
+        if (response?.show_out_of_stock === true) {
             $(formSelector).find(".product-out-of-stock-section").show();
             $(formSelector).find(".product-add-and-buy-section").hide().removeClass("d-flex");
         } else {
@@ -2397,7 +2706,12 @@ function updateProductDetailsTopSection(formSelector, response) {
         $('#direct-topup-quantity-hidden').val(topUpQty);
         $('#direct-topup-quantity-input').val(topUpQty);
         $('#direct-topup-qty-from-price').text(topUpQty);
+        $(formSelector).find(".product-quantity").hide();
+        $(formSelector).find(".product-add-to-cart-button").hide();
+        $(formSelector).find(".product-add-and-buy-section").show().addClass("d-flex");
     } else {
+        $(formSelector).find(".product-quantity").show();
+        $(formSelector).find(".product-add-to-cart-button").show();
         $(formSelector).find(".product-details-cart-qty").val(response?.in_cart_quantity);
     }
 
@@ -2421,7 +2735,7 @@ function updateProductDetailsTopSection(formSelector, response) {
         }
     }
     if (response?.product_type?.toString() === "digital") {
-        if (response?.quantity <= 0) {
+        if (response?.show_out_of_stock === true) {
             $(formSelector).find(".product-out-of-stock-section").show();
             $(formSelector).find(".product-add-and-buy-section").hide().removeClass("d-flex");
         } else {

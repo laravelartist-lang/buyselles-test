@@ -159,6 +159,61 @@ class SupplierProductMapping extends Model
     }
 
     /**
+     * Price shown on listings and PDP before the customer picks an amount.
+     * For customizable products this uses the minimum selectable amount (or first fixed denomination).
+     */
+    public function getStartingDisplayPrice(): float
+    {
+        if ($this->is_customizable) {
+            if ($this->relationLoaded('activeDenominations')) {
+                $firstFixed = $this->activeDenominations->firstWhere('type', 'fixed');
+
+                if ($firstFixed) {
+                    return $firstFixed->calculateSellPrice();
+                }
+
+                $variable = $this->activeDenominations->firstWhere('type', 'variable');
+
+                if ($variable) {
+                    return $this->resolveVariableStartingPrice($variable);
+                }
+            } else {
+                $firstFixed = $this->fixedDenominations()->first();
+
+                if ($firstFixed) {
+                    return $firstFixed->calculateSellPrice();
+                }
+
+                $variable = $this->variableDenomination()->first();
+
+                if ($variable) {
+                    return $this->resolveVariableStartingPrice($variable);
+                }
+            }
+
+            if ($this->min_amount !== null && (float) $this->min_amount > 0) {
+                return (float) $this->min_amount;
+            }
+        }
+
+        $sellPrice = $this->calculateSellPrice();
+
+        return $sellPrice > 0 ? $sellPrice : (float) ($this->min_amount ?? 0);
+    }
+
+    private function resolveVariableStartingPrice(SupplierProductDenomination $variable): float
+    {
+        $min = (float) ($variable->min_face_value ?: $this->min_amount ?: 0);
+
+        if ($min <= 0) {
+            return 0.0;
+        }
+
+        // Variable/custom amounts are stored and charged as the customer-facing sell price.
+        return $min;
+    }
+
+    /**
      * Calculate the sell price for a given custom amount using the mapping markup.
      * For customizable products, the customer's chosen amount replaces the fixed cost.
      */

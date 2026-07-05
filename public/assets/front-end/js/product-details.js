@@ -98,7 +98,6 @@ if (targetElement) {
 
 cartQuantityInitialize();
 getVariantPrice(".add-to-cart-details-form");
-getVariantPrice(".add-to-cart-sticky-form");
 
 $(".view_more_button").on("click", function () {
     loadReviewOnDetailsPage();

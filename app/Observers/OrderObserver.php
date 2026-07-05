@@ -4,10 +4,10 @@ namespace App\Observers;
 
 use App\Jobs\DirectTopUpFulfillmentJob;
 use App\Jobs\SupplierCodeFetchJob;
-use App\Models\DigitalProductCode;
 use App\Models\Order;
 use App\Models\SupplierProductMapping;
 use App\Services\DigitalProductCodeService;
+use App\Services\Supplier\SupplierOrderEligibilityService;
 use App\Traits\PushNotificationTrait;
 use Illuminate\Support\Facades\Log;
 
@@ -15,7 +15,10 @@ class OrderObserver
 {
     use PushNotificationTrait;
 
-    public function __construct(private readonly DigitalProductCodeService $codeService) {}
+    public function __construct(
+        private readonly DigitalProductCodeService $codeService,
+        private readonly SupplierOrderEligibilityService $supplierOrderEligibilityService,
+    ) {}
 
     /**
      * Handle the Order "created" event.
@@ -63,60 +66,13 @@ class OrderObserver
     }
 
     /**
-     * Check if any digital "ready_product" order details still need codes after local pool assignment.
+     * Check if any digital order details still need codes after local pool assignment.
      * If a product has active supplier mappings, dispatch a SupplierCodeFetchJob to acquire codes.
      */
     private function dispatchSupplierFallbackIfNeeded(Order $order): void
     {
         try {
-            $order->loadMissing('orderDetails');
-
-            if (! $order->orderDetails) {
-                return;
-            }
-
-            $needsSupplierFetch = false;
-
-            foreach ($order->orderDetails as $detail) {
-                $productDetails = json_decode($detail->product_details ?? '{}');
-                $productType = $productDetails->product_type ?? null;
-                $digitalType = $productDetails->digital_product_type ?? null;
-                $isDirectTopUp = ! empty($detail->direct_topup_quantity);
-
-                if ($productType !== 'digital' || $isDirectTopUp) {
-                    continue;
-                }
-
-                $productId = $detail->product_id ?? ($productDetails->id ?? null);
-                if (! $productId) {
-                    continue;
-                }
-
-                $assignedCount = DigitalProductCode::query()
-                    ->where('order_detail_id', $detail->id)
-                    ->where('status', 'sold')
-                    ->count();
-
-                $needed = max(0, (int) $detail->qty - $assignedCount);
-
-                if ($needed <= 0) {
-                    continue;
-                }
-
-                // Check if product has active supplier mappings
-                $hasMapping = SupplierProductMapping::query()
-                    ->where('product_id', $productId)
-                    ->where('is_active', true)
-                    ->whereHas('supplierApi', fn ($q) => $q->where('is_active', true))
-                    ->exists();
-
-                if ($hasMapping) {
-                    $needsSupplierFetch = true;
-                    break;
-                }
-            }
-
-            if ($needsSupplierFetch) {
+            if ($this->supplierOrderEligibilityService->orderNeedsSupplierCodeFetch($order)) {
                 SupplierCodeFetchJob::dispatch($order->id);
                 Log::info('OrderObserver: dispatched SupplierCodeFetchJob for unfulfilled codes', [
                     'order_id' => $order->id,
@@ -133,6 +89,10 @@ class OrderObserver
     private function dispatchDirectTopUpIfNeeded(Order $order): void
     {
         try {
+            if (\App\Services\DirectTopUp\DirectTopUpWalletCheckoutService::isDirectTopUpAlreadyFulfilled($order)) {
+                return;
+            }
+
             $order->loadMissing('orderDetails');
 
             if (! $order->orderDetails) {

@@ -204,23 +204,11 @@ $admin_shipping = \App\Models\ShippingType::where('seller_id', 0)->first();
                                 @php($product = $cartItem->allProducts)
 
                                 <?php
-                                $getProductCurrentStock = $product->current_stock;
-                                if (!empty($product->variation)) {
-                                    foreach (json_decode($product->variation, true) as $productVariantSingle) {
-                                        if ($productVariantSingle['type'] == $cartItem->variant) {
-                                            $getProductCurrentStock = $productVariantSingle['qty'];
-                                        }
-                                    }
-                                }
-
                                 $isDirectTopUpItem = $cartItem->isDirectTopUp();
-                                $displayQuantity = (int) floor($cartItem->getDisplayQuantity());
-                                $minCartQuantity = $isDirectTopUpItem
-                                    ? (int) floor((float) $product->direct_topup_min_quantity)
-                                    : (isset($product->minimum_order_qty) ? $product->minimum_order_qty : 1);
-                                $maxCartQuantity = $isDirectTopUpItem
-                                    ? (int) floor((float) $product->direct_topup_max_quantity)
-                                    : $getProductCurrentStock;
+                                $quantityLimits = \App\Utils\CartManager::getCartItemQuantityLimits($cartItem, $product);
+                                $displayQuantity = $quantityLimits['display_quantity'];
+                                $minCartQuantity = $quantityLimits['min'];
+                                $maxCartQuantity = $quantityLimits['max'];
                                 $lineTotal = $cartItem->getLineTotal();
                                 $unitDisplayPrice = $isDirectTopUpItem
                                     ? app(\App\Services\DirectTopUp\DirectTopUpService::class)->getPricePerUnit($product)
@@ -286,7 +274,7 @@ $admin_shipping = \App\Models\ShippingType::where('seller_id', 0)->first();
                                                         </div>
                                                     @endif
 
-                                                    @if ($product->product_type == 'physical' && ! $isDirectTopUpItem && $getProductCurrentStock < $cartItem['quantity'])
+                                                    @if ($product->product_type == 'physical' && ! $isDirectTopUpItem && $maxCartQuantity < $cartItem['quantity'])
                                                         <div class="d-flex text-danger font-bold">
                                                             <span>{{ translate('Out_Of_Stock') }}</span>
                                                         </div>
@@ -313,7 +301,7 @@ $admin_shipping = \App\Models\ShippingType::where('seller_id', 0)->first();
                                                     data-event="{{ $displayQuantity == $minCartQuantity ? 'delete' : 'minus' }}">
 
                                                     @if (
-                                                        (! $isDirectTopUpItem && $getProductCurrentStock < $displayQuantity) ||
+                                                        (! $isDirectTopUpItem && $maxCartQuantity < $displayQuantity) ||
                                                             $displayQuantity == $minCartQuantity)
                                                         <i class="tio-delete text-danger"></i>
                                                     @else
@@ -553,23 +541,11 @@ $admin_shipping = \App\Models\ShippingType::where('seller_id', 0)->first();
                     @php($product = $cartItem->allProducts)
 
                     <?php
-                    $getProductCurrentStock = $product->current_stock;
-                    if (!empty($product->variation)) {
-                        foreach (json_decode($product->variation, true) as $productVariantSingle) {
-                            if ($productVariantSingle['type'] == $cartItem->variant) {
-                                $getProductCurrentStock = $productVariantSingle['qty'];
-                            }
-                        }
-                    }
-
                     $isDirectTopUpItem = $cartItem->isDirectTopUp();
-                    $displayQuantity = (int) floor($cartItem->getDisplayQuantity());
-                    $minCartQuantity = $isDirectTopUpItem
-                        ? (int) floor((float) $product->direct_topup_min_quantity)
-                        : (isset($product->minimum_order_qty) ? $product->minimum_order_qty : 1);
-                    $maxCartQuantity = $isDirectTopUpItem
-                        ? (int) floor((float) $product->direct_topup_max_quantity)
-                        : $getProductCurrentStock;
+                    $quantityLimits = \App\Utils\CartManager::getCartItemQuantityLimits($cartItem, $product);
+                    $displayQuantity = $quantityLimits['display_quantity'];
+                    $minCartQuantity = $quantityLimits['min'];
+                    $maxCartQuantity = $quantityLimits['max'];
                     $lineTotal = $cartItem->getLineTotal();
                     $unitDisplayPrice = $isDirectTopUpItem
                         ? app(\App\Services\DirectTopUp\DirectTopUpService::class)->getPricePerUnit($product)
@@ -651,7 +627,7 @@ $admin_shipping = \App\Models\ShippingType::where('seller_id', 0)->first();
                                         </div>
                                     @endif
 
-                                    @if ($product->product_type == 'physical' && ! $isDirectTopUpItem && $getProductCurrentStock < $cartItem['quantity'])
+                                    @if ($product->product_type == 'physical' && ! $isDirectTopUpItem && $maxCartQuantity < $cartItem['quantity'])
                                         <div class="d-flex text-danger font-bold">
                                             <span>{{ translate('Out_Of_Stock') }}</span>
                                         </div>
@@ -685,7 +661,7 @@ $admin_shipping = \App\Models\ShippingType::where('seller_id', 0)->first();
                                         data-event="{{ $displayQuantity == $minCartQuantity ? 'delete' : 'minus' }}">
 
                                         @if (
-                                            (! $isDirectTopUpItem && $getProductCurrentStock < $displayQuantity) ||
+                                            (! $isDirectTopUpItem && $maxCartQuantity < $displayQuantity) ||
                                                 $displayQuantity == $minCartQuantity)
                                             <i class="tio-delete text-danger"></i>
                                         @else

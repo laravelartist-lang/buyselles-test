@@ -934,24 +934,39 @@ function updateCartQuantity(cartId, productId, action, event) {
     let segmentArray = window.location.pathname.split("/");
     let segment = segmentArray[segmentArray.length - 1];
 
+    const minQty = parseInt(cartQuantity.data("min"), 10) || 1;
+    const maxQty = isDirectTopUp
+        ? parseInt(cartQuantity.data("max"), 10) ||
+          parseInt(cartQuantity.data("current-stock"), 10) ||
+          999999
+        : parseInt(cartQuantity.data("max"), 10) ||
+          parseInt(cartQuantity.data("current-stock"), 10) ||
+          999999;
+
     if (isDirectTopUp) {
-        const minQty = parseInt(cartQuantity.data("min"), 10) || 1;
-        const maxQty =
-            parseInt(cartQuantity.data("max"), 10) ||
-            parseInt(cartQuantity.data("current-stock"), 10) ||
-            productQyt;
         productQyt = Math.max(minQty, Math.min(maxQty, productQyt));
     }
 
     if (
         !isDirectTopUp &&
-        cartQuantity.val() > cartQuantity.data("current-stock")
+        cartQuantity.val() > cartQuantity.data("current-stock") &&
+        event === "minus"
     ) {
         cartItemRemoveFunction(removeUrl, token, cartId, segment);
         return false;
     }
 
     if (
+        !isDirectTopUp &&
+        parseInt(action, 10) > 0 &&
+        productQyt > maxQty
+    ) {
+        toastr.error("Sorry, stock is limited");
+        return false;
+    }
+
+    if (
+        parseInt(action, 10) < 0 &&
         parseInt(cartQuantity.val()) === parseInt(cartQuantity.data("min")) &&
         event === "minus"
     ) {

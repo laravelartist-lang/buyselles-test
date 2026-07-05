@@ -16,8 +16,10 @@ use App\Models\Review;
 use App\Models\SupplierProductMapping;
 use App\Repositories\DealOfTheDayRepository;
 use App\Repositories\WishlistRepository;
+use App\Services\DirectTopUp\DirectTopUpService;
 use App\Services\ProductService;
 use App\Traits\ProductTrait;
+use App\Utils\CartManager;
 use App\Utils\ProductManager;
 use Brian2694\Toastr\Facades\Toastr;
 use Illuminate\Contracts\View\View;
@@ -60,6 +62,7 @@ class ProductDetailsController extends Controller
             relations: [
                 'seoInfo',
                 'digitalVariation' => 'digitalVariation',
+                'supplierMapping.supplierApi',
                 'reviews',
                 'seller.shop',
                 'digitalProductAuthors.author',
@@ -88,15 +91,20 @@ class ProductDetailsController extends Controller
                 offset: 1
             );
 
-            $firstVariationQuantity = $product['current_stock'];
+            $firstVariant = '';
             if (count(json_decode($product['variation'], true)) > 0) {
-                $firstVariationQuantity = json_decode($product['variation'], true)[0]['qty'];
+                $firstVariant = json_decode($product['variation'], true)[0]['type'] ?? '';
             }
-            if ($product['product_type'] === 'digital') {
-                $firstVariationQuantity = SupplierProductMapping::hasActiveMapping((int) $product['id'])
-                    ? 100
-                    : DigitalProductCode::where('product_id', $product['id'])->available()->count();
-            }
+
+            $productDetailsStock = CartManager::getProductDetailsStockPresentation(
+                $product,
+                $firstVariant !== '' ? $firstVariant : null
+            );
+            $firstVariationQuantity = $productDetailsStock['available_quantity'];
+
+            $directTopUpService = app(DirectTopUpService::class);
+            $isDirectTopUpProduct = $directTopUpService->canAddToCart($product);
+            $directTopUpConfig = $isDirectTopUpProduct ? $directTopUpService->buildApiPayload($product) : null;
 
             $rating = getRating(reviews: $product->reviews);
             $decimalPointSettings = getWebConfig('decimal_point_settings');
@@ -164,7 +172,10 @@ class ProductDetailsController extends Controller
                 'productAuthorsInfo',
                 'productPublishingHouseInfo',
                 'firstVariationQuantity',
-                'productDetailsMeta'
+                'productDetailsStock',
+                'productDetailsMeta',
+                'isDirectTopUpProduct',
+                'directTopUpConfig',
             ));
         }
 

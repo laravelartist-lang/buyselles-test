@@ -74,6 +74,11 @@ class ReloadlyDriver implements SupplierDriverInterface
         }
 
         $items = $response->json('content', []);
+        $total = (int) ($response->json('totalElements') ?? count($items));
+
+        if (is_callable($filters['on_page'] ?? null)) {
+            $filters['on_page']((int) $page, count($items), $total);
+        }
 
         return array_map(function ($item): SupplierProductDTO {
             return new SupplierProductDTO(

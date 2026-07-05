@@ -53,6 +53,7 @@ class Cart extends Model
         'quantity' => 'integer',
         'price' => 'float',
         'custom_amount' => 'float',
+        'direct_topup_account_id' => 'encrypted',
         'direct_topup_quantity' => 'float',
         'tax' => 'float',
         'is_checked' => 'integer',
