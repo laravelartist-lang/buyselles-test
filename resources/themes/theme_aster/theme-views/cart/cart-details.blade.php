@@ -301,7 +301,7 @@
                                                                         data-min="{{ $minCartQuantity }}"
                                                                         data-max="{{ $maxCartQuantity }}">
                                                                     <span
-                                                                        class="quantity__plus cart-qty-btn update-cart-quantity-list-cart-data  {{ $isProductCountChangeable ? '' : 'd-none' }}""
+                                                                        class="quantity__plus cart-qty-btn update-cart-quantity-list-cart-data {{ $isProductCountChangeable ? '' : 'd-none' }}"
                                                                         data-prevent=true
                                                                         data-min-order="{{ $minCartQuantity }}"
                                                                         data-cart="{{ $cartItem['id'] }}"

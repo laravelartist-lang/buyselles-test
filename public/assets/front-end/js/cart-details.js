@@ -105,26 +105,6 @@ function removeProductFromCartList(key) {
         });
 }
 
-$('.qty_plus').on('click', function () {
-    var $qty = $(this).parent().find('input');
-    var currentVal = parseInt($qty.val());
-    if (!isNaN(currentVal)) {
-        $qty.val(currentVal + 1);
-    }
-    quantityListener();
-});
-
-
-$('.qty_minus').on('click', function () {
-    var $qty = $(this).parent().find('input');
-    var currentVal = parseInt($qty.val());
-    if (!isNaN(currentVal) && currentVal > 1) {
-        $qty.val(currentVal - 1);
-    }
-    quantityListener();
-});
-
-
 function quantityListener() {
     $('.qty_input').each(function () {
         var qty = $(this);

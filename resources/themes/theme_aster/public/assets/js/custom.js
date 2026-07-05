@@ -546,6 +546,19 @@ function getStockCheckOnVariantPrice(formSelector = ".add-to-cart-details-form")
 
 /* Increase */
 $(".quantity__plus").on("click", function () {
+    if (
+        $(this).hasClass("update-cart-quantity-list-cart-data") ||
+        $(this).hasClass("update-cart-quantity-list-mobile-cart-data")
+    ) {
+        return;
+    }
+
+    if ($(this).data("prevent") === true) {
+        let parentForm = $(this).data("form");
+        getVariantPrice(parentForm ?? ".add-to-cart-details-form");
+        return;
+    }
+
     if ($(this).data("prevent") !== true) {
         let $qty = $(this).parent().find("input");
         let currentVal = parseInt($qty.val());
@@ -561,7 +574,19 @@ $(".quantity__plus").on("click", function () {
 });
 /* Decrease */
 $(".quantity__minus").on("click", function () {
+    if (
+        $(this).hasClass("update-cart-quantity-list-cart-data") ||
+        $(this).hasClass("update-cart-quantity-list-mobile-cart-data")
+    ) {
+        return;
+    }
+
     let parentForm = $(this).data("form") ?? ".add-to-cart-details-form";
+    if ($(this).data("prevent") === true) {
+        getVariantPrice(parentForm);
+        return;
+    }
+
     if ($(this).data("prevent") !== true) {
         let $qty = $(this).parent().find("input");
         let currentVal = parseInt($qty.val());
@@ -667,7 +692,23 @@ function addToCart(formSelector, redirectToCheckout = false, url = null) {
                 }
 
                 if (response.status == 1) {
-                    updateNavCart(true);
+                    const willRedirectToCheckout =
+                        redirectToCheckout?.toString() === "true" &&
+                        (response.redirect_to_url || url);
+
+                    if (willRedirectToCheckout) {
+                        $("#quickViewModal").modal("hide");
+
+                        if (response.redirect_to_url) {
+                            location.href = response.redirect_to_url;
+                            return false;
+                        }
+
+                        location.href = url;
+                        return false;
+                    }
+
+                    updateNavCart();
                     toastr.success(response.message, {
                         CloseButton: true,
                         ProgressBar: true,
@@ -680,15 +721,6 @@ function addToCart(formSelector, redirectToCheckout = false, url = null) {
                         actionAddToCartBtn.html(actionAddToCartBtn.data("update"));
                     }
 
-                    if (redirectToCheckout?.toString() === 'true' && response.redirect_to_url) {
-                        setTimeout(function () {
-                            location.href = response.redirect_to_url;
-                        }, 100);
-                    } else if (redirectToCheckout === true) {
-                        setTimeout(function () {
-                            location.href = url;
-                        }, 100);
-                    }
                     $("#quickViewModal").modal("hide");
                     return false;
                 } else if (response.status == 0) {
