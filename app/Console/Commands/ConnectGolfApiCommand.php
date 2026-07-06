@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Jobs\SyncSupplierCatalogJob;
 use App\Models\SupplierApi;
 use App\Services\Supplier\SupplierManager;
 use Illuminate\Console\Command;
@@ -100,6 +101,9 @@ class ConnectGolfApiCommand extends Command
 
             // Health
             'health_endpoint' => '/balance',
+
+            // Currency — Golf API prices are in JOD; convert to USD at driver boundary
+            'source_currency' => 'JOD',
         ];
     }
 
@@ -121,7 +125,12 @@ class ConnectGolfApiCommand extends Command
             ->first();
 
         if ($supplier && ! $this->option('force')) {
-            $this->warn('Supplier already exists (ID: '.$supplier->id.'). Use --force to re-create.');
+            $supplier->settings = array_merge($this->golfSettings(), $supplier->settings ?? []);
+            $supplier->save();
+
+            $this->clearCatalogCache($supplier);
+
+            $this->info('Updated existing supplier settings (ID: '.$supplier->id.').');
             $this->line('');
 
             return $this->testConnection($supplier);
@@ -180,6 +189,12 @@ class ConnectGolfApiCommand extends Command
         DB::statement("ALTER TABLE supplier_apis MODIFY COLUMN auth_type ENUM('api_key','bearer_token','oauth2','basic','hmac','login_via') DEFAULT 'api_key'");
 
         $this->line('Enum updated.');
+    }
+
+    private function clearCatalogCache(SupplierApi $supplier): void
+    {
+        Cache::forget(SyncSupplierCatalogJob::catalogCacheKey($supplier->id));
+        Cache::forget(SyncSupplierCatalogJob::statusCacheKey($supplier->id));
     }
 
     private function testConnection(SupplierApi $supplier): int

@@ -190,7 +190,7 @@ class SupplierCatalogSyncService
         $products = $driver->fetchProducts($filters);
 
         $hasMore = $this->determineHasMorePages($supplier->driver, $pageMeta, $config);
-        $mappedProducts = $this->mapProductsToCatalog($products);
+        $mappedProducts = $this->mapProductsToCatalog($products, $supplier);
 
         Cache::put(self::checkpointPageCacheKey($supplierId, $pageIndex), $mappedProducts, now()->addHours(6));
 
@@ -280,7 +280,9 @@ class SupplierCatalogSyncService
     public function markComplete(int $supplierId): void
     {
         $checkpoint = Cache::get(self::checkpointCacheKey($supplierId), []);
+        $supplier = SupplierApi::findOrFail($supplierId);
         $catalog = $this->mergeCheckpointProducts($supplierId, $checkpoint);
+        $catalog = $this->enrichCatalogSourcePrices($catalog, $supplier);
 
         Cache::put(self::catalogCacheKey($supplierId), $catalog, now()->addHours(6));
 
@@ -529,19 +531,70 @@ class SupplierCatalogSyncService
     }
 
     /**
+     * Ensure catalog items include the supplier's source currency price for admin display.
+     *
+     * @param  array<int, array<string, mixed>>  $items
+     * @return array<int, array<string, mixed>>
+     */
+    public function enrichCatalogSourcePrices(array $items, SupplierApi $supplier): array
+    {
+        $sourceCurrency = strtoupper(trim((string) ($supplier->settings['source_currency'] ?? '')));
+
+        if ($sourceCurrency === '' || $sourceCurrency === 'USD') {
+            return $items;
+        }
+
+        $converter = app(SupplierCurrencyConverter::class);
+
+        return array_map(function (array $item) use ($sourceCurrency, $converter): array {
+            if (isset($item['source_price']) && $item['source_price'] !== '') {
+                $item['source_currency'] = $item['source_currency'] ?? $sourceCurrency;
+
+                return $item;
+            }
+
+            $displayCurrency = strtoupper(trim((string) ($item['currency'] ?? 'USD')));
+            $displayPrice = (float) ($item['price'] ?? 0);
+
+            if ($displayPrice > 0 && $displayCurrency === 'USD') {
+                $item['source_price'] = $converter->fromUsd($displayPrice, $sourceCurrency);
+                $item['source_currency'] = $sourceCurrency;
+            }
+
+            return $item;
+        }, $items);
+    }
+
+    /**
      * @param  SupplierProductDTO[]  $products
      * @return array<int, array<string, mixed>>
      */
-    private function mapProductsToCatalog(array $products): array
+    private function mapProductsToCatalog(array $products, ?SupplierApi $supplier = null): array
     {
-        return collect($products)->map(fn (SupplierProductDTO $product) => [
-            'id' => $product->supplierProductId,
-            'name' => $product->name,
-            'price' => $product->price,
-            'currency' => $product->currency,
-            'stock' => $product->stockAvailable,
-            'region' => $product->region,
-            'image' => $product->imageUrl,
-        ])->values()->all();
+        $sourceCurrency = strtoupper(trim((string) ($supplier?->settings['source_currency'] ?? '')));
+        $sourcePriceField = (string) ($supplier?->settings['product_price_field'] ?? 'price');
+
+        return collect($products)->map(function (SupplierProductDTO $product) use ($sourceCurrency, $sourcePriceField): array {
+            $entry = [
+                'id' => $product->supplierProductId,
+                'name' => $product->name,
+                'price' => $product->price,
+                'currency' => $product->currency,
+                'stock' => $product->stockAvailable,
+                'region' => $product->region,
+                'image' => $product->imageUrl,
+            ];
+
+            if ($sourceCurrency !== '' && $sourceCurrency !== 'USD') {
+                $rawPrice = data_get($product->rawData, $sourcePriceField);
+
+                if ($rawPrice !== null && $rawPrice !== '') {
+                    $entry['source_price'] = (float) $rawPrice;
+                    $entry['source_currency'] = $sourceCurrency;
+                }
+            }
+
+            return $entry;
+        })->values()->all();
     }
 }

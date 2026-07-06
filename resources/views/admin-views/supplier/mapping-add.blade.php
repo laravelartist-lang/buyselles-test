@@ -214,7 +214,8 @@
                             <tr>
                                 <th>{{ translate('id_SKU') }}</th>
                                 <th>{{ translate('name') }}</th>
-                                <th class="text-end">{{ translate('price') }}</th>
+                                <th class="text-end">{{ translate('price') }} (USD)</th>
+                                <th class="text-end">{{ translate('price') }} (JOD)</th>
                                 <th class="text-center">{{ translate('qty_available') }}</th>
                                 <th class="text-center">{{ translate('region') }}</th>
                                 <th class="text-center">{{ translate('action') }}</th>
@@ -590,10 +591,15 @@
                         ? '<span class="badge bg-secondary">' + escHtml(p.region) + '</span>'
                         : '<span class="text-muted">\u2014</span>';
 
+                    var jodPriceHtml = p.source_price != null
+                        ? escHtml(String(p.source_price)) + ' <small class="text-muted">' + escHtml(p.source_currency || 'JOD') + '</small>'
+                        : '<span class="text-muted">\u2014</span>';
+
                     return '<tr>' +
                         '<td><code>' + escHtml(String(p.id)) + '</code></td>' +
                         '<td>' + escHtml(p.name) + '</td>' +
-                        '<td class="text-end fw-semibold">' + escHtml(String(p.price)) + ' <small class="text-muted">' + escHtml(p.currency) + '</small></td>' +
+                        '<td class="text-end fw-semibold">' + escHtml(String(p.price)) + ' <small class="text-muted">USD</small></td>' +
+                        '<td class="text-end">' + jodPriceHtml + '</td>' +
                         '<td class="text-center">' + stockHtml + '</td>' +
                         '<td class="text-center">' + region + '</td>' +
                         '<td class="text-center">' +
@@ -673,13 +679,13 @@
         currentPage++; loadCatalog();
     });
 
-    // Refresh → force a new sync from supplier API
+    // Refresh → force a fresh sync from supplier API
     refreshBtn.addEventListener('click', function () {
         var supplierId = supplierSel.value;
         if (supplierId) {
             currentPage = 0;
             tbodyEl.innerHTML = '';
-            startSync(supplierId);
+            startSync(supplierId, { fresh: true });
         }
     });
 
@@ -707,6 +713,50 @@
     // If supplier was pre-selected (e.g. old value from validation), show button
     if (supplierSel.value) {
         browsBtn.style.display = 'inline-flex';
+    }
+
+    var costCurrencyEl = document.getElementById('cost_currency');
+    var costPriceEl = document.getElementById('cost_price');
+    var previousCurrency = costCurrencyEl ? costCurrencyEl.value.trim().toUpperCase() : 'USD';
+    var convertCostUrl = '{{ route('admin.supplier.mapping.convert-cost') }}';
+    var currencyConvertInFlight = false;
+
+    if (costCurrencyEl && costPriceEl) {
+        costCurrencyEl.addEventListener('change', function () {
+            var newCurrency = this.value.trim().toUpperCase();
+            var oldCurrency = previousCurrency;
+
+            if (newCurrency === oldCurrency || currencyConvertInFlight) {
+                previousCurrency = newCurrency;
+                return;
+            }
+
+            currencyConvertInFlight = true;
+
+            fetch(convertCostUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+                    'Accept': 'application/json',
+                },
+                body: JSON.stringify({
+                    amount: parseFloat(costPriceEl.value) || 0,
+                    from_currency: oldCurrency,
+                    to_currency: newCurrency,
+                }),
+            })
+            .then(function (response) { return response.json(); })
+            .then(function (data) {
+                if (data.success) {
+                    costPriceEl.value = data.amount;
+                }
+            })
+            .finally(function () {
+                previousCurrency = newCurrency;
+                currencyConvertInFlight = false;
+            });
+        });
     }
 })();
 </script>

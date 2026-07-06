@@ -11,6 +11,7 @@ use App\DTOs\Supplier\SupplierProductDTO;
 use App\DTOs\Supplier\WebhookResult;
 use App\Models\SupplierApi;
 use App\Services\Supplier\Concerns\MakesResilientHttpRequests;
+use App\Services\Supplier\SupplierCurrencyConverter;
 use Illuminate\Http\Client\Response;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -175,6 +176,8 @@ class GenericRestDriver implements SupplierDriverInterface
 
         return array_map(function ($item) use ($idField, $nameField, $priceField, $stockField, $categoryField): SupplierProductDTO {
             $catValue = data_get($item, $categoryField);
+            $rawPrice = (float) data_get($item, $priceField, 0);
+            $converted = $this->convertSupplierPrice($rawPrice);
 
             return new SupplierProductDTO(
                 supplierProductId: (string) data_get($item, $idField, ''),
@@ -182,8 +185,8 @@ class GenericRestDriver implements SupplierDriverInterface
                 description: data_get($item, 'description'),
                 category: is_string($catValue) ? $catValue : (is_scalar($catValue) ? (string) $catValue : null),
                 imageUrl: data_get($item, 'image'),
-                price: (float) data_get($item, $priceField, 0),
-                currency: data_get($item, 'currency', 'USD'),
+                price: $converted['price'],
+                currency: $converted['currency'],
                 stockAvailable: (int) data_get($item, $stockField, 0),
                 rawData: (array) $item,
             );
@@ -200,11 +203,12 @@ class GenericRestDriver implements SupplierDriverInterface
 
         $stockPath = $this->getSetting('stock_response_path', 'stock');
         $pricePath = $this->getSetting('stock_price_path', 'price');
+        $converted = $this->convertSupplierPrice((float) data_get($data, $pricePath, 0));
 
         return new StockResult(
             available: (int) data_get($data, $stockPath, 0),
-            price: (float) data_get($data, $pricePath, 0),
-            currency: (string) data_get($data, 'currency', 'USD'),
+            price: $converted['price'],
+            currency: $converted['currency'],
             rawData: $data,
         );
     }
@@ -426,12 +430,12 @@ class GenericRestDriver implements SupplierDriverInterface
 
             $data = $this->unwrapResponseData($response->json() ?? []);
             $balancePath = $this->getSetting('balance_response_path', 'balance');
-            $currencyPath = $this->getSetting('balance_currency_path', 'currency');
+            $converted = $this->convertSupplierPrice((float) data_get($data, $balancePath, 0));
 
             return new BalanceResult(
                 supported: true,
-                balance: (float) data_get($data, $balancePath, 0),
-                currency: (string) data_get($data, $currencyPath, 'USD'),
+                balance: $converted['price'],
+                currency: $converted['currency'],
             );
         } catch (\Throwable $e) {
             return new BalanceResult(supported: true, message: $e->getMessage());
@@ -494,6 +498,7 @@ class GenericRestDriver implements SupplierDriverInterface
             'health_endpoint' => ['label' => 'Health Check Endpoint', 'type' => 'text', 'default' => '/'],
             'custom_headers' => ['label' => 'Custom Headers (JSON)', 'type' => 'text', 'default' => ''],
             'status_map' => ['label' => 'Status Map (JSON: source_status => normalized_status)', 'type' => 'text', 'default' => ''],
+            'source_currency' => ['label' => 'Source Currency (ISO code for API prices, e.g. JOD)', 'type' => 'text', 'default' => ''],
         ];
     }
 
@@ -792,6 +797,25 @@ class GenericRestDriver implements SupplierDriverInterface
     private function getSetting(string $key, mixed $default = null): mixed
     {
         return $this->settings[$key] ?? $default;
+    }
+
+    private function getSourceCurrency(): ?string
+    {
+        $currency = $this->getSetting('source_currency');
+
+        if (! is_string($currency) || trim($currency) === '') {
+            return null;
+        }
+
+        return strtoupper(trim($currency));
+    }
+
+    /**
+     * @return array{price: float, currency: string}
+     */
+    private function convertSupplierPrice(float $amount): array
+    {
+        return app(SupplierCurrencyConverter::class)->convertPrice($amount, $this->getSourceCurrency());
     }
 
     /**

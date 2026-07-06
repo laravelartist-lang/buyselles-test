@@ -52,7 +52,7 @@
                     <div class="col-lg-4">
                         <div class="form-group">
                             <label class="form-label">{{ translate('cost_price') }} <span class="text-danger">*</span></label>
-                            <input type="number" name="cost_price" class="form-control" step="0.01" min="0"
+                            <input type="number" name="cost_price" id="cost_price" class="form-control" step="0.01" min="0"
                                    value="{{ old('cost_price', $mapping->cost_price) }}" required>
                         </div>
                     </div>
@@ -60,7 +60,7 @@
                     <div class="col-lg-2">
                         <div class="form-group">
                             <label class="form-label">{{ translate('currency') }}</label>
-                            <input type="text" name="cost_currency" class="form-control" maxlength="3"
+                            <input type="text" name="cost_currency" id="cost_currency" class="form-control" maxlength="3"
                                    value="{{ old('cost_currency', $mapping->cost_currency) }}">
                         </div>
                     </div>
@@ -310,6 +310,50 @@
                 toastr.error('{{ translate("failed_to_check_direct_topup_support") ?: "Failed to check supplier capabilities." }}');
                 this.checked = false;
                 directTopupFields.forEach(el => { el.style.display = 'none'; });
+            });
+        });
+    }
+
+    var costCurrencyEl = document.getElementById('cost_currency');
+    var costPriceEl = document.getElementById('cost_price');
+    var previousCurrency = costCurrencyEl ? costCurrencyEl.value.trim().toUpperCase() : 'USD';
+    var convertCostUrl = '{{ route('admin.supplier.mapping.convert-cost') }}';
+    var currencyConvertInFlight = false;
+
+    if (costCurrencyEl && costPriceEl) {
+        costCurrencyEl.addEventListener('change', function () {
+            var newCurrency = this.value.trim().toUpperCase();
+            var oldCurrency = previousCurrency;
+
+            if (newCurrency === oldCurrency || currencyConvertInFlight) {
+                previousCurrency = newCurrency;
+                return;
+            }
+
+            currencyConvertInFlight = true;
+
+            fetch(convertCostUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+                    'Accept': 'application/json',
+                },
+                body: JSON.stringify({
+                    amount: parseFloat(costPriceEl.value) || 0,
+                    from_currency: oldCurrency,
+                    to_currency: newCurrency,
+                }),
+            })
+            .then(function (response) { return response.json(); })
+            .then(function (data) {
+                if (data.success) {
+                    costPriceEl.value = data.amount;
+                }
+            })
+            .finally(function () {
+                previousCurrency = newCurrency;
+                currencyConvertInFlight = false;
             });
         });
     }

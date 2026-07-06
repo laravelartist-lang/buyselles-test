@@ -5,13 +5,17 @@ namespace Tests\Unit;
 use App\DTOs\Supplier\SupplierOrderResult;
 use App\Models\SupplierApi;
 use App\Services\Supplier\Drivers\GolfApiDriver;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Tests\Concerns\ManagesTestDatabaseSchema;
 use Tests\TestCase;
 
 class GolfApiDriverTest extends TestCase
 {
+    use ManagesTestDatabaseSchema;
+
     private GolfApiDriver $driver;
 
     protected function setUp(): void
@@ -38,6 +42,39 @@ class GolfApiDriverTest extends TestCase
 
         $configureMethod = new \ReflectionMethod($this->driver, 'configure');
         $configureMethod->invoke($this->driver, $supplierMock);
+    }
+
+    public function test_fetch_products_converts_jod_prices_to_usd(): void
+    {
+        $this->seedJodExchangeRates();
+
+        Http::fake([
+            'api.golf-test.com/api/products*' => Http::response([
+                'status' => 'success',
+                'result' => [
+                    'data' => [
+                        [
+                            'id' => 99,
+                            'title' => 'Orange Card',
+                            'price' => 1.709,
+                            'stock' => 20,
+                        ],
+                    ],
+                    'meta' => [
+                        'total' => 1,
+                        'last_page' => 1,
+                    ],
+                ],
+                'message' => 'Products retrieved successfully',
+            ]),
+        ]);
+
+        $products = $this->driver->fetchProducts(['page' => 1, 'fetch_all' => false]);
+
+        $this->assertCount(1, $products);
+        $this->assertSame('USD', $products[0]->currency);
+        $this->assertEqualsWithDelta(2.41, $products[0]->price, 0.01);
+        $this->assertSame(1.709, $products[0]->rawData['price']);
     }
 
     // ─── fetchProductCustomFields ───────────────────────────────────────
@@ -572,5 +609,51 @@ class GolfApiDriverTest extends TestCase
         $method->setAccessible(true);
 
         return $method->invoke($this->driver, $supplierProductId);
+    }
+
+    private function seedJodExchangeRates(): void
+    {
+        $this->recreateTable('currencies', function (Blueprint $table): void {
+            $table->id();
+            $table->string('name')->nullable();
+            $table->string('symbol')->nullable();
+            $table->string('code', 10);
+            $table->decimal('exchange_rate', 14, 6)->default(1);
+            $table->boolean('status')->default(true);
+            $table->timestamps();
+        });
+
+        $this->recreateTable('business_settings', function (Blueprint $table): void {
+            $table->id();
+            $table->string('type');
+            $table->text('value')->nullable();
+            $table->timestamps();
+        });
+
+        $usdId = $this->app['db']->table('currencies')->insertGetId([
+            'name' => 'USD',
+            'symbol' => '$',
+            'code' => 'USD',
+            'exchange_rate' => 1,
+            'status' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->app['db']->table('currencies')->insert([
+            'name' => 'Jordanian Dinar',
+            'symbol' => 'JOD',
+            'code' => 'JOD',
+            'exchange_rate' => 0.709,
+            'status' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->app['db']->table('business_settings')->insert([
+            ['type' => 'currency_model', 'value' => 'multi_currency', 'created_at' => now(), 'updated_at' => now()],
+            ['type' => 'system_default_currency', 'value' => (string) $usdId, 'created_at' => now(), 'updated_at' => now()],
+            ['type' => 'decimal_point_settings', 'value' => '2', 'created_at' => now(), 'updated_at' => now()],
+        ]);
     }
 }

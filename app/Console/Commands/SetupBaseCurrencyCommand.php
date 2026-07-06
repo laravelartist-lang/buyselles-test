@@ -75,6 +75,11 @@ class SetupBaseCurrencyCommand extends Command
             $this->line("  {$c->code} ({$c->name}) — rate: {$c->exchange_rate}");
         }
 
+        if (is_file(base_path('bootstrap/cache/config.php'))) {
+            @unlink(base_path('bootstrap/cache/config.php'));
+            $this->info('Cleared cached config so multi-currency settings take effect immediately.');
+        }
+
         return self::SUCCESS;
     }
 

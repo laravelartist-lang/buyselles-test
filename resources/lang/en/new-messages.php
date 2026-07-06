@@ -11642,4 +11642,9 @@ return [
     'enable_direct_topup' => 'Enable direct topup',
     'direct_topup_settings' => 'Direct topup settings',
     'pause' => 'Pause',
+    'Currency_code_is_required' => 'Currency code is required',
+    'currency_delete_successfully' => 'Currency delete successfully',
+    'Never' => 'Never',
+    'Exchange_rates_synced_successfully' => 'Exchange rates synced successfully',
+    'wallet_transfers' => 'Wallet transfers',
 ];

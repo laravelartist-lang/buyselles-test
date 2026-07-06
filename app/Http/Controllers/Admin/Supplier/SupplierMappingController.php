@@ -8,6 +8,7 @@ use App\Jobs\SyncDenominationsJob;
 use App\Models\Product;
 use App\Models\SupplierApi;
 use App\Models\SupplierProductMapping;
+use App\Services\Supplier\SupplierCurrencyConverter;
 use Brian2694\Toastr\Facades\Toastr;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Builder;
@@ -316,6 +317,37 @@ class SupplierMappingController extends BaseController
         Toastr::success(translate('mapping_deleted_successfully'));
 
         return redirect()->back();
+    }
+
+    /**
+     * AJAX: convert cost price between currencies using exchange rates.
+     */
+    public function convertCost(Request $request, SupplierCurrencyConverter $converter): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'amount' => 'required|numeric|min:0',
+            'from_currency' => 'required|string|max:3',
+            'to_currency' => 'required|string|max:3',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => $validator->errors()->first(),
+            ], 422);
+        }
+
+        $amount = $converter->convertBetween(
+            (float) $request->input('amount'),
+            (string) $request->input('from_currency'),
+            (string) $request->input('to_currency'),
+        );
+
+        return response()->json([
+            'success' => true,
+            'amount' => $amount,
+            'currency' => strtoupper((string) $request->input('to_currency')),
+        ]);
     }
 
     /**

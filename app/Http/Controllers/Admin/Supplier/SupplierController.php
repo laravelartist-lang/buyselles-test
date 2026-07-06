@@ -258,7 +258,11 @@ class SupplierController extends BaseController
         }
 
         $total = $filtered->count();
-        $items = $filtered->slice($page * $size, $size)->values()->all();
+        $syncService = app(\App\Services\Supplier\SupplierCatalogSyncService::class);
+        $items = $syncService->enrichCatalogSourcePrices(
+            $filtered->slice($page * $size, $size)->values()->all(),
+            $supplier,
+        );
 
         return response()->json([
             'success' => true,
@@ -305,6 +309,7 @@ class SupplierController extends BaseController
         }
 
         if (! $resume && ! $freshStart && ! in_array($current['state'] ?? '', ['failed', 'paused'], true)) {
+            $syncService->clearCheckpointData($supplier->id);
             \Cache::forget(\App\Jobs\SyncSupplierCatalogJob::catalogCacheKey($supplier->id));
         }
 

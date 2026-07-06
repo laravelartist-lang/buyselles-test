@@ -11,6 +11,7 @@ use App\DTOs\Supplier\SupplierProductDTO;
 use App\DTOs\Supplier\WebhookResult;
 use App\Models\SupplierApi;
 use App\Services\Supplier\Concerns\MakesResilientHttpRequests;
+use App\Services\Supplier\SupplierCurrencyConverter;
 use Illuminate\Http\Client\Response;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -142,6 +143,7 @@ class GolfApiDriver implements SupplierDriverInterface
 
                 $category = $product['category'] ?? null;
                 $categoryTitle = $category['title'] ?? null;
+                $converted = $this->convertSupplierPrice((float) ($product['price'] ?? 0));
 
                 $dtos[] = new SupplierProductDTO(
                     supplierProductId: $productId,
@@ -149,8 +151,8 @@ class GolfApiDriver implements SupplierDriverInterface
                     description: $product['description'] ?? null,
                     category: $categoryTitle,
                     imageUrl: $product['main_image'] ?? null,
-                    price: (float) ($product['price'] ?? 0),
-                    currency: 'USD',
+                    price: $converted['price'],
+                    currency: $converted['currency'],
                     stockAvailable: isset($product['stock']) ? (int) $product['stock'] : 999,
                     region: null,
                     rawData: $product,
@@ -186,11 +188,12 @@ class GolfApiDriver implements SupplierDriverInterface
         foreach ($items as $product) {
             if ((string) ($product['id'] ?? '') === $supplierProductId) {
                 $available = isset($product['stock']) ? (int) $product['stock'] : 999;
+                $converted = $this->convertSupplierPrice((float) ($product['price'] ?? 0));
 
                 return new StockResult(
                     available: $available,
-                    price: (float) ($product['price'] ?? 0),
-                    currency: 'USD',
+                    price: $converted['price'],
+                    currency: $converted['currency'],
                     rawData: $product,
                 );
             }
@@ -205,11 +208,12 @@ class GolfApiDriver implements SupplierDriverInterface
                 $product = $result['data'] ?? [];
 
                 $available = isset($product['stock']) ? (int) $product['stock'] : 999;
+                $converted = $this->convertSupplierPrice((float) ($product['price'] ?? 0));
 
                 return new StockResult(
                     available: $available,
-                    price: (float) ($product['price'] ?? 0),
-                    currency: 'USD',
+                    price: $converted['price'],
+                    currency: $converted['currency'],
                     rawData: $product,
                 );
             }
@@ -434,11 +438,12 @@ class GolfApiDriver implements SupplierDriverInterface
                 $data = $result['data'] ?? $result;
 
                 $balance = (float) ($data['balance'] ?? 0);
+                $converted = $this->convertSupplierPrice($balance);
 
                 return new BalanceResult(
                     supported: true,
-                    balance: $balance,
-                    currency: 'USD',
+                    balance: $converted['price'],
+                    currency: $converted['currency'],
                 );
             }
 
@@ -477,10 +482,30 @@ class GolfApiDriver implements SupplierDriverInterface
                 'type' => 'number',
                 'default' => 90,
             ],
+            'source_currency' => [
+                'label' => 'Source Currency (ISO code for API prices, e.g. JOD)',
+                'type' => 'text',
+                'default' => 'JOD',
+            ],
         ];
     }
 
     // ─── Internal helpers ─────────────────────────────────────────────────────
+
+    private function getSourceCurrency(): string
+    {
+        $currency = $this->settings['source_currency'] ?? 'JOD';
+
+        return strtoupper(trim((string) $currency));
+    }
+
+    /**
+     * @return array{price: float, currency: string}
+     */
+    private function convertSupplierPrice(float $amount): array
+    {
+        return app(SupplierCurrencyConverter::class)->convertPrice($amount, $this->getSourceCurrency());
+    }
 
     /**
      * Fetch custom fields for a product from the Golf API.
@@ -501,7 +526,16 @@ class GolfApiDriver implements SupplierDriverInterface
             return $this->productCustomFieldsCache[$productId];
         }
 
-        $response = $this->get("/products/{$productId}");
+        try {
+            $response = $this->get("/products/{$productId}");
+        } catch (\Illuminate\Http\Client\RequestException $e) {
+            Log::warning('GolfApiDriver: failed to fetch product custom_fields', [
+                'product_id' => $productId,
+                'status' => $e->response->status(),
+            ]);
+
+            return [];
+        }
 
         if ($response->failed()) {
             Log::warning('GolfApiDriver: failed to fetch product custom_fields', [
