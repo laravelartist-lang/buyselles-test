@@ -262,6 +262,7 @@ class SupplierController extends BaseController
         $items = $syncService->enrichCatalogSourcePrices(
             $filtered->slice($page * $size, $size)->values()->all(),
             $supplier,
+            allowLiveRefresh: true,
         );
 
         return response()->json([
