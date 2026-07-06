@@ -40,7 +40,9 @@ class SupplierWebhookProcessJob implements ShouldQueue
         public readonly array $payload,
         public readonly array $headers,
         public readonly string $fullUrl,
-    ) {}
+    ) {
+        $this->onQueue('fulfillment');
+    }
 
     public function handle(SupplierManager $manager): void
     {

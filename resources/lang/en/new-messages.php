@@ -11202,6 +11202,11 @@ return [
     'price_sync_completed' => 'Price sync completed',
     'Supplier_API_Balances' => 'Supplier API Balances',
     'starting_catalog_sync' => 'Starting catalog sync',
+    'catalog_sync_paused' => 'Catalog sync paused',
+    'catalog_sync_cancelled' => 'Catalog sync cancelled',
+    'start_fresh' => 'Start fresh',
+    'failed_to_pause_sync' => 'Failed to pause catalog sync',
+    'failed_to_cancel_sync' => 'Failed to cancel catalog sync',
     'Want_to_order_the_same_items_again' => 'Want to order the same items again',
     'Thank_You_For_Your_Purchase' => 'Thank You For Your Purchase',
     'PIN' => 'PIN',
@@ -11636,4 +11641,5 @@ return [
     'direct_topup_mapping_hint' => 'Direct topup mapping hint',
     'enable_direct_topup' => 'Enable direct topup',
     'direct_topup_settings' => 'Direct topup settings',
+    'pause' => 'Pause',
 ];

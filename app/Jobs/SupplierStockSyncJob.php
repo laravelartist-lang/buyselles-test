@@ -27,7 +27,10 @@ class SupplierStockSyncJob implements ShouldQueue
 
     public int $timeout = 600; // 10 minutes
 
-    public function __construct() {}
+    public function __construct()
+    {
+        $this->onQueue('slow');
+    }
 
     public function handle(SupplierManager $manager): void
     {

@@ -40,7 +40,9 @@ class SupplierOrderPollJob implements ShouldQueue
 
     public function __construct(
         public readonly int $supplierOrderId,
-    ) {}
+    ) {
+        $this->onQueue('fulfillment');
+    }
 
     public function handle(SupplierManager $manager, DigitalProductCodeService $codeService): void
     {

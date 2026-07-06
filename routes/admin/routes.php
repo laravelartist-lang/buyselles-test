@@ -1331,6 +1331,9 @@ Route::group(['prefix' => 'admin', 'as' => 'admin.', 'middleware' => ['admin', '
             Route::get('test-connection/{id}', 'testConnection')->name('test-connection');
             Route::get('{id}/catalog', 'browseCatalog')->name('catalog');
             Route::post('{id}/catalog/sync', 'dispatchCatalogSync')->name('catalog.sync');
+            Route::post('{id}/catalog/pause', 'pauseCatalogSync')->name('catalog.pause');
+            Route::post('{id}/catalog/cancel', 'cancelCatalogSync')->name('catalog.cancel');
+            Route::post('{id}/catalog/resume', 'resumeCatalogSync')->name('catalog.resume');
             Route::get('{id}/catalog/status', 'catalogSyncStatus')->name('catalog.status');
         });
 

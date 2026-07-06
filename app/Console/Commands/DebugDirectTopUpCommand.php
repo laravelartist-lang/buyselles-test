@@ -6,6 +6,7 @@ use App\Models\Order;
 use App\Models\OrderDetail;
 use App\Models\SupplierOrder;
 use App\Models\SupplierProductMapping;
+use App\Services\DirectTopUp\DirectTopUpWalletCheckoutService;
 use App\Services\Supplier\SupplierManager;
 use App\Utils\OrderManager;
 use Illuminate\Console\Command;
@@ -16,6 +17,7 @@ class DebugDirectTopUpCommand extends Command
     protected $signature = 'topup:debug
                             {order? : Order ID (defaults to latest direct top-up order)}
                             {--retry : Run fulfillment synchronously and print the Golf API response}
+                            {--force : With --retry, call the supplier API even if already fulfilled}
                             {--fix-account : Re-encrypt plaintext account IDs on order_details}';
 
     protected $description = 'Inspect direct top-up order fulfillment and optionally retry the Golf API call';
@@ -134,6 +136,16 @@ class DebugDirectTopUpCommand extends Command
                 $this->error('Order is not paid — cannot retry fulfillment.');
 
                 return self::FAILURE;
+            }
+
+            if (
+                ! $this->option('force')
+                && DirectTopUpWalletCheckoutService::isDirectTopUpAlreadyFulfilled($order)
+            ) {
+                $this->warn('This order already has a fulfilled supplier order — skipping API call.');
+                $this->comment('Use --force with --retry only if you intentionally want a duplicate supplier purchase.');
+
+                return self::SUCCESS;
             }
 
             $this->info('Running fulfillment synchronously…');

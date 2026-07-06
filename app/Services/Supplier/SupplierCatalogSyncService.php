@@ -29,6 +29,96 @@ class SupplierCatalogSyncService
         return "supplier_catalog_sync_checkpoint_{$supplierId}";
     }
 
+    public static function checkpointPageCacheKey(int $supplierId, int $pageIndex): string
+    {
+        return "supplier_catalog_sync_checkpoint_{$supplierId}_page_{$pageIndex}";
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public function getStatus(int $supplierId): ?array
+    {
+        $status = Cache::get(self::statusCacheKey($supplierId));
+
+        return is_array($status) ? $status : null;
+    }
+
+    public function shouldAbortPageJob(int $supplierId): bool
+    {
+        $state = $this->getStatus($supplierId)['state'] ?? null;
+
+        return in_array($state, ['cancelled', 'paused'], true);
+    }
+
+    /**
+     * @return 'cancelled'|'paused'|null
+     */
+    public function stopReasonAfterPage(int $supplierId): ?string
+    {
+        $state = $this->getStatus($supplierId)['state'] ?? null;
+
+        if ($state === 'cancelled') {
+            return 'cancelled';
+        }
+
+        if ($state === 'paused') {
+            return 'paused';
+        }
+
+        return null;
+    }
+
+    public function pauseSync(int $supplierId): void
+    {
+        $status = $this->getStatus($supplierId) ?? [];
+        $checkpoint = Cache::get(self::checkpointCacheKey($supplierId), []);
+
+        Cache::put(self::statusCacheKey($supplierId), array_merge($status, [
+            'state' => 'paused',
+            'paused_at' => now()->toIso8601String(),
+            'next_page' => $checkpoint['next_page'] ?? ($status['next_page'] ?? 0),
+            'total_products' => $this->countCheckpointProducts($supplierId, $checkpoint),
+            'can_resume' => true,
+        ]), now()->addHours(6));
+
+        Log::info('SupplierCatalogSyncService: sync paused', [
+            'supplier_id' => $supplierId,
+            'next_page' => $checkpoint['next_page'] ?? null,
+        ]);
+    }
+
+    public function cancelSync(int $supplierId): void
+    {
+        $status = $this->getStatus($supplierId) ?? [];
+        $checkpoint = Cache::get(self::checkpointCacheKey($supplierId), []);
+
+        Cache::put(self::statusCacheKey($supplierId), array_merge($status, [
+            'state' => 'cancelled',
+            'cancelled_at' => now()->toIso8601String(),
+            'next_page' => $checkpoint['next_page'] ?? ($status['next_page'] ?? 0),
+            'total_products' => $this->countCheckpointProducts($supplierId, $checkpoint),
+            'can_resume' => false,
+        ]), now()->addHours(6));
+
+        Log::info('SupplierCatalogSyncService: sync cancelled', [
+            'supplier_id' => $supplierId,
+        ]);
+    }
+
+    public function clearCheckpointData(int $supplierId): void
+    {
+        $checkpoint = Cache::get(self::checkpointCacheKey($supplierId));
+
+        if (is_array($checkpoint)) {
+            foreach ($checkpoint['pages_stored'] ?? [] as $pageIndex) {
+                Cache::forget(self::checkpointPageCacheKey($supplierId, (int) $pageIndex));
+            }
+        }
+
+        Cache::forget(self::checkpointCacheKey($supplierId));
+    }
+
     /**
      * Prepare a sync run. When resuming, keeps accumulated products and next page.
      */
@@ -39,7 +129,7 @@ class SupplierCatalogSyncService
 
         if ($freshStart) {
             Cache::forget(self::catalogCacheKey($supplierId));
-            Cache::forget($checkpointKey);
+            $this->clearCheckpointData($supplierId);
         }
 
         $checkpoint = Cache::get($checkpointKey);
@@ -54,7 +144,8 @@ class SupplierCatalogSyncService
                 'total_pages' => null,
                 'total_items' => null,
                 'page_size' => $config['default_size'],
-                'products' => [],
+                'pages_stored' => [],
+                'total_products' => 0,
                 'started_at' => now()->toIso8601String(),
             ];
             Cache::put($checkpointKey, $checkpoint, now()->addHours(6));
@@ -66,7 +157,7 @@ class SupplierCatalogSyncService
             'progress' => $this->calculateProgress($startPage, $checkpoint['total_pages'] ?? null),
             'next_page' => $startPage,
             'total_pages' => $checkpoint['total_pages'] ?? null,
-            'total_products' => count($checkpoint['products'] ?? []),
+            'total_products' => $this->countCheckpointProducts($supplierId, $checkpoint),
             'resumed' => ! $freshStart && $startPage > 0,
             'started_at' => $checkpoint['started_at'] ?? now()->toIso8601String(),
         ], now()->addHours(6));
@@ -81,7 +172,8 @@ class SupplierCatalogSyncService
         $checkpointKey = self::checkpointCacheKey($supplierId);
         $checkpoint = Cache::get($checkpointKey, [
             'next_page' => $pageIndex,
-            'products' => [],
+            'pages_stored' => [],
+            'total_products' => 0,
             'started_at' => now()->toIso8601String(),
         ]);
 
@@ -100,19 +192,27 @@ class SupplierCatalogSyncService
         $hasMore = $this->determineHasMorePages($supplier->driver, $pageMeta, $config);
         $mappedProducts = $this->mapProductsToCatalog($products);
 
-        $existingProducts = $checkpoint['products'] ?? [];
-        $mergedProducts = array_merge($existingProducts, $mappedProducts);
+        Cache::put(self::checkpointPageCacheKey($supplierId, $pageIndex), $mappedProducts, now()->addHours(6));
+
+        $pagesStored = array_values(array_unique(array_merge(
+            $checkpoint['pages_stored'] ?? [],
+            [$pageIndex]
+        )));
+        $totalProducts = $this->countCheckpointProducts($supplierId, [
+            'pages_stored' => $pagesStored,
+            'total_products' => $checkpoint['total_products'] ?? 0,
+        ]);
 
         $totalPages = $this->resolveTotalPages($pageMeta, $config, $pageIndex, $hasMore);
-
-        $nextPage = $hasMore ? $pageIndex + 1 : $pageIndex + 1;
+        $nextPage = $pageIndex + 1;
 
         Cache::put($checkpointKey, [
             'next_page' => $nextPage,
             'total_pages' => $totalPages,
             'total_items' => $pageMeta['total'],
             'page_size' => $config['default_size'],
-            'products' => $mergedProducts,
+            'pages_stored' => $pagesStored,
+            'total_products' => $totalProducts,
             'started_at' => $checkpoint['started_at'] ?? now()->toIso8601String(),
             'last_successful_page' => $pageIndex,
         ], now()->addHours(6));
@@ -123,7 +223,7 @@ class SupplierCatalogSyncService
             'next_page' => $nextPage,
             'pages_fetched' => $pageIndex + 1,
             'total_pages' => $totalPages,
-            'total_products' => count($mergedProducts),
+            'total_products' => $totalProducts,
             'total_items' => $pageMeta['total'],
             'started_at' => $checkpoint['started_at'] ?? now()->toIso8601String(),
         ], now()->addHours(6));
@@ -133,7 +233,7 @@ class SupplierCatalogSyncService
             'driver' => $supplier->driver,
             'page' => $pageIndex,
             'items_on_page' => count($mappedProducts),
-            'total_products' => count($mergedProducts),
+            'total_products' => $totalProducts,
             'has_more' => $hasMore,
         ]);
 
@@ -146,10 +246,41 @@ class SupplierCatalogSyncService
         );
     }
 
+    /**
+     * Fetch supplier products for a scoped filter (brand/product) without walking the full catalog.
+     *
+     * @param  array<string, mixed>  $scopeFilters
+     * @return SupplierProductDTO[]
+     */
+    public function fetchScopedProducts(SupplierApi $supplier, array $scopeFilters): array
+    {
+        $config = $this->paginationConfig($supplier);
+        $driver = $this->manager->driver($supplier);
+        $allProducts = [];
+        $pageIndex = 0;
+
+        do {
+            $pageMeta = [
+                'current_page' => $pageIndex,
+                'items_on_page' => 0,
+                'total' => 0,
+                'last_page' => null,
+            ];
+
+            $filters = array_merge($scopeFilters, $this->buildPageFilters($supplier, $config, $pageIndex, $pageMeta));
+            $pageProducts = $driver->fetchProducts($filters);
+            $allProducts = array_merge($allProducts, $pageProducts);
+            $hasMore = $this->determineHasMorePages($supplier->driver, $pageMeta, $config);
+            $pageIndex++;
+        } while ($hasMore);
+
+        return $allProducts;
+    }
+
     public function markComplete(int $supplierId): void
     {
         $checkpoint = Cache::get(self::checkpointCacheKey($supplierId), []);
-        $catalog = $checkpoint['products'] ?? [];
+        $catalog = $this->mergeCheckpointProducts($supplierId, $checkpoint);
 
         Cache::put(self::catalogCacheKey($supplierId), $catalog, now()->addHours(6));
 
@@ -163,7 +294,7 @@ class SupplierCatalogSyncService
             'finished_at' => now()->toIso8601String(),
         ], now()->addHours(6));
 
-        Cache::forget(self::checkpointCacheKey($supplierId));
+        $this->clearCheckpointData($supplierId);
 
         Log::info('SupplierCatalogSyncService: completed', [
             'supplier_id' => $supplierId,
@@ -182,12 +313,12 @@ class SupplierCatalogSyncService
             'failed_page' => $failedPageIndex,
             'next_page' => $failedPageIndex,
             'can_resume' => true,
-            'total_products' => count($checkpoint['products'] ?? []),
+            'total_products' => $this->countCheckpointProducts($supplierId, $checkpoint),
             'total_pages' => $checkpoint['total_pages'] ?? null,
             'failed_at' => now()->toIso8601String(),
         ], now()->addHours(6));
 
-        if (! empty($checkpoint['products'])) {
+        if (! empty($checkpoint)) {
             Cache::put(self::checkpointCacheKey($supplierId), array_merge($checkpoint, [
                 'next_page' => $failedPageIndex,
             ]), now()->addHours(6));
@@ -197,20 +328,86 @@ class SupplierCatalogSyncService
             'supplier_id' => $supplierId,
             'failed_page' => $failedPageIndex,
             'error' => $message,
-            'saved_products' => count($checkpoint['products'] ?? []),
+            'saved_products' => $this->countCheckpointProducts($supplierId, $checkpoint),
         ]);
+    }
+
+    public function markPausedAfterPage(int $supplierId, int $pageIndex, CatalogPageResult $result): void
+    {
+        $checkpoint = Cache::get(self::checkpointCacheKey($supplierId), []);
+        $nextPage = $result->hasMorePages ? $pageIndex + 1 : $pageIndex + 1;
+
+        if (is_array($checkpoint)) {
+            Cache::put(self::checkpointCacheKey($supplierId), array_merge($checkpoint, [
+                'next_page' => $nextPage,
+            ]), now()->addHours(6));
+        }
+
+        $status = $this->getStatus($supplierId) ?? [];
+
+        Cache::put(self::statusCacheKey($supplierId), array_merge($status, [
+            'state' => 'paused',
+            'next_page' => $nextPage,
+            'pages_fetched' => $pageIndex + 1,
+            'total_products' => $this->countCheckpointProducts($supplierId, $checkpoint),
+            'can_resume' => true,
+            'paused_at' => now()->toIso8601String(),
+        ]), now()->addHours(6));
     }
 
     public function hasResumableCheckpoint(int $supplierId): bool
     {
         $checkpoint = Cache::get(self::checkpointCacheKey($supplierId));
 
-        return is_array($checkpoint)
-            && (int) ($checkpoint['next_page'] ?? 0) >= 0
+        if (! is_array($checkpoint)) {
+            return false;
+        }
+
+        return (int) ($checkpoint['next_page'] ?? 0) >= 0
             && (
-                ! empty($checkpoint['products'])
+                ! empty($checkpoint['pages_stored'])
                 || (int) ($checkpoint['next_page'] ?? 0) > 0
             );
+    }
+
+    /**
+     * @param  array<string, mixed>  $checkpoint
+     */
+    private function countCheckpointProducts(int $supplierId, array $checkpoint): int
+    {
+        if (! empty($checkpoint['products']) && is_array($checkpoint['products'])) {
+            return count($checkpoint['products']);
+        }
+
+        $count = 0;
+        foreach ($checkpoint['pages_stored'] ?? [] as $pageIndex) {
+            $chunk = Cache::get(self::checkpointPageCacheKey($supplierId, (int) $pageIndex), []);
+            $count += is_array($chunk) ? count($chunk) : 0;
+        }
+
+        return $count;
+    }
+
+    /**
+     * @param  array<string, mixed>  $checkpoint
+     * @return array<int, array<string, mixed>>
+     */
+    private function mergeCheckpointProducts(int $supplierId, array $checkpoint): array
+    {
+        if (! empty($checkpoint['products']) && is_array($checkpoint['products'])) {
+            return $checkpoint['products'];
+        }
+
+        $merged = [];
+
+        foreach ($checkpoint['pages_stored'] ?? [] as $pageIndex) {
+            $chunk = Cache::get(self::checkpointPageCacheKey($supplierId, (int) $pageIndex), []);
+            if (is_array($chunk)) {
+                $merged = array_merge($merged, $chunk);
+            }
+        }
+
+        return $merged;
     }
 
     /**

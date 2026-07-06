@@ -189,6 +189,20 @@
                     <i class="fi fi-rr-search me-2"></i>{{ translate('browse_supplier_catalog') }}
                 </h5>
                 <div class="d-flex gap-2 align-items-center me-2">
+                    <div id="catalog-sync-controls" class="d-flex gap-2 align-items-center" style="display:none;">
+                        <button type="button" id="catalog-pause-btn" class="btn btn-sm btn-outline-warning" style="display:none;">
+                            <i class="fi fi-rr-pause"></i> {{ translate('pause') }}
+                        </button>
+                        <button type="button" id="catalog-resume-btn" class="btn btn-sm btn-outline-success" style="display:none;">
+                            <i class="fi fi-rr-play"></i> {{ translate('resume') }}
+                        </button>
+                        <button type="button" id="catalog-cancel-btn" class="btn btn-sm btn-outline-danger" style="display:none;">
+                            <i class="fi fi-rr-cross-small"></i> {{ translate('cancel') }}
+                        </button>
+                        <button type="button" id="catalog-fresh-btn" class="btn btn-sm btn-outline-secondary" style="display:none;">
+                            <i class="fi fi-rr-rotate-right"></i> {{ translate('start_fresh') }}
+                        </button>
+                    </div>
                     <button type="button" id="catalog-refresh-btn" class="btn btn-sm btn-outline-secondary"
                             title="{{ translate('refresh_catalog') }}">
                         <i class="fi fi-rr-rotate-right"></i>
@@ -293,9 +307,15 @@
     const supplierSel   = document.getElementById('supplier_api_id');
     const browsBtn      = document.getElementById('browse-catalog-btn');
     const refreshBtn    = document.getElementById('catalog-refresh-btn');
+    const syncControls  = document.getElementById('catalog-sync-controls');
+    const pauseBtn      = document.getElementById('catalog-pause-btn');
+    const resumeBtn     = document.getElementById('catalog-resume-btn');
+    const cancelBtn     = document.getElementById('catalog-cancel-btn');
+    const freshBtn      = document.getElementById('catalog-fresh-btn');
 
     let currentPage  = 0;
     let pollTimer    = null;
+    let activeSupplierId = null;
     const pageSize   = 50;
     const POLL_INTERVAL = 2000;
 
@@ -325,6 +345,35 @@
 
     function stopPolling() {
         if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+    }
+
+    function updateSyncControls(state, canResume) {
+        if (!syncControls) return;
+
+        syncControls.style.display = '';
+        pauseBtn.style.display = 'none';
+        resumeBtn.style.display = 'none';
+        cancelBtn.style.display = 'none';
+        freshBtn.style.display = 'none';
+
+        if (state === 'running') {
+            pauseBtn.style.display = '';
+            cancelBtn.style.display = '';
+        } else if (state === 'paused' || state === 'failed') {
+            if (canResume) {
+                resumeBtn.style.display = '';
+            }
+            cancelBtn.style.display = '';
+            freshBtn.style.display = '';
+        } else if (state === 'cancelled') {
+            freshBtn.style.display = '';
+        }
+    }
+
+    function hideSyncControls() {
+        if (syncControls) {
+            syncControls.style.display = 'none';
+        }
     }
 
     function escHtml(str) {
@@ -360,16 +409,26 @@
 
     // ── Sync (dispatch + poll) ───────────────────────────────────────────
 
-    function startSync(supplierId) {
+    function startSync(supplierId, options) {
+        options = options || {};
+        activeSupplierId = supplierId;
         stopPolling();
         setVisibility(true, false, false, false);
         resetProgress();
+        hideSyncControls();
         statusTextEl.textContent = '{{ translate('starting_catalog_sync') }}\u2026';
         refreshBtn.disabled = true;
 
-        ajaxPost(catalogUrl + '/' + supplierId + '/catalog/sync')
+        var url = catalogUrl + '/' + supplierId + '/catalog/sync';
+        if (options.fresh) {
+            url += '?fresh=1';
+        } else if (options.resume) {
+            url += '?resume=1';
+        }
+
+        ajaxPost(url)
             .then(function (data) {
-                if (data.message === 'already_running' || data.message === 'dispatched') {
+                if (data.message === 'already_running' || data.message === 'dispatched' || data.message === 'resumed') {
                     pollStatus(supplierId);
                 } else {
                     setVisibility(false, true, false, false);
@@ -382,6 +441,30 @@
                 errorEl.textContent = '{{ translate('failed_to_start_sync') }}: ' + err.message;
                 refreshBtn.disabled = false;
             });
+    }
+
+    function pauseSync(supplierId) {
+        ajaxPost(catalogUrl + '/' + supplierId + '/catalog/pause')
+            .then(function () { pollStatus(supplierId); })
+            .catch(function (err) {
+                errorEl.textContent = '{{ translate('failed_to_pause_sync') }}: ' + err.message;
+            });
+    }
+
+    function cancelSync(supplierId) {
+        ajaxPost(catalogUrl + '/' + supplierId + '/catalog/cancel')
+            .then(function () { pollStatus(supplierId); })
+            .catch(function (err) {
+                errorEl.textContent = '{{ translate('failed_to_cancel_sync') }}: ' + err.message;
+            });
+    }
+
+    function resumeSync(supplierId) {
+        startSync(supplierId, { resume: true });
+    }
+
+    function startFreshSync(supplierId) {
+        startSync(supplierId, { fresh: true });
     }
 
     function pollStatus(supplierId) {
@@ -399,8 +482,15 @@
                         var total   = st.total_pages || '?';
                         setVisibility(true, false, false, false);
                         setProgress(pct, '{{ translate('syncing_catalog') }}: ' + fetched + '/' + total + ' {{ translate('pages') }}\u2026');
+                        updateSyncControls('running', false);
+                    } else if (state === 'paused') {
+                        setVisibility(true, false, false, false);
+                        setProgress(st.progress || 0, '{{ translate('catalog_sync_paused') }}');
+                        updateSyncControls('paused', st.can_resume !== false);
+                        refreshBtn.disabled = false;
                     } else if (state === 'done') {
                         stopPolling();
+                        hideSyncControls();
                         setProgress(100, '{{ translate('sync_complete_loading') }}\u2026');
                         currentPage = 0;
                         loadCatalog(supplierId);
@@ -408,11 +498,20 @@
                         stopPolling();
                         setVisibility(false, true, false, false);
                         errorEl.textContent = st.error || '{{ translate('catalog_sync_failed') }}';
+                        updateSyncControls('failed', st.can_resume !== false);
+                        refreshBtn.disabled = false;
+                        resetProgress();
+                    } else if (state === 'cancelled') {
+                        stopPolling();
+                        setVisibility(false, true, false, false);
+                        errorEl.textContent = '{{ translate('catalog_sync_cancelled') }}';
+                        updateSyncControls('cancelled', false);
                         refreshBtn.disabled = false;
                         resetProgress();
                     } else {
                         // idle — no sync running, no cache; stop polling and wait
                         stopPolling();
+                        hideSyncControls();
                         setVisibility(false, false, false, true);
                         refreshBtn.disabled = false;
                     }
@@ -429,8 +528,10 @@
     // ── Check status on modal open ───────────────────────────────────────
 
     function checkAndLoad(supplierId) {
+        activeSupplierId = supplierId;
         setVisibility(true, false, false, false);
         resetProgress();
+        hideSyncControls();
         statusTextEl.textContent = '{{ translate('checking_catalog') }}\u2026';
         refreshBtn.disabled = true;
 
@@ -440,15 +541,14 @@
                 var state = st.state || 'idle';
 
                 if (state === 'done') {
-                    // Catalog is cached — load it directly
                     statusTextEl.textContent = '{{ translate('loading_catalog') }}\u2026';
                     currentPage = 0;
                     loadCatalog(supplierId);
-                } else if (state === 'running') {
-                    // Sync already in progress — just poll
+                } else if (state === 'running' || state === 'paused') {
+                    pollStatus(supplierId);
+                } else if (state === 'failed' || state === 'cancelled') {
                     pollStatus(supplierId);
                 } else {
-                    // idle or failed — start a fresh sync
                     startSync(supplierId);
                 }
             })
@@ -555,6 +655,7 @@
                 countTextEl.textContent = from + '\u2013' + to + ' {{ translate('of') }} ' + total + ' {{ translate('items') }}';
 
                 setVisibility(false, false, true, false);
+                hideSyncControls();
                 refreshBtn.disabled = false;
             })
             .catch(function (err) {
@@ -608,6 +709,27 @@
             startSync(supplierId);
         }
     });
+
+    if (pauseBtn) {
+        pauseBtn.addEventListener('click', function () {
+            if (activeSupplierId) pauseSync(activeSupplierId);
+        });
+    }
+    if (resumeBtn) {
+        resumeBtn.addEventListener('click', function () {
+            if (activeSupplierId) resumeSync(activeSupplierId);
+        });
+    }
+    if (cancelBtn) {
+        cancelBtn.addEventListener('click', function () {
+            if (activeSupplierId) cancelSync(activeSupplierId);
+        });
+    }
+    if (freshBtn) {
+        freshBtn.addEventListener('click', function () {
+            if (activeSupplierId) startFreshSync(activeSupplierId);
+        });
+    }
 
     // If supplier was pre-selected (e.g. old value from validation), show button
     if (supplierSel.value) {

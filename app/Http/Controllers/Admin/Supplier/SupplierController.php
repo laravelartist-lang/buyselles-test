@@ -298,13 +298,13 @@ class SupplierController extends BaseController
         }
 
         if ($freshStart) {
+            $syncService->clearCheckpointData($supplier->id);
             \Cache::forget(\App\Jobs\SyncSupplierCatalogJob::catalogCacheKey($supplier->id));
-            \Cache::forget(\App\Services\Supplier\SupplierCatalogSyncService::checkpointCacheKey($supplier->id));
-        } elseif (! $resume && ($current['state'] ?? '') === 'failed' && $syncService->hasResumableCheckpoint($supplier->id)) {
+        } elseif (! $resume && in_array($current['state'] ?? '', ['failed', 'paused'], true) && $syncService->hasResumableCheckpoint($supplier->id)) {
             $resume = true;
         }
 
-        if (! $resume && ! $freshStart) {
+        if (! $resume && ! $freshStart && ! in_array($current['state'] ?? '', ['failed', 'paused'], true)) {
             \Cache::forget(\App\Jobs\SyncSupplierCatalogJob::catalogCacheKey($supplier->id));
         }
 
@@ -355,6 +355,59 @@ class SupplierController extends BaseController
             'success' => true,
             'status' => $status,
         ]);
+    }
+
+    public function pauseCatalogSync(int $id): JsonResponse
+    {
+        $supplier = SupplierApi::findOrFail($id);
+        $syncService = app(\App\Services\Supplier\SupplierCatalogSyncService::class);
+        $status = $syncService->getStatus($supplier->id);
+
+        if (($status['state'] ?? '') !== 'running') {
+            return response()->json([
+                'success' => false,
+                'message' => 'not_running',
+                'status' => $status,
+            ], 422);
+        }
+
+        $syncService->pauseSync($supplier->id);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'paused',
+            'status' => $syncService->getStatus($supplier->id),
+        ]);
+    }
+
+    public function cancelCatalogSync(int $id): JsonResponse
+    {
+        $supplier = SupplierApi::findOrFail($id);
+        $syncService = app(\App\Services\Supplier\SupplierCatalogSyncService::class);
+        $status = $syncService->getStatus($supplier->id);
+
+        if (! in_array($status['state'] ?? '', ['running', 'paused', 'failed'], true)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'nothing_to_cancel',
+                'status' => $status,
+            ], 422);
+        }
+
+        $syncService->cancelSync($supplier->id);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'cancelled',
+            'status' => $syncService->getStatus($supplier->id),
+        ]);
+    }
+
+    public function resumeCatalogSync(int $id, Request $request): JsonResponse
+    {
+        $request->merge(['resume' => true]);
+
+        return $this->dispatchCatalogSync($id, $request);
     }
 
     /**

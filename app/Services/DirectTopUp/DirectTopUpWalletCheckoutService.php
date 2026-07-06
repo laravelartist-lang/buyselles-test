@@ -9,19 +9,19 @@ use App\Models\OrderDetail;
 use App\Models\OrderTransaction;
 use App\Models\SupplierOrder;
 use App\Models\SupplierProductMapping;
-use App\Models\WalletTransaction;
 use App\Services\Supplier\SupplierManager;
+use App\Services\Wallet\FailedWalletOrderRefundService;
 use App\Utils\Convert;
 use App\Utils\CustomerManager;
 use App\Utils\OrderManager;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Log;
 
 class DirectTopUpWalletCheckoutService
 {
     public function __construct(
         private readonly DirectTopUpService $directTopUpService,
         private readonly SupplierManager $supplierManager,
+        private readonly FailedWalletOrderRefundService $walletRefundService,
     ) {}
 
     /**
@@ -146,29 +146,10 @@ class DirectTopUpWalletCheckoutService
 
     public function refundWalletForFailedDirectTopUp(Order $order): bool
     {
-        if ($order->payment_method !== 'pay_by_wallet' || $order->payment_status !== 'paid') {
-            return false;
-        }
-
-        if ($this->hasWalletRefundForOrder($order)) {
-            return false;
-        }
-
-        CustomerManager::create_wallet_transaction(
-            $order->customer_id,
-            Convert::default((float) $order->order_amount),
-            'order_refund',
-            'order refund',
-            [],
-            [$order->id]
+        return $this->walletRefundService->refundPaidWalletOrder(
+            $order,
+            'DirectTopUpWalletCheckoutService'
         );
-
-        Log::info('DirectTopUpWalletCheckoutService: wallet refunded after failed top-up', [
-            'order_id' => $order->id,
-            'amount' => $order->order_amount,
-        ]);
-
-        return true;
     }
 
     public function markDirectTopUpOrderDelivered(Order $order, int $customerId): void
@@ -256,18 +237,6 @@ class DirectTopUpWalletCheckoutService
 
         AdminWallet::where('admin_id', 1)->decrement('pending_amount', (float) $order->order_amount);
         $transaction->delete();
-    }
-
-    private function hasWalletRefundForOrder(Order $order): bool
-    {
-        return WalletTransaction::query()
-            ->where('user_id', $order->customer_id)
-            ->where('transaction_type', 'order_refund')
-            ->whereNotNull('order_ids')
-            ->get()
-            ->contains(function (WalletTransaction $transaction) use ($order): bool {
-                return in_array($order->id, (array) $transaction->order_ids, true);
-            });
     }
 
     private function findOrderWithDirectTopUpDetails(int $orderId): ?Order

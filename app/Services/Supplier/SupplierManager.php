@@ -250,6 +250,15 @@ class SupplierManager
                 continue;
             }
 
+            if (SupplierOrder::query()
+                ->where('order_detail_id', $detail->id)
+                ->where('status', 'fulfilled')
+                ->exists()) {
+                $anyFulfilled = true;
+
+                continue;
+            }
+
             $productId = $detail->product_id;
             if (! $productId) {
                 continue;

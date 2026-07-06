@@ -9,6 +9,7 @@ use App\Models\Order;
 use App\Models\OrderDetail;
 use App\Models\SupplierApi;
 use App\Models\SupplierOrder;
+use App\Models\User;
 use App\Observers\OrderObserver;
 use App\Services\Supplier\SupplierManager;
 use App\Services\Supplier\SupplierOrderEligibilityService;
@@ -45,6 +46,10 @@ class SupplierCodeFetchJobTest extends TestCase
             [
                 'type' => 'company_name',
                 'value' => 'Test Shop',
+            ],
+            [
+                'type' => 'wallet_status',
+                'value' => '1',
             ],
         ]);
 
@@ -107,8 +112,11 @@ class SupplierCodeFetchJobTest extends TestCase
 
         $this->recreateTable('orders', function (Blueprint $table): void {
             $table->id();
+            $table->unsignedBigInteger('customer_id')->nullable();
+            $table->string('payment_method')->nullable();
             $table->string('payment_status')->default('paid');
             $table->string('order_status')->default('confirmed');
+            $table->decimal('order_amount', 24, 4)->default(0);
             $table->text('order_note')->nullable();
             $table->timestamps();
         });
@@ -119,8 +127,42 @@ class SupplierCodeFetchJobTest extends TestCase
             $table->unsignedBigInteger('product_id')->nullable();
             $table->integer('qty')->default(1);
             $table->text('product_details')->nullable();
+            $table->string('delivery_status')->nullable();
+            $table->string('payment_status')->nullable();
             $table->decimal('direct_topup_quantity', 24, 4)->nullable();
             $table->text('direct_topup_account_id')->nullable();
+            $table->timestamps();
+        });
+
+        $this->recreateTable('users', function (Blueprint $table): void {
+            $table->id();
+            $table->string('f_name')->nullable();
+            $table->string('email')->nullable();
+            $table->decimal('wallet_balance', 24, 4)->default(0);
+            $table->timestamps();
+        });
+
+        $this->recreateTable('wallet_transactions', function (Blueprint $table): void {
+            $table->id();
+            $table->unsignedBigInteger('user_id');
+            $table->uuid('transaction_id')->nullable();
+            $table->string('reference')->nullable();
+            $table->string('transaction_type')->nullable();
+            $table->string('payment_method')->nullable();
+            $table->decimal('credit', 24, 4)->default(0);
+            $table->decimal('debit', 24, 4)->default(0);
+            $table->decimal('balance', 24, 4)->default(0);
+            $table->json('order_ids')->nullable();
+            $table->timestamps();
+        });
+
+        $this->recreateTable('order_status_histories', function (Blueprint $table): void {
+            $table->id();
+            $table->unsignedBigInteger('order_id')->nullable();
+            $table->unsignedBigInteger('user_id')->nullable();
+            $table->string('user_type')->nullable();
+            $table->string('status')->nullable();
+            $table->string('cause')->nullable();
             $table->timestamps();
         });
 
@@ -194,12 +236,79 @@ class SupplierCodeFetchJobTest extends TestCase
 
         $this->app->instance(SupplierManager::class, $manager);
 
-        (new SupplierCodeFetchJob($order->id))->handle($manager);
+        (new SupplierCodeFetchJob($order->id))->handle(
+            $manager,
+            app(\App\Services\Supplier\SupplierFulfillmentFailureService::class)
+        );
 
         $order->refresh();
 
         $this->assertSame('confirmed', $order->order_status);
         $this->assertNull($order->order_note);
+    }
+
+    public function test_supplier_code_fetch_job_refunds_wallet_when_fulfillment_fails(): void
+    {
+        $user = User::create([
+            'f_name' => 'Test',
+            'email' => 'supplier-refund@test.com',
+            'wallet_balance' => 50,
+        ]);
+
+        $order = Order::query()->create([
+            'customer_id' => $user->id,
+            'payment_method' => 'pay_by_wallet',
+            'payment_status' => 'paid',
+            'order_status' => 'delivered',
+            'order_amount' => 10,
+        ]);
+
+        OrderDetail::query()->create([
+            'order_id' => $order->id,
+            'product_id' => 10,
+            'qty' => 1,
+            'delivery_status' => 'delivered',
+            'payment_status' => 'paid',
+            'product_details' => json_encode([
+                'product_type' => 'digital',
+                'digital_product_type' => 'ready_after_sell',
+            ]),
+        ]);
+
+        $this->app['db']->table('wallet_transactions')->insert([
+            'user_id' => $user->id,
+            'transaction_id' => (string) \Str::uuid(),
+            'reference' => 'order payment',
+            'transaction_type' => 'order_place',
+            'debit' => 10,
+            'credit' => 0,
+            'balance' => 50,
+            'order_ids' => json_encode([$order->id]),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $manager = Mockery::mock(SupplierManager::class);
+        $manager->shouldReceive('fulfillOrder')
+            ->once()
+            ->andReturn([
+                'fulfilled' => false,
+                'error' => 'Your balance is not enough',
+            ]);
+
+        $this->app->instance(SupplierManager::class, $manager);
+
+        (new SupplierCodeFetchJob($order->id))->handle(
+            $manager,
+            app(\App\Services\Supplier\SupplierFulfillmentFailureService::class)
+        );
+
+        $user->refresh();
+
+        $this->assertSame(60.0, (float) $user->wallet_balance);
+        $this->assertSame('failed', Order::query()->where('id', $order->id)->value('order_status'));
+        $this->assertSame('unpaid', Order::query()->where('id', $order->id)->value('payment_status'));
+        $this->assertSame(1, $this->app['db']->table('wallet_transactions')->where('transaction_type', 'order_refund')->count());
     }
 
     public function test_direct_topup_line_skips_supplier_code_fetch_when_supplier_supports_topup(): void

@@ -32,7 +32,9 @@ class ProcessDigitalCodeImportJob implements ShouldQueue
         private readonly string $importedBy = 'Admin',
         private readonly int $adminId = 0,
         private readonly int $sellerId = 0,
-    ) {}
+    ) {
+        $this->onQueue('slow');
+    }
 
     public function handle(): void
     {

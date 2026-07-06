@@ -25,7 +25,9 @@ class DirectTopUpFulfillmentJob implements ShouldQueue
 
     public function __construct(
         public readonly int $orderId,
-    ) {}
+    ) {
+        $this->onQueue('fulfillment');
+    }
 
     public function handle(
         SupplierManager $manager,

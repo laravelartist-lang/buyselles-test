@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Models\Order;
 use App\Models\SupplierOrder;
+use App\Services\Supplier\SupplierFulfillmentFailureService;
 use App\Services\Supplier\SupplierManager;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -31,10 +32,14 @@ class SupplierCodeFetchJob implements ShouldQueue
 
     public function __construct(
         public readonly int $orderId,
-    ) {}
+    ) {
+        $this->onQueue('fulfillment');
+    }
 
-    public function handle(SupplierManager $manager): void
-    {
+    public function handle(
+        SupplierManager $manager,
+        SupplierFulfillmentFailureService $failureService,
+    ): void {
         $order = Order::find($this->orderId);
 
         if (! $order) {
@@ -72,10 +77,11 @@ class SupplierCodeFetchJob implements ShouldQueue
                     return;
                 }
 
-                $order->update([
-                    'order_status' => 'failed',
-                    'order_note' => 'Supplier fulfillment failed: '.$result['error'],
-                ]);
+                $failureService->markOrderFailed(
+                    $order->fresh(),
+                    $result['error'],
+                    (int) $order->customer_id
+                );
 
                 Log::error('SupplierCodeFetchJob: fulfillment failed', [
                     'order_id' => $this->orderId,
@@ -102,5 +108,17 @@ class SupplierCodeFetchJob implements ShouldQueue
             'order_id' => $this->orderId,
             'error' => $exception?->getMessage(),
         ]);
+
+        $order = Order::find($this->orderId);
+
+        if ($order === null) {
+            return;
+        }
+
+        app(SupplierFulfillmentFailureService::class)->markOrderFailed(
+            $order,
+            $exception?->getMessage() ?: 'Supplier fulfillment failed after retries.',
+            (int) $order->customer_id
+        );
     }
 }

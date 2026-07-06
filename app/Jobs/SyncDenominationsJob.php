@@ -46,18 +46,17 @@ class SyncDenominationsJob implements ShouldQueue
         }
 
         $supplier = $mapping->supplierApi;
-        $driver = $manager->driver($supplier);
+        $syncService = app(\App\Services\Supplier\SupplierCatalogSyncService::class);
 
-        // Determine filter: use brand_id if available, otherwise use the product_id to find its brand
-        $filters = [];
+        $scopeFilters = [];
         if ($mapping->supplier_brand_id) {
-            $filters['brand_id'] = $mapping->supplier_brand_id;
+            $scopeFilters['brand_id'] = $mapping->supplier_brand_id;
         } else {
-            $filters['product_id'] = $mapping->supplier_product_id;
+            $scopeFilters['product_id'] = $mapping->supplier_product_id;
         }
 
         try {
-            $dtos = $driver->fetchProducts($filters);
+            $dtos = $syncService->fetchScopedProducts($supplier, $scopeFilters);
         } catch (\Throwable $e) {
             Log::error('SyncDenominationsJob: failed to fetch products from supplier', [
                 'mapping_id' => $this->mappingId,
@@ -88,12 +87,10 @@ class SyncDenominationsJob implements ShouldQueue
                 'supplier_brand_name' => $brandName,
             ]);
 
-            // Re-fetch using brand_id to get ALL products for this brand
             try {
-                $brandDtos = $driver->fetchProducts(['brand_id' => $brandId]);
+                $brandDtos = $syncService->fetchScopedProducts($supplier, ['brand_id' => $brandId]);
                 if (! empty($brandDtos)) {
                     $dtos = $brandDtos;
-                    // Refresh brand info from the new response
                     $firstRaw = $dtos[0]->rawData ?? $firstRaw;
                     $brandCurrency = (string) ($firstRaw['currencyCode'] ?? $brandCurrency);
                 }

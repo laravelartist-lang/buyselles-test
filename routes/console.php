@@ -22,3 +22,6 @@ Schedule::job(new SupplierHealthCheckJob)->everyFiveMinutes();
 
 // Auto-release escrows past their release deadline (no active dispute).
 Schedule::job(new AutoReleaseEscrowJob)->hourly();
+
+// Store Horizon metrics snapshots for the dashboard graphs.
+Schedule::command('horizon:snapshot')->everyFiveMinutes();

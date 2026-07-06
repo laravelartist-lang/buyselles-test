@@ -28,15 +28,32 @@ class SyncSupplierCatalogPageJob implements ShouldQueue
     public function __construct(
         public readonly int $supplierId,
         public readonly int $pageIndex,
-    ) {}
+    ) {
+        $this->onQueue('catalog');
+    }
 
     public function handle(SupplierCatalogSyncService $syncService): void
     {
+        if ($syncService->shouldAbortPageJob($this->supplierId)) {
+            return;
+        }
+
         $result = $syncService->syncPage($this->supplierId, $this->pageIndex);
 
+        $stopReason = $syncService->stopReasonAfterPage($this->supplierId);
+
+        if ($stopReason === 'cancelled') {
+            return;
+        }
+
+        if ($stopReason === 'paused') {
+            $syncService->markPausedAfterPage($this->supplierId, $this->pageIndex, $result);
+
+            return;
+        }
+
         if ($result->hasMorePages) {
-            self::dispatch($this->supplierId, $this->pageIndex + 1)
-                ->delay(now()->addSeconds(2));
+            self::dispatch($this->supplierId, $this->pageIndex + 1);
 
             return;
         }

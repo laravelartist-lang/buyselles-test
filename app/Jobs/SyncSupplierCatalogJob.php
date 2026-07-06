@@ -23,7 +23,9 @@ class SyncSupplierCatalogJob implements ShouldQueue
     public function __construct(
         public readonly int $supplierId,
         public readonly bool $freshStart = false,
-    ) {}
+    ) {
+        $this->onQueue('catalog');
+    }
 
     public function handle(SupplierCatalogSyncService $syncService): void
     {
