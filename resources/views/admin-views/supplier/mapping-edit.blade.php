@@ -92,32 +92,6 @@
                         </div>
                     </div>
 
-                    <div class="col-lg-4">
-                        <div class="form-group">
-                            <label class="form-label">{{ translate('min_stock_threshold') }}</label>
-                            <input type="number" name="min_stock_threshold" class="form-control" min="0"
-                                   value="{{ old('min_stock_threshold', $mapping->min_stock_threshold) }}">
-                        </div>
-                    </div>
-
-                    <div class="col-lg-4">
-                        <div class="form-group">
-                            <label class="form-label">{{ translate('max_restock_quantity') }}</label>
-                            <input type="number" name="max_restock_qty" class="form-control" min="1"
-                                   value="{{ old('max_restock_qty', $mapping->max_restock_qty) }}">
-                        </div>
-                    </div>
-
-                    <div class="col-lg-12">
-                        <div class="form-check form-switch">
-                            <input class="form-check-input" type="checkbox" name="auto_restock" value="1"
-                                   id="auto-restock-toggle" {{ old('auto_restock', $mapping->auto_restock) ? 'checked' : '' }}>
-                            <label class="form-check-label" for="auto-restock-toggle">
-                                {{ translate('enable_auto_restock') }}
-                            </label>
-                        </div>
-                    </div>
-
                     {{-- ─── Customizable / Variable Amount ──────────────────────────── --}}
                     <div class="col-lg-12">
                         <hr class="my-2">

@@ -35,7 +35,7 @@
                     <a href="{{ route('admin.supplier.mapping.add') }}" class="btn btn-primary">
                         + {{ translate('add_mapping') }}
                     </a>
-                    <button type="button" id="sync-prices-btn" class="btn btn-outline-info">
+                    <button type="button" id="sync-prices-btn" class="btn btn-outline-info d-none">
                         <i class="fi fi-rr-rotate-right" id="sync-prices-icon"></i> {{ translate('sync_prices') }}
                     </button>
                 </div>
@@ -53,7 +53,6 @@
                             <th class="text-center">{{ translate('markup') }}</th>
                             <th class="text-center">{{ translate('sell_price') }}</th>
                             <th class="text-center">{{ translate('priority') }}</th>
-                            <th class="text-center">{{ translate('auto_restock') }}</th>
                             <th class="text-center">{{ translate('status') }}</th>
                             <th class="text-center">{{ translate('action') }}</th>
                         </tr>
@@ -81,14 +80,6 @@
                                 {{ $mapping->cost_currency }} {{ number_format($mapping->calculateSellPrice(), 2) }}
                             </td>
                             <td class="text-center">{{ $mapping->priority }}</td>
-                            <td class="text-center">
-                                @if($mapping->auto_restock)
-                                    <span class="badge bg-success">{{ translate('on') }}</span>
-                                    <br><small class="text-muted">min:{{ $mapping->min_stock_threshold }} / max:{{ $mapping->max_restock_qty }}</small>
-                                @else
-                                    <span class="badge bg-secondary">{{ translate('off') }}</span>
-                                @endif
-                            </td>
                             <td>
                                 <form action="{{ route('admin.supplier.mapping.status') }}" method="post"
                                       id="mapping-status{{ $mapping->id }}-form"
@@ -128,7 +119,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="11" class="text-center py-4">
+                            <td colspan="10" class="text-center py-4">
                                 <div class="d-flex flex-column align-items-center gap-2">
                                     <i class="fi fi-sr-inbox-in fs-1 text-muted"></i>
                                     <span class="text-muted">{{ translate('no_mappings_found') }}</span>
