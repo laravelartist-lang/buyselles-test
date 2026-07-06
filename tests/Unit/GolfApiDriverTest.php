@@ -44,7 +44,7 @@ class GolfApiDriverTest extends TestCase
         $configureMethod->invoke($this->driver, $supplierMock);
     }
 
-    public function test_fetch_products_converts_jod_prices_to_usd(): void
+    public function test_fetch_products_preserves_jod_prices_from_api(): void
     {
         $this->seedJodExchangeRates();
 
@@ -72,8 +72,8 @@ class GolfApiDriverTest extends TestCase
         $products = $this->driver->fetchProducts(['page' => 1, 'fetch_all' => false]);
 
         $this->assertCount(1, $products);
-        $this->assertSame('USD', $products[0]->currency);
-        $this->assertEqualsWithDelta(2.41, $products[0]->price, 0.01);
+        $this->assertSame('JOD', $products[0]->currency);
+        $this->assertEqualsWithDelta(1.709, $products[0]->price, 0.001);
         $this->assertSame(1.709, $products[0]->rawData['price']);
     }
 

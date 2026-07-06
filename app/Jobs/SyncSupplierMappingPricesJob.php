@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Models\SupplierProductMapping;
 use App\Services\DigitalProductCodeService;
+use App\Services\Supplier\SupplierCurrencyConverter;
 use App\Services\Supplier\SupplierManager;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -28,8 +29,11 @@ class SyncSupplierMappingPricesJob implements ShouldQueue
         $this->onQueue('slow');
     }
 
-    public function handle(SupplierManager $manager, DigitalProductCodeService $codeService): void
-    {
+    public function handle(
+        SupplierManager $manager,
+        DigitalProductCodeService $codeService,
+        SupplierCurrencyConverter $converter,
+    ): void {
         $mappings = SupplierProductMapping::query()
             ->active()
             ->whereHas('supplierApi', fn ($query) => $query->where('is_active', true))
@@ -49,14 +53,24 @@ class SyncSupplierMappingPricesJob implements ShouldQueue
 
                 $driver = $manager->driver($supplier);
                 $stockResult = $driver->fetchStock($mapping->supplier_product_id);
+                $sourceCurrency = strtoupper(trim((string) ($supplier->settings['source_currency'] ?? $stockResult->currency)));
+                $rawPrice = (float) $stockResult->price;
 
-                if ($stockResult->price <= 0 || $stockResult->price == $mapping->cost_price) {
+                if ($sourceCurrency !== '' && $sourceCurrency !== 'USD') {
+                    $costPrice = $converter->toUsd($rawPrice, $sourceCurrency);
+                    $costCurrency = 'USD';
+                } else {
+                    $costPrice = $rawPrice;
+                    $costCurrency = strtoupper(trim($stockResult->currency)) ?: 'USD';
+                }
+
+                if ($costPrice <= 0 || ($costPrice == $mapping->cost_price && $costCurrency === $mapping->cost_currency)) {
                     continue;
                 }
 
                 $mapping->update([
-                    'cost_price' => $stockResult->price,
-                    'cost_currency' => $stockResult->currency,
+                    'cost_price' => $costPrice,
+                    'cost_currency' => $costCurrency,
                 ]);
 
                 $codeService->applyApiPriceIfManualDepleted($mapping->product_id);

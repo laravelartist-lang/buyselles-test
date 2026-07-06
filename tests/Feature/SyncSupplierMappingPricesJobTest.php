@@ -4,10 +4,13 @@ namespace Tests\Feature;
 
 use App\DTOs\Supplier\StockResult;
 use App\Jobs\SyncSupplierMappingPricesJob;
+use App\Models\BusinessSetting;
+use App\Models\Currency;
 use App\Models\SupplierApi;
 use App\Models\SupplierProductMapping;
 use App\Services\DigitalProductCodeService;
 use App\Services\Supplier\Drivers\GenericRestDriver;
+use App\Services\Supplier\SupplierCurrencyConverter;
 use App\Services\Supplier\SupplierManager;
 use Illuminate\Database\Schema\Blueprint;
 use Mockery;
@@ -22,6 +25,16 @@ class SyncSupplierMappingPricesJobTest extends TestCase
     {
         parent::setUp();
 
+        $this->recreateTable('currencies', function (Blueprint $table): void {
+            $table->id();
+            $table->string('name')->nullable();
+            $table->string('symbol')->nullable();
+            $table->string('code', 10);
+            $table->decimal('exchange_rate', 14, 6)->default(1);
+            $table->boolean('status')->default(true);
+            $table->timestamps();
+        });
+
         $this->recreateTable('supplier_apis', function (Blueprint $table): void {
             $table->id();
             $table->string('name')->nullable();
@@ -29,6 +42,7 @@ class SyncSupplierMappingPricesJobTest extends TestCase
             $table->string('base_url')->nullable();
             $table->string('health_status')->default('healthy');
             $table->boolean('is_active')->default(true);
+            $table->json('settings')->nullable();
             $table->timestamps();
         });
 
@@ -59,12 +73,26 @@ class SyncSupplierMappingPricesJobTest extends TestCase
             $table->timestamps();
         });
 
-        $this->app['db']->table('business_settings')->insert([
-            'type' => 'language',
-            'value' => json_encode([['code' => 'en', 'default' => true, 'direction' => 'ltr']]),
-            'created_at' => now(),
-            'updated_at' => now(),
+        $usd = Currency::query()->create([
+            'name' => 'USD',
+            'symbol' => '$',
+            'code' => 'USD',
+            'exchange_rate' => 1,
+            'status' => true,
         ]);
+
+        Currency::query()->create([
+            'name' => 'Jordanian Dinar',
+            'symbol' => 'JOD',
+            'code' => 'JOD',
+            'exchange_rate' => 0.709,
+            'status' => true,
+        ]);
+
+        BusinessSetting::query()->create(['type' => 'currency_model', 'value' => 'multi_currency']);
+        BusinessSetting::query()->create(['type' => 'system_default_currency', 'value' => (string) $usd->id]);
+        BusinessSetting::query()->create(['type' => 'decimal_point_settings', 'value' => '2']);
+        BusinessSetting::query()->create(['type' => 'language', 'value' => json_encode([['code' => 'en', 'default' => true, 'direction' => 'ltr']])]);
     }
 
     protected function tearDown(): void
@@ -75,6 +103,8 @@ class SyncSupplierMappingPricesJobTest extends TestCase
 
     public function test_job_updates_mapping_cost_price_when_api_price_changes(): void
     {
+        SupplierProductMapping::flushEventListeners();
+
         $this->app['db']->table('products')->insert([
             'id' => 10,
             'name' => 'Test Product',
@@ -89,6 +119,7 @@ class SyncSupplierMappingPricesJobTest extends TestCase
             'base_url' => 'https://golf-test.example/api',
             'health_status' => 'healthy',
             'is_active' => true,
+            'settings' => ['source_currency' => 'JOD'],
         ]);
 
         $mapping = SupplierProductMapping::query()->create([
@@ -108,8 +139,8 @@ class SyncSupplierMappingPricesJobTest extends TestCase
             ->with('42')
             ->andReturn(new StockResult(
                 available: 10,
-                price: 2.41,
-                currency: 'USD',
+                price: 1.709,
+                currency: 'JOD',
                 rawData: [],
             ));
 
@@ -123,11 +154,13 @@ class SyncSupplierMappingPricesJobTest extends TestCase
             ->with(10);
         $this->app->instance(DigitalProductCodeService::class, $codeService);
 
-        (new SyncSupplierMappingPricesJob)->handle($manager, $codeService);
+        $converter = app(SupplierCurrencyConverter::class);
+
+        (new SyncSupplierMappingPricesJob)->handle($manager, $codeService, $converter);
 
         $mapping->refresh();
 
-        $this->assertSame(2.41, (float) $mapping->cost_price);
+        $this->assertEqualsWithDelta(2.41, (float) $mapping->cost_price, 0.01);
         $this->assertSame('USD', $mapping->cost_currency);
     }
 }

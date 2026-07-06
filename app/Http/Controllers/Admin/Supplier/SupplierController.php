@@ -238,6 +238,9 @@ class SupplierController extends BaseController
         $search = trim((string) $request->get('search', ''));
 
         $catalogKey = \App\Jobs\SyncSupplierCatalogJob::catalogCacheKey($supplier->id);
+        $syncService = app(\App\Services\Supplier\SupplierCatalogSyncService::class);
+        $syncService->ensureCatalogNormalized($supplier);
+
         $allItems = \Cache::get($catalogKey);
 
         if ($allItems === null) {
@@ -258,12 +261,7 @@ class SupplierController extends BaseController
         }
 
         $total = $filtered->count();
-        $syncService = app(\App\Services\Supplier\SupplierCatalogSyncService::class);
-        $items = $syncService->enrichCatalogSourcePrices(
-            $filtered->slice($page * $size, $size)->values()->all(),
-            $supplier,
-            allowLiveRefresh: true,
-        );
+        $items = $filtered->slice($page * $size, $size)->values()->all();
 
         return response()->json([
             'success' => true,

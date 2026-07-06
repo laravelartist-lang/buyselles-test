@@ -10,6 +10,8 @@ use Illuminate\Support\Facades\Log;
 
 class SupplierCatalogSyncService
 {
+    public const CATALOG_PRICE_FORMAT_VERSION = 3;
+
     public function __construct(
         private readonly SupplierManager $manager,
     ) {}
@@ -280,11 +282,17 @@ class SupplierCatalogSyncService
     public function markComplete(int $supplierId): void
     {
         $checkpoint = Cache::get(self::checkpointCacheKey($supplierId), []);
-        $catalog = $this->mergeCheckpointProducts($supplierId, $checkpoint);
+        $supplier = SupplierApi::findOrFail($supplierId);
+        $catalog = $this->normalizeCatalogPrices(
+            $this->mergeCheckpointProducts($supplierId, $checkpoint),
+            $supplier,
+        );
 
         Cache::put(self::catalogCacheKey($supplierId), $catalog, now()->addHours(6));
 
-        Cache::put(self::statusCacheKey($supplierId), [
+        $existingStatus = $this->getStatus($supplierId) ?? [];
+
+        Cache::put(self::statusCacheKey($supplierId), array_merge($existingStatus, [
             'state' => 'done',
             'progress' => 100,
             'has_catalog' => true,
@@ -292,7 +300,8 @@ class SupplierCatalogSyncService
             'total_pages' => $checkpoint['total_pages'] ?? null,
             'pages_fetched' => $checkpoint['last_successful_page'] ?? null,
             'finished_at' => now()->toIso8601String(),
-        ], now()->addHours(6));
+            'price_format_version' => self::CATALOG_PRICE_FORMAT_VERSION,
+        ]), now()->addHours(6));
 
         $this->clearCheckpointData($supplierId);
 
@@ -529,16 +538,159 @@ class SupplierCatalogSyncService
     }
 
     /**
-     * Ensure catalog items include accurate source-currency prices for admin display.
-     *
-     * Stale catalog rows may store raw JOD amounts in the USD field (synced before
-     * conversion was enabled). Never derive JOD via fromUsd() on those — instead
-     * refresh from the live supplier API when needed.
+     * Repair cached catalog prices when legacy rows stored exchange-converted values.
+     */
+    public function ensureCatalogNormalized(SupplierApi $supplier): void
+    {
+        $cacheKey = self::catalogCacheKey($supplier->id);
+        $items = Cache::get($cacheKey);
+
+        if (! is_array($items) || $items === []) {
+            return;
+        }
+
+        $sourceCurrency = strtoupper(trim((string) ($supplier->settings['source_currency'] ?? '')));
+
+        if ($sourceCurrency === '' || $sourceCurrency === 'USD') {
+            return;
+        }
+
+        $status = $this->getStatus($supplier->id) ?? [];
+        $needsLegacyNormalization = collect($items)->contains(
+            fn (array $item): bool => ! ($item['price_converted'] ?? false)
+        );
+        $needsDriverRepair = ($status['price_format_version'] ?? 1) < self::CATALOG_PRICE_FORMAT_VERSION
+            || $this->catalogPricesNeedRepair($items, $supplier);
+
+        if (! $needsLegacyNormalization && ! $needsDriverRepair) {
+            return;
+        }
+
+        if ($needsDriverRepair) {
+            $items = $this->repairCatalogPricesFromDriver($supplier, $items);
+        } else {
+            $items = $this->normalizeCatalogPrices($items, $supplier);
+        }
+
+        Cache::put($cacheKey, $items, now()->addHours(6));
+
+        Cache::put(self::statusCacheKey($supplier->id), array_merge($status, [
+            'price_format_version' => self::CATALOG_PRICE_FORMAT_VERSION,
+        ]), now()->addHours(6));
+
+        Log::info('SupplierCatalogSyncService: repaired catalog cache prices', [
+            'supplier_id' => $supplier->id,
+            'products' => count($items),
+            'driver_repair' => $needsDriverRepair,
+            'legacy_normalization' => $needsLegacyNormalization,
+        ]);
+    }
+
+    /**
+     * Rebuild catalog price fields from a fresh driver fetch (single source of truth).
      *
      * @param  array<int, array<string, mixed>>  $items
      * @return array<int, array<string, mixed>>
      */
-    public function enrichCatalogSourcePrices(array $items, SupplierApi $supplier, bool $allowLiveRefresh = false): array
+    public function repairCatalogPricesFromDriver(SupplierApi $supplier, ?array $items = null): array
+    {
+        $items = $items ?? Cache::get(self::catalogCacheKey($supplier->id), []);
+
+        if (! is_array($items) || $items === []) {
+            return [];
+        }
+
+        $sourceCurrency = strtoupper(trim((string) ($supplier->settings['source_currency'] ?? '')));
+        $sourcePriceField = (string) ($supplier->settings['product_price_field'] ?? 'price');
+
+        if ($sourceCurrency === '' || $sourceCurrency === 'USD') {
+            return $items;
+        }
+
+        $driver = $this->manager->driver($supplier);
+        $products = $driver->fetchProducts(['fetch_all' => true]);
+
+        $rawPricesById = collect($products)->mapWithKeys(
+            function (SupplierProductDTO $product) use ($sourcePriceField): array {
+                $rawPrice = (float) data_get($product->rawData, $sourcePriceField, $product->price);
+
+                return [(string) $product->supplierProductId => $rawPrice];
+            }
+        );
+
+        return array_map(function (array $item) use ($rawPricesById, $sourceCurrency): array {
+            $id = (string) ($item['id'] ?? '');
+
+            if ($id === '' || ! $rawPricesById->has($id)) {
+                return $item;
+            }
+
+            return array_merge(
+                $item,
+                $this->buildCatalogPriceFields((float) $rawPricesById->get($id), $sourceCurrency),
+            );
+        }, $items);
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $items
+     */
+    private function catalogPricesNeedRepair(array $items, SupplierApi $supplier): bool
+    {
+        $sourceCurrency = strtoupper(trim((string) ($supplier->settings['source_currency'] ?? '')));
+
+        if ($sourceCurrency !== '' && $sourceCurrency !== 'USD') {
+            $hasUncovertedUsdCopy = collect($items)->contains(function (array $item): bool {
+                $sourcePrice = (float) ($item['source_price'] ?? 0);
+                $usdPrice = (float) ($item['price'] ?? 0);
+
+                return $sourcePrice > 0 && abs($usdPrice - $sourcePrice) < 0.01;
+            });
+
+            if ($hasUncovertedUsdCopy) {
+                return true;
+            }
+        }
+
+        $sample = collect($items)->first(
+            fn (array $item): bool => ($item['id'] ?? null) !== null
+                && (float) ($item['source_price'] ?? $item['price'] ?? 0) > 0
+        );
+
+        if ($sample === null) {
+            return false;
+        }
+
+        try {
+            $driver = $this->manager->driver($supplier);
+            $liveProduct = $driver->fetchStock((string) $sample['id']);
+            $livePrice = (float) $liveProduct->price;
+            $cachedSourcePrice = (float) ($sample['source_price'] ?? $sample['price'] ?? 0);
+
+            if (abs($cachedSourcePrice - $livePrice) > 0.01) {
+                return true;
+            }
+
+            if ($sourceCurrency !== '' && $sourceCurrency !== 'USD') {
+                $expectedUsd = app(SupplierCurrencyConverter::class)->toUsd($cachedSourcePrice, $sourceCurrency);
+                $cachedUsd = (float) ($sample['price'] ?? 0);
+
+                return abs($cachedUsd - $expectedUsd) > 0.01;
+            }
+
+            return false;
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    /**
+     * Normalize catalog rows so JOD source prices and converted USD prices stay consistent.
+     *
+     * @param  array<int, array<string, mixed>>  $items
+     * @return array<int, array<string, mixed>>
+     */
+    public function normalizeCatalogPrices(array $items, SupplierApi $supplier): array
     {
         $sourceCurrency = strtoupper(trim((string) ($supplier->settings['source_currency'] ?? '')));
 
@@ -546,98 +698,65 @@ class SupplierCatalogSyncService
             return $items;
         }
 
-        return array_map(function (array $item) use ($supplier, $sourceCurrency, $allowLiveRefresh): array {
-            if ($this->catalogItemHasConvertedPrices($item, $sourceCurrency)) {
-                $item['source_currency'] = $item['source_currency'] ?? $sourceCurrency;
-
-                return $item;
-            }
-
-            if ($allowLiveRefresh && isset($item['id']) && (string) $item['id'] !== '') {
-                return $this->refreshCatalogItemFromLiveApi($item, $supplier, $sourceCurrency);
-            }
-
-            return $item;
-        }, $items);
+        return array_map(
+            fn (array $item): array => $this->normalizeCatalogItem($item, $sourceCurrency),
+            $items,
+        );
     }
 
     /**
      * @param  array<string, mixed>  $item
      * @return array<string, mixed>
      */
-    private function refreshCatalogItemFromLiveApi(array $item, SupplierApi $supplier, string $sourceCurrency): array
+    private function normalizeCatalogItem(array $item, string $sourceCurrency): array
     {
-        try {
-            $driver = $this->manager->driver($supplier);
-            $stock = $driver->fetchStock((string) $item['id']);
-            $rawPrice = $this->extractRawSourcePrice($stock->rawData, $supplier);
-
-            if ($stock->price > 0) {
-                $item['price'] = $stock->price;
-                $item['currency'] = $stock->currency;
+        if ($item['price_converted'] ?? false) {
+            if (isset($item['source_price']) && $item['source_price'] !== '') {
+                return array_merge(
+                    $item,
+                    $this->buildCatalogPriceFields((float) $item['source_price'], $sourceCurrency),
+                );
             }
 
-            if ($rawPrice !== null) {
-                $item['source_price'] = $rawPrice;
-                $item['source_currency'] = $sourceCurrency;
-            }
-
-            if (($item['source_price'] ?? null) !== null && ($item['price'] ?? 0) > 0) {
-                $item['price_converted'] = true;
-            }
-        } catch (\Throwable $exception) {
-            Log::debug('SupplierCatalogSyncService: live catalog price refresh skipped', [
-                'supplier_id' => $supplier->id,
-                'product_id' => $item['id'] ?? null,
-                'error' => $exception->getMessage(),
-            ]);
+            return $item;
         }
 
-        return $item;
+        $sourcePrice = (float) ($item['price'] ?? 0);
+
+        if ($sourcePrice <= 0) {
+            return $item;
+        }
+
+        return array_merge($item, $this->buildCatalogPriceFields($sourcePrice, $sourceCurrency));
     }
 
     /**
-     * @param  array<string, mixed>  $item
+     * Store the supplier's original price and a USD value converted via system rates.
+     *
+     * @return array<string, mixed>
      */
-    private function catalogItemHasConvertedPrices(array $item, string $sourceCurrency): bool
+    private function buildCatalogPriceFields(float $rawPrice, string $sourceCurrency): array
     {
-        if (! ($item['price_converted'] ?? false)) {
-            return false;
-        }
+        $sourceCurrency = strtoupper(trim($sourceCurrency));
+        $decimalPointSettings = (int) (getWebConfig('decimal_point_settings') ?? 2);
+        $rawPrice = round($rawPrice, $decimalPointSettings);
 
-        if (! isset($item['source_price']) || $item['source_price'] === '') {
-            return false;
+        if ($sourceCurrency === '' || $sourceCurrency === 'USD') {
+            return [
+                'price' => $rawPrice,
+                'currency' => 'USD',
+            ];
         }
 
         $converter = app(SupplierCurrencyConverter::class);
-        $expectedUsd = $converter->toUsd((float) $item['source_price'], $sourceCurrency);
-        $cachedUsd = (float) ($item['price'] ?? 0);
 
-        return $cachedUsd > 0 && abs($expectedUsd - $cachedUsd) <= 0.02;
-    }
-
-    /**
-     * @param  array<string, mixed>  $rawData
-     */
-    private function extractRawSourcePrice(array $rawData, SupplierApi $supplier): ?float
-    {
-        $settings = $supplier->settings ?? [];
-        $paths = array_values(array_unique(array_filter([
-            $settings['stock_price_path'] ?? null,
-            $settings['product_price_field'] ?? null,
-            'data.price',
-            'price',
-        ])));
-
-        foreach ($paths as $path) {
-            $value = data_get($rawData, $path);
-
-            if ($value !== null && $value !== '') {
-                return (float) $value;
-            }
-        }
-
-        return null;
+        return [
+            'source_price' => $rawPrice,
+            'source_currency' => $sourceCurrency,
+            'price' => $converter->toUsd($rawPrice, $sourceCurrency),
+            'currency' => 'USD',
+            'price_converted' => true,
+        ];
     }
 
     /**
@@ -650,27 +769,17 @@ class SupplierCatalogSyncService
         $sourcePriceField = (string) ($supplier?->settings['product_price_field'] ?? 'price');
 
         return collect($products)->map(function (SupplierProductDTO $product) use ($sourceCurrency, $sourcePriceField): array {
+            $rawPrice = (float) data_get($product->rawData, $sourcePriceField, $product->price);
+
             $entry = [
                 'id' => $product->supplierProductId,
                 'name' => $product->name,
-                'price' => $product->price,
-                'currency' => $product->currency,
                 'stock' => $product->stockAvailable,
                 'region' => $product->region,
                 'image' => $product->imageUrl,
             ];
 
-            if ($sourceCurrency !== '' && $sourceCurrency !== 'USD') {
-                $rawPrice = data_get($product->rawData, $sourcePriceField);
-
-                if ($rawPrice !== null && $rawPrice !== '') {
-                    $entry['source_price'] = (float) $rawPrice;
-                    $entry['source_currency'] = $sourceCurrency;
-                    $entry['price_converted'] = true;
-                }
-            }
-
-            return $entry;
+            return array_merge($entry, $this->buildCatalogPriceFields($rawPrice, $sourceCurrency));
         })->values()->all();
     }
 }

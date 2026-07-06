@@ -69,7 +69,7 @@ class GenericRestDriverJodConversionTest extends TestCase
         BusinessSetting::query()->create(['type' => 'decimal_point_settings', 'value' => '2']);
     }
 
-    public function test_fetch_products_converts_jod_prices_to_usd(): void
+    public function test_fetch_products_preserves_jod_prices_from_api(): void
     {
         Http::fake([
             'golf-test.example/api/products*' => Http::response([
@@ -103,12 +103,12 @@ class GenericRestDriverJodConversionTest extends TestCase
         $products = $driver->fetchProducts(['page' => 1, 'fetch_all' => false]);
 
         $this->assertCount(1, $products);
-        $this->assertSame('USD', $products[0]->currency);
-        $this->assertEqualsWithDelta(2.41, $products[0]->price, 0.01);
+        $this->assertSame('JOD', $products[0]->currency);
+        $this->assertEqualsWithDelta(1.709, $products[0]->price, 0.001);
         $this->assertSame(1.709, $products[0]->rawData['price']);
     }
 
-    public function test_fetch_stock_converts_jod_price_to_usd(): void
+    public function test_fetch_stock_preserves_jod_price_from_api(): void
     {
         Http::fake([
             'golf-test.example/api/products/42' => Http::response([
@@ -138,7 +138,7 @@ class GenericRestDriverJodConversionTest extends TestCase
         $driver = app(GenericRestDriver::class)->configure($supplier);
         $stock = $driver->fetchStock('42');
 
-        $this->assertSame('USD', $stock->currency);
-        $this->assertEqualsWithDelta(2.28, $stock->price, 0.01);
+        $this->assertSame('JOD', $stock->currency);
+        $this->assertSame(1.62, $stock->price);
     }
 }

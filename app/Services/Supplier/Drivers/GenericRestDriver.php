@@ -11,7 +11,6 @@ use App\DTOs\Supplier\SupplierProductDTO;
 use App\DTOs\Supplier\WebhookResult;
 use App\Models\SupplierApi;
 use App\Services\Supplier\Concerns\MakesResilientHttpRequests;
-use App\Services\Supplier\SupplierCurrencyConverter;
 use Illuminate\Http\Client\Response;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -177,7 +176,7 @@ class GenericRestDriver implements SupplierDriverInterface
         return array_map(function ($item) use ($idField, $nameField, $priceField, $stockField, $categoryField): SupplierProductDTO {
             $catValue = data_get($item, $categoryField);
             $rawPrice = (float) data_get($item, $priceField, 0);
-            $converted = $this->convertSupplierPrice($rawPrice);
+            $resolved = $this->resolveSupplierPrice($rawPrice);
 
             return new SupplierProductDTO(
                 supplierProductId: (string) data_get($item, $idField, ''),
@@ -185,8 +184,8 @@ class GenericRestDriver implements SupplierDriverInterface
                 description: data_get($item, 'description'),
                 category: is_string($catValue) ? $catValue : (is_scalar($catValue) ? (string) $catValue : null),
                 imageUrl: data_get($item, 'image'),
-                price: $converted['price'],
-                currency: $converted['currency'],
+                price: $resolved['price'],
+                currency: $resolved['currency'],
                 stockAvailable: (int) data_get($item, $stockField, 0),
                 rawData: (array) $item,
             );
@@ -203,12 +202,12 @@ class GenericRestDriver implements SupplierDriverInterface
 
         $stockPath = $this->getSetting('stock_response_path', 'stock');
         $pricePath = $this->getSetting('stock_price_path', 'price');
-        $converted = $this->convertSupplierPrice((float) data_get($data, $pricePath, 0));
+        $resolved = $this->resolveSupplierPrice((float) data_get($data, $pricePath, 0));
 
         return new StockResult(
             available: (int) data_get($data, $stockPath, 0),
-            price: $converted['price'],
-            currency: $converted['currency'],
+            price: $resolved['price'],
+            currency: $resolved['currency'],
             rawData: $data,
         );
     }
@@ -430,12 +429,12 @@ class GenericRestDriver implements SupplierDriverInterface
 
             $data = $this->unwrapResponseData($response->json() ?? []);
             $balancePath = $this->getSetting('balance_response_path', 'balance');
-            $converted = $this->convertSupplierPrice((float) data_get($data, $balancePath, 0));
+            $resolved = $this->resolveSupplierPrice((float) data_get($data, $balancePath, 0));
 
             return new BalanceResult(
                 supported: true,
-                balance: $converted['price'],
-                currency: $converted['currency'],
+                balance: $resolved['price'],
+                currency: $resolved['currency'],
             );
         } catch (\Throwable $e) {
             return new BalanceResult(supported: true, message: $e->getMessage());
@@ -811,11 +810,27 @@ class GenericRestDriver implements SupplierDriverInterface
     }
 
     /**
+     * Preserve the supplier API price and currency without exchange conversion.
+     *
      * @return array{price: float, currency: string}
      */
-    private function convertSupplierPrice(float $amount): array
+    private function resolveSupplierPrice(float $amount): array
     {
-        return app(SupplierCurrencyConverter::class)->convertPrice($amount, $this->getSourceCurrency());
+        $decimalPointSettings = (int) (getWebConfig('decimal_point_settings') ?? 2);
+        $rounded = round($amount, $decimalPointSettings);
+        $sourceCurrency = $this->getSourceCurrency();
+
+        if ($sourceCurrency === null || $sourceCurrency === '' || $sourceCurrency === 'USD') {
+            return [
+                'price' => $rounded,
+                'currency' => 'USD',
+            ];
+        }
+
+        return [
+            'price' => $rounded,
+            'currency' => $sourceCurrency,
+        ];
     }
 
     /**

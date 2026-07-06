@@ -11,7 +11,6 @@ use App\DTOs\Supplier\SupplierProductDTO;
 use App\DTOs\Supplier\WebhookResult;
 use App\Models\SupplierApi;
 use App\Services\Supplier\Concerns\MakesResilientHttpRequests;
-use App\Services\Supplier\SupplierCurrencyConverter;
 use Illuminate\Http\Client\Response;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -143,7 +142,7 @@ class GolfApiDriver implements SupplierDriverInterface
 
                 $category = $product['category'] ?? null;
                 $categoryTitle = $category['title'] ?? null;
-                $converted = $this->convertSupplierPrice((float) ($product['price'] ?? 0));
+                $resolved = $this->resolveSupplierPrice((float) ($product['price'] ?? 0));
 
                 $dtos[] = new SupplierProductDTO(
                     supplierProductId: $productId,
@@ -151,8 +150,8 @@ class GolfApiDriver implements SupplierDriverInterface
                     description: $product['description'] ?? null,
                     category: $categoryTitle,
                     imageUrl: $product['main_image'] ?? null,
-                    price: $converted['price'],
-                    currency: $converted['currency'],
+                    price: $resolved['price'],
+                    currency: $resolved['currency'],
                     stockAvailable: isset($product['stock']) ? (int) $product['stock'] : 999,
                     region: null,
                     rawData: $product,
@@ -188,12 +187,12 @@ class GolfApiDriver implements SupplierDriverInterface
         foreach ($items as $product) {
             if ((string) ($product['id'] ?? '') === $supplierProductId) {
                 $available = isset($product['stock']) ? (int) $product['stock'] : 999;
-                $converted = $this->convertSupplierPrice((float) ($product['price'] ?? 0));
+                $resolved = $this->resolveSupplierPrice((float) ($product['price'] ?? 0));
 
                 return new StockResult(
                     available: $available,
-                    price: $converted['price'],
-                    currency: $converted['currency'],
+                    price: $resolved['price'],
+                    currency: $resolved['currency'],
                     rawData: $product,
                 );
             }
@@ -208,12 +207,12 @@ class GolfApiDriver implements SupplierDriverInterface
                 $product = $result['data'] ?? [];
 
                 $available = isset($product['stock']) ? (int) $product['stock'] : 999;
-                $converted = $this->convertSupplierPrice((float) ($product['price'] ?? 0));
+                $resolved = $this->resolveSupplierPrice((float) ($product['price'] ?? 0));
 
                 return new StockResult(
                     available: $available,
-                    price: $converted['price'],
-                    currency: $converted['currency'],
+                    price: $resolved['price'],
+                    currency: $resolved['currency'],
                     rawData: $product,
                 );
             }
@@ -438,12 +437,12 @@ class GolfApiDriver implements SupplierDriverInterface
                 $data = $result['data'] ?? $result;
 
                 $balance = (float) ($data['balance'] ?? 0);
-                $converted = $this->convertSupplierPrice($balance);
+                $resolved = $this->resolveSupplierPrice($balance);
 
                 return new BalanceResult(
                     supported: true,
-                    balance: $converted['price'],
-                    currency: $converted['currency'],
+                    balance: $resolved['price'],
+                    currency: $resolved['currency'],
                 );
             }
 
@@ -500,11 +499,27 @@ class GolfApiDriver implements SupplierDriverInterface
     }
 
     /**
+     * Preserve the supplier API price and currency without exchange conversion.
+     *
      * @return array{price: float, currency: string}
      */
-    private function convertSupplierPrice(float $amount): array
+    private function resolveSupplierPrice(float $amount): array
     {
-        return app(SupplierCurrencyConverter::class)->convertPrice($amount, $this->getSourceCurrency());
+        $decimalPointSettings = (int) (getWebConfig('decimal_point_settings') ?? 2);
+        $rounded = round($amount, $decimalPointSettings);
+        $sourceCurrency = $this->getSourceCurrency();
+
+        if ($sourceCurrency === '' || $sourceCurrency === 'USD') {
+            return [
+                'price' => $rounded,
+                'currency' => 'USD',
+            ];
+        }
+
+        return [
+            'price' => $rounded,
+            'currency' => $sourceCurrency,
+        ];
     }
 
     /**
