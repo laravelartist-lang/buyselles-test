@@ -238,6 +238,10 @@
         directTopupSectionContent.forEach(el => {
             if (!supported) {
                 el.style.display = 'none';
+            } else if (el.classList.contains('direct-topup-fields')) {
+                el.style.display = (directTopupToggle && directTopupToggle.checked) ? '' : 'none';
+            } else {
+                el.style.display = '';
             }
         });
 
