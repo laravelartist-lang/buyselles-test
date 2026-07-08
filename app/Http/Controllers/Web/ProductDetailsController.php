@@ -103,8 +103,8 @@ class ProductDetailsController extends Controller
             $firstVariationQuantity = $productDetailsStock['available_quantity'];
 
             $directTopUpService = app(DirectTopUpService::class);
-            $isDirectTopUpProduct = $directTopUpService->canAddToCart($product);
-            $directTopUpConfig = $isDirectTopUpProduct ? $directTopUpService->buildApiPayload($product) : null;
+            $isDirectTopUpProduct = $directTopUpService->isDirectTopUpProduct($product);
+            $directTopUpConfig = $isDirectTopUpProduct ? $directTopUpService->buildModalConfig($product) : null;
 
             $rating = getRating(reviews: $product->reviews);
             $decimalPointSettings = getWebConfig('decimal_point_settings');

@@ -45,6 +45,13 @@ class GolfApiDriver implements SupplierDriverInterface
     private array $settings = [];
 
     /**
+     * In-memory cache for product details keyed by product ID.
+     *
+     * @var array<int, array<string, mixed>>
+     */
+    private array $productDetailsCache = [];
+
+    /**
      * In-memory cache for product custom_fields, keyed by product ID.
      * Avoids redundant API calls when the same product is queried multiple times in one request.
      *
@@ -361,6 +368,23 @@ class GolfApiDriver implements SupplierDriverInterface
      *
      * @return array{valid: bool, playerId: string|null, username: string|null, error: string|null}
      */
+    public function getProductApiType(string $supplierProductId): ?string
+    {
+        $product = $this->fetchProductDetails($supplierProductId);
+        $apiType = $product['api_type'] ?? null;
+
+        if ($apiType === null || $apiType === '') {
+            return null;
+        }
+
+        return strtolower((string) $apiType);
+    }
+
+    public function requiresJawakerPlayerValidation(string $supplierProductId): bool
+    {
+        return $this->getProductApiType($supplierProductId) === 'jawaker';
+    }
+
     public function validatePlayerId(string $playerId): array
     {
         $response = $this->post('/order/jawaker/validate', [
@@ -536,36 +560,13 @@ class GolfApiDriver implements SupplierDriverInterface
     {
         $productId = (int) $supplierProductId;
 
-        // Return from in-memory cache if already fetched this request
         if (isset($this->productCustomFieldsCache[$productId])) {
             return $this->productCustomFieldsCache[$productId];
         }
 
-        try {
-            $response = $this->get("/products/{$productId}");
-        } catch (\Illuminate\Http\Client\RequestException $e) {
-            Log::warning('GolfApiDriver: failed to fetch product custom_fields', [
-                'product_id' => $productId,
-                'status' => $e->response->status(),
-            ]);
-
-            return [];
-        }
-
-        if ($response->failed()) {
-            Log::warning('GolfApiDriver: failed to fetch product custom_fields', [
-                'product_id' => $productId,
-                'status' => $response->status(),
-            ]);
-
-            return [];
-        }
-
-        $result = $this->unwrapResponse($response);
-        $product = $result['data'] ?? [];
+        $product = $this->fetchProductDetails($supplierProductId);
         $customFields = $product['custom_fields'] ?? [];
 
-        // Normalise: ensure each entry has the expected keys
         $normalised = [];
         foreach ($customFields as $field) {
             $normalised[] = [
@@ -579,6 +580,45 @@ class GolfApiDriver implements SupplierDriverInterface
         $this->productCustomFieldsCache[$productId] = $normalised;
 
         return $normalised;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function fetchProductDetails(string $supplierProductId): array
+    {
+        $productId = (int) $supplierProductId;
+
+        if (isset($this->productDetailsCache[$productId])) {
+            return $this->productDetailsCache[$productId];
+        }
+
+        try {
+            $response = $this->get("/products/{$productId}");
+        } catch (\Illuminate\Http\Client\RequestException $e) {
+            Log::warning('GolfApiDriver: failed to fetch product details', [
+                'product_id' => $productId,
+                'status' => $e->response->status(),
+            ]);
+
+            return [];
+        }
+
+        if ($response->failed()) {
+            Log::warning('GolfApiDriver: failed to fetch product details', [
+                'product_id' => $productId,
+                'status' => $response->status(),
+            ]);
+
+            return [];
+        }
+
+        $result = $this->unwrapResponse($response);
+        $product = is_array($result['data'] ?? null) ? $result['data'] : [];
+
+        $this->productDetailsCache[$productId] = $product;
+
+        return $product;
     }
 
     /**

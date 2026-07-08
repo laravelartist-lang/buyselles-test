@@ -3,11 +3,18 @@
 namespace App\Services\DirectTopUp;
 
 use App\Models\Product;
+use App\Models\SupplierApi;
 use App\Models\SupplierProductMapping;
+use App\Services\Supplier\Drivers\GolfApiDriver;
+use App\Services\Supplier\SupplierManager;
 use InvalidArgumentException;
 
 class DirectTopUpService
 {
+    public function __construct(
+        private readonly SupplierManager $supplierManager,
+    ) {}
+
     public function isDirectTopUpProduct(Product $product): bool
     {
         if ($product->product_type !== 'digital') {
@@ -122,7 +129,166 @@ class DirectTopUpService
             $errors['direct_topup_quantity'] = translate('direct_topup_quantity_out_of_range').' '.$min.' - '.$max;
         }
 
+        if ($errors === [] && $this->requiresAccountVerification($product)) {
+            $supplierValidation = $this->validateAccountWithSupplier($product, $accountId);
+
+            if ($supplierValidation['supported'] && ! $supplierValidation['valid']) {
+                $errors['direct_topup_account_id'] = (string) ($supplierValidation['message']
+                    ?? translate('direct_topup_account_invalid'));
+            }
+        }
+
         return $errors;
+    }
+
+    public function requiresAccountVerification(Product $product): bool
+    {
+        if (! $this->isDirectTopUpProduct($product)) {
+            return false;
+        }
+
+        $mapping = $this->getMapping($product);
+
+        return $this->supplierSupportsPlayerIdValidation($mapping?->supplierApi);
+    }
+
+    /**
+     * @return array{supported: bool, valid: bool, player_id: string|null, username: string|null, message: string|null}
+     */
+    public function validateAccountWithSupplier(Product $product, string $accountId): array
+    {
+        $accountId = trim($accountId);
+        $formatError = $this->validateAccountIdFormat($accountId);
+
+        if ($formatError !== null) {
+            return [
+                'supported' => true,
+                'valid' => false,
+                'player_id' => null,
+                'username' => null,
+                'message' => $formatError,
+            ];
+        }
+
+        $mapping = $this->getMapping($product);
+        $supplier = $mapping?->supplierApi;
+
+        if ($mapping === null || $supplier === null) {
+            return [
+                'supported' => false,
+                'valid' => true,
+                'player_id' => null,
+                'username' => null,
+                'message' => null,
+            ];
+        }
+
+        if (! $this->supplierSupportsPlayerIdValidation($supplier)) {
+            return [
+                'supported' => false,
+                'valid' => true,
+                'player_id' => null,
+                'username' => null,
+                'message' => null,
+            ];
+        }
+
+        $driver = $this->resolveGolfPlayerValidationDriver($supplier);
+
+        if ($driver === null) {
+            return [
+                'supported' => false,
+                'valid' => true,
+                'player_id' => null,
+                'username' => null,
+                'message' => null,
+            ];
+        }
+
+        if (! $driver->requiresJawakerPlayerValidation((string) $mapping->supplier_product_id)) {
+            return [
+                'supported' => false,
+                'valid' => true,
+                'player_id' => null,
+                'username' => null,
+                'message' => null,
+            ];
+        }
+
+        $result = $driver->validatePlayerId($accountId);
+
+        if ($result['valid']) {
+            $username = $result['username'] ?? null;
+
+            return [
+                'supported' => true,
+                'valid' => true,
+                'player_id' => $result['playerId'] ?? $accountId,
+                'username' => is_string($username) ? $username : null,
+                'message' => $username !== null && $username !== ''
+                    ? translate('direct_topup_account_verified').': '.$username
+                    : translate('direct_topup_account_verified'),
+            ];
+        }
+
+        return [
+            'supported' => true,
+            'valid' => false,
+            'player_id' => null,
+            'username' => null,
+            'message' => (string) ($result['error'] ?? translate('direct_topup_account_invalid')),
+        ];
+    }
+
+    private function supplierSupportsPlayerIdValidation(?SupplierApi $supplier): bool
+    {
+        if ($supplier === null || ! $supplier->supports_direct_top_up) {
+            return false;
+        }
+
+        if ($supplier->driver === 'golf_api') {
+            return true;
+        }
+
+        if ($supplier->driver !== 'generic_rest') {
+            return false;
+        }
+
+        $settings = $supplier->settings ?? [];
+
+        return ! empty($settings['topup_use_product_custom_fields']);
+    }
+
+    private function resolveGolfPlayerValidationDriver(SupplierApi $supplier): ?GolfApiDriver
+    {
+        if (! $this->supplierSupportsPlayerIdValidation($supplier)) {
+            return null;
+        }
+
+        if ($supplier->driver === 'golf_api') {
+            $driver = $this->supplierManager->driver($supplier);
+
+            return $driver instanceof GolfApiDriver ? $driver : null;
+        }
+
+        return app(GolfApiDriver::class)->configure($supplier);
+    }
+
+    private function validateAccountIdFormat(string $accountId): ?string
+    {
+        if ($accountId === '') {
+            return translate('direct_topup_account_id_is_required');
+        }
+
+        if (strlen($accountId) > 255) {
+            return translate('direct_topup_account_id_too_long');
+        }
+
+        if (! preg_match('/^[a-zA-Z0-9_\-\.@]+$/u', $accountId)) {
+            return translate('direct_topup_account_id_invalid_format');
+        }
+
+        return null;
     }
 
     /**
@@ -171,6 +337,45 @@ class DirectTopUpService
         }
 
         return (float) $quantity;
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public function buildModalConfig(Product $product): ?array
+    {
+        if (! $this->isDirectTopUpProduct($product)) {
+            return null;
+        }
+
+        $mapping = $this->getMapping($product);
+
+        if ($mapping === null) {
+            return null;
+        }
+
+        $minQuantity = (float) ($mapping->direct_topup_min_quantity ?? 0);
+        $maxQuantity = (float) ($mapping->direct_topup_max_quantity ?? 0);
+
+        if ($minQuantity <= 0) {
+            $minQuantity = 1;
+        }
+
+        if ($maxQuantity <= 0 || $maxQuantity < $minQuantity) {
+            $maxQuantity = max($minQuantity, 100);
+        }
+
+        return [
+            'enabled' => true,
+            'account_label' => trim((string) ($mapping->direct_topup_account_label ?? '')) !== ''
+                ? (string) $mapping->direct_topup_account_label
+                : (translate('account_id') ?: 'Account ID'),
+            'min_quantity' => $minQuantity,
+            'max_quantity' => $maxQuantity,
+            'price_per_unit' => $this->getPricePerUnit($product),
+            'currency' => getWebConfig(name: 'currency_code') ?? 'USD',
+            'requires_account_verification' => $this->requiresAccountVerification($product),
+        ];
     }
 
     /**

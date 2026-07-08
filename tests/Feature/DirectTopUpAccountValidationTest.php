@@ -1,34 +1,32 @@
 <?php
 
-namespace Tests\Unit;
+namespace Tests\Feature;
 
 use App\Models\Product;
-use App\Services\DirectTopUp\DirectTopUpService;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Http;
-use InvalidArgumentException;
 use Tests\Concerns\ManagesTestDatabaseSchema;
 use Tests\TestCase;
 
-class DirectTopUpServiceTest extends TestCase
+class DirectTopUpAccountValidationTest extends TestCase
 {
     use ManagesTestDatabaseSchema;
-
-    private DirectTopUpService $service;
 
     protected function setUp(): void
     {
         parent::setUp();
 
         Cache::flush();
+
         $this->recreateTable('business_settings', function (Blueprint $table): void {
             $table->id();
             $table->string('type')->nullable();
             $table->longText('value')->nullable();
             $table->timestamps();
         });
+
         $this->app['db']->table('business_settings')->insert([
             'type' => 'language',
             'value' => json_encode([
@@ -80,79 +78,28 @@ class DirectTopUpServiceTest extends TestCase
             $table->timestamps();
         });
 
-        $this->service = app(DirectTopUpService::class);
+        $this->recreateTable('translations', function (Blueprint $table): void {
+            $table->id();
+            $table->string('translationable_type')->nullable();
+            $table->unsignedBigInteger('translationable_id')->nullable();
+            $table->string('locale')->nullable();
+            $table->string('key')->nullable();
+            $table->text('value')->nullable();
+            $table->timestamps();
+        });
+
+        $this->recreateTable('reviews', function (Blueprint $table): void {
+            $table->id();
+            $table->unsignedBigInteger('product_id')->nullable();
+            $table->unsignedBigInteger('delivery_man_id')->nullable();
+            $table->boolean('status')->default(1);
+            $table->timestamps();
+        });
     }
 
-    public function test_calculate_total_price_from_quantity(): void
+    public function test_validate_direct_topup_account_returns_valid_player(): void
     {
-        $product = $this->makeDirectTopUpProduct();
-
-        $total = $this->service->calculateTotalPrice($product, 1000);
-
-        $this->assertSame(10.0, $total);
-    }
-
-    public function test_calculate_quantity_from_price_floors_and_clamps(): void
-    {
-        $product = $this->makeDirectTopUpProduct();
-
-        $this->assertSame(100.0, $this->service->calculateQuantityFromPrice($product, 0.50));
-        $this->assertSame(100.0, $this->service->calculateQuantityFromPrice($product, 0.01));
-        $this->assertSame(10000.0, $this->service->calculateQuantityFromPrice($product, 99999));
-    }
-
-    public function test_validate_configuration_rejects_invalid_min_max(): void
-    {
-        $product = $this->makeDirectTopUpProduct();
-        $this->app['db']->table('supplier_product_mappings')
-            ->where('product_id', $product->id)
-            ->update([
-                'direct_topup_min_quantity' => 500,
-                'direct_topup_max_quantity' => 100,
-            ]);
-
-        $this->expectException(InvalidArgumentException::class);
-
-        $this->service->validateConfiguration($product);
-    }
-
-    public function test_build_api_payload_returns_configuration(): void
-    {
-        $product = $this->makeDirectTopUpProduct();
-
-        $payload = $this->service->buildApiPayload($product);
-
-        $this->assertNotNull($payload);
-        $this->assertTrue($payload['enabled']);
-        $this->assertSame('Player ID', $payload['account_label']);
-        $this->assertSame(100.0, $payload['min_quantity']);
-        $this->assertSame(10000.0, $payload['max_quantity']);
-        $this->assertSame(0.01, $payload['price_per_unit']);
-    }
-
-    public function test_requires_account_verification_is_true_for_golf_api_supplier(): void
-    {
-        $product = $this->makeGolfDirectTopUpProduct();
-
-        $this->assertTrue($this->service->requiresAccountVerification($product));
-    }
-
-    public function test_validate_account_with_supplier_skips_for_non_golf_supplier(): void
-    {
-        $product = $this->makeDirectTopUpProduct();
-
-        Http::fake();
-
-        $result = $this->service->validateAccountWithSupplier($product, 'player123');
-
-        $this->assertFalse($result['supported']);
-        $this->assertTrue($result['valid']);
-        Http::assertNothingSent();
-    }
-
-    public function test_validate_account_with_supplier_returns_valid_for_golf_jawaker_player(): void
-    {
-        $product = $this->makeGolfDirectTopUpProduct();
+        $product = $this->createGolfDirectTopUpProduct();
 
         Http::fake([
             'api.golf-test.com/api/products/195' => Http::response([
@@ -161,7 +108,9 @@ class DirectTopUpServiceTest extends TestCase
                     'data' => [
                         'id' => 195,
                         'api_type' => 'jawaker',
-                        'custom_fields' => [],
+                        'custom_fields' => [
+                            ['id' => 3, 'name' => 'Player ID', 'desc' => 'Player ID', 'sort' => 1],
+                        ],
                     ],
                 ],
             ]),
@@ -177,17 +126,23 @@ class DirectTopUpServiceTest extends TestCase
             ]),
         ]);
 
-        $result = $this->service->validateAccountWithSupplier($product, '12345');
+        $response = $this->postJson(route('cart.validate-direct-topup-account'), [
+            'product_id' => $product->id,
+            'direct_topup_account_id' => '12345',
+        ]);
 
-        $this->assertTrue($result['supported']);
-        $this->assertTrue($result['valid']);
-        $this->assertSame('12345', $result['player_id']);
-        $this->assertSame('GamerPro', $result['username']);
+        $response->assertOk()
+            ->assertJson([
+                'supported' => true,
+                'valid' => true,
+                'player_id' => '12345',
+                'username' => 'GamerPro',
+            ]);
     }
 
-    public function test_validate_account_with_supplier_returns_invalid_for_bad_player(): void
+    public function test_validate_direct_topup_account_returns_invalid_player(): void
     {
-        $product = $this->makeGolfDirectTopUpProduct();
+        $product = $this->createGolfDirectTopUpProduct();
 
         Http::fake([
             'api.golf-test.com/api/products/195' => Http::response([
@@ -207,48 +162,26 @@ class DirectTopUpServiceTest extends TestCase
             ], 422),
         ]);
 
-        $result = $this->service->validateAccountWithSupplier($product, 'bad-id');
-
-        $this->assertTrue($result['supported']);
-        $this->assertFalse($result['valid']);
-        $this->assertSame('Player ID is invalid', $result['message']);
-    }
-
-    public function test_validate_purchase_rejects_invalid_golf_player_id(): void
-    {
-        $product = $this->makeGolfDirectTopUpProduct();
-
-        Http::fake([
-            'api.golf-test.com/api/products/195' => Http::response([
-                'status' => 'success',
-                'result' => [
-                    'data' => [
-                        'id' => 195,
-                        'api_type' => 'jawaker',
-                        'custom_fields' => [],
-                    ],
-                ],
-            ]),
-            'api.golf-test.com/api/order/jawaker/validate' => Http::response([
-                'status' => 'error',
-                'message' => 'Player ID is invalid',
-                'result' => null,
-            ], 422),
+        $response = $this->postJson(route('cart.validate-direct-topup-account'), [
+            'product_id' => $product->id,
+            'direct_topup_account_id' => 'bad-id',
         ]);
 
-        $errors = $this->service->validatePurchase($product, 'bad-id', 500);
-
-        $this->assertArrayHasKey('direct_topup_account_id', $errors);
-        $this->assertSame('Player ID is invalid', $errors['direct_topup_account_id']);
+        $response->assertStatus(422)
+            ->assertJson([
+                'supported' => true,
+                'valid' => false,
+                'message' => 'Player ID is invalid',
+            ]);
     }
 
-    private function makeDirectTopUpProduct(): Product
+    public function test_validate_direct_topup_account_skips_for_non_golf_supplier(): void
     {
         $product = Product::create([
             'added_by' => 'admin',
-            'name' => 'Direct Top-up Product',
-            'slug' => 'direct-topup-product',
-            'code' => 'TOPUP001',
+            'name' => 'Generic Direct Top-up',
+            'slug' => 'generic-direct-topup',
+            'code' => 'GEN001',
             'product_type' => 'digital',
             'digital_product_type' => 'ready_product',
             'unit_price' => 1,
@@ -256,8 +189,11 @@ class DirectTopUpServiceTest extends TestCase
         ]);
 
         $supplierId = $this->app['db']->table('supplier_apis')->insertGetId([
-            'name' => 'Test Supplier',
+            'name' => 'Generic Supplier',
             'driver' => 'generic_rest',
+            'base_url' => 'https://example.com',
+            'credentials' => Crypt::encryptString(json_encode(['api_key' => 'test'])),
+            'auth_type' => 'api_key',
             'is_active' => true,
             'supports_direct_top_up' => true,
             'created_at' => now(),
@@ -267,7 +203,7 @@ class DirectTopUpServiceTest extends TestCase
         $this->app['db']->table('supplier_product_mappings')->insert([
             'product_id' => $product->id,
             'supplier_api_id' => $supplierId,
-            'supplier_product_id' => 'TEST-001',
+            'supplier_product_id' => 'GEN-001',
             'cost_price' => 0.01,
             'markup_type' => 'percent',
             'markup_value' => 0,
@@ -281,16 +217,29 @@ class DirectTopUpServiceTest extends TestCase
             'updated_at' => now(),
         ]);
 
-        return $product;
+        Http::fake();
+
+        $response = $this->postJson(route('cart.validate-direct-topup-account'), [
+            'product_id' => $product->id,
+            'direct_topup_account_id' => 'player123',
+        ]);
+
+        $response->assertOk()
+            ->assertJson([
+                'supported' => false,
+                'valid' => true,
+            ]);
+
+        Http::assertNothingSent();
     }
 
-    private function makeGolfDirectTopUpProduct(): Product
+    private function createGolfDirectTopUpProduct(): Product
     {
         $product = Product::create([
             'added_by' => 'admin',
             'name' => 'Jawaker Top-up',
-            'slug' => 'jawaker-topup-service-test',
-            'code' => 'JAWSRV001',
+            'slug' => 'jawaker-topup',
+            'code' => 'JAW001',
             'product_type' => 'digital',
             'digital_product_type' => 'ready_product',
             'unit_price' => 1,

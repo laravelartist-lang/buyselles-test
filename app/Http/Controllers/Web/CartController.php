@@ -213,6 +213,7 @@ class CartController extends Controller
 
         $discountType = getProductPriceByType(product: $product, type: 'discount_type', result: 'string');
         $stockPresentation = CartManager::getProductDetailsStockPresentation($product, $string !== '' ? $string : null);
+        $isDirectTopUpProduct = app(DirectTopUpService::class)->isDirectTopUpProduct($product);
 
         return [
             'price' => webCurrencyConverter($price * $requestQuantity),
@@ -224,7 +225,7 @@ class CartController extends Controller
                 : $stockPresentation['available_quantity'],
             'show_out_of_stock' => $stockPresentation['show_out_of_stock'],
             'is_supplier_mapped' => $stockPresentation['is_supplier_mapped'],
-            'is_direct_topup' => $stockPresentation['is_direct_topup'] ?? false,
+            'is_direct_topup' => $isDirectTopUpProduct,
             'delivery_cost' => isset($deliveryInfo['delivery_cost']) ? webCurrencyConverter($deliveryInfo['delivery_cost']) : 0,
             'unit_price' => webCurrencyConverter($price), // fashion theme
             'total_unit_price' => webCurrencyConverter($unit_price), // fashion theme
@@ -239,6 +240,58 @@ class CartController extends Controller
             'product_type' => $product['product_type'],
             'restock_request_status' => $restockRequestStatus,
         ];
+    }
+
+    public function validateDirectTopUpAccount(Request $request): JsonResponse
+    {
+        $request->validate([
+            'product_id' => 'required|integer|exists:products,id',
+            'direct_topup_account_id' => 'required|string|max:255',
+        ]);
+
+        $product = Product::query()->findOrFail($request->integer('product_id'));
+        $directTopUpService = app(DirectTopUpService::class);
+
+        if (! $directTopUpService->isDirectTopUpProduct($product)) {
+            return response()->json([
+                'supported' => false,
+                'valid' => false,
+                'message' => translate('product_is_not_direct_topup'),
+            ], 400);
+        }
+
+        $result = $directTopUpService->validateAccountWithSupplier(
+            $product,
+            (string) $request->input('direct_topup_account_id'),
+        );
+
+        if (! $result['supported']) {
+            return response()->json([
+                'supported' => false,
+                'valid' => true,
+                'player_id' => null,
+                'username' => null,
+                'message' => null,
+            ]);
+        }
+
+        if ($result['valid']) {
+            return response()->json([
+                'supported' => true,
+                'valid' => true,
+                'player_id' => $result['player_id'],
+                'username' => $result['username'],
+                'message' => $result['message'],
+            ]);
+        }
+
+        return response()->json([
+            'supported' => true,
+            'valid' => false,
+            'player_id' => null,
+            'username' => null,
+            'message' => $result['message'] ?? translate('direct_topup_account_invalid'),
+        ], 422);
     }
 
     public function addToCart(Request $request): JsonResponse|RedirectResponse

@@ -1140,9 +1140,13 @@ class CartManager
     {
         $directTopUpService = app(DirectTopUpService::class);
 
-        if ($directTopUpService->canAddToCart($product)) {
+        if ($directTopUpService->isDirectTopUpProduct($product)) {
             $mapping = self::resolveSupplierMapping($product);
-            $maxQuantity = $mapping ? (int) floor((float) $mapping->direct_topup_max_quantity) : 1;
+            $maxQuantity = $mapping ? (int) floor((float) ($mapping->direct_topup_max_quantity ?: 100)) : 100;
+
+            if ($maxQuantity <= 0) {
+                $maxQuantity = 100;
+            }
 
             return [
                 'available_quantity' => max(1, $maxQuantity),

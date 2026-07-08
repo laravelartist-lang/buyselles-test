@@ -251,7 +251,8 @@
 
                                         <form
                                             class="addToCartDynamicForm add-to-cart-details-form d-flex flex-column gap-4"
-                                            data-amount-error="{{ translate('amount_must_be_between') }}">
+                                            data-amount-error="{{ translate('amount_must_be_between') }}"
+                                            @if(!empty($isDirectTopUpProduct)) data-is-direct-topup="1" @endif>
 
                                             <div class="">
                                                 <h3

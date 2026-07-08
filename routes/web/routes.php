@@ -317,6 +317,7 @@ Route::group(['namespace' => 'Web', 'middleware' => ['maintenance_mode', 'guestC
 Route::group(['prefix' => 'cart', 'as' => 'cart.', 'namespace' => 'Web'], function () {
     Route::controller(CartController::class)->group(function () {
         Route::post('variant_price', 'getVariantPrice')->name('variant_price');
+        Route::post('validate-direct-topup-account', 'validateDirectTopUpAccount')->name('validate-direct-topup-account');
         Route::post('add', 'addToCart')->name('add');
         Route::post('add-all-to-cart', 'addAllToCartFromWishtList')->name('add-all-to-cart');
         Route::post('update-variation', 'update_variation')->name('update-variation'); // theme fashion

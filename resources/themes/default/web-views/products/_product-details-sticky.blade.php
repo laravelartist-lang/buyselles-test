@@ -4,7 +4,8 @@
     </div>
 
     <div class="container product-cart-option-container">
-        <form class="add-to-cart-sticky-form addToCartDynamicForm">
+        <form class="add-to-cart-sticky-form addToCartDynamicForm"
+            @if(!empty($isDirectTopUpProduct)) data-is-direct-topup="1" @endif>
             @csrf
             <input type="hidden" name="id" value="{{ $productDetails->id }}">
             <input type="hidden" name="position" value="bottom">

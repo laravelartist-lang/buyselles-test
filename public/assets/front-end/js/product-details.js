@@ -97,7 +97,10 @@ if (targetElement) {
 }
 
 cartQuantityInitialize();
-getVariantPrice(".add-to-cart-details-form");
+const $detailsForm = $(".add-to-cart-details-form");
+if ($detailsForm.data("is-direct-topup") !== "1" && $detailsForm.data("is-direct-topup") !== 1) {
+    getVariantPrice(".add-to-cart-details-form");
+}
 
 $(".view_more_button").on("click", function () {
     loadReviewOnDetailsPage();

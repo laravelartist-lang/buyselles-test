@@ -1301,152 +1301,174 @@ function syncDirectTopUpFormFields(formSelector = ".add-to-cart-details-form") {
     $("#direct-topup-quantity-hidden").val(qty);
 }
 
+function getDirectTopUpModalConfig() {
+    try {
+        return JSON.parse($("#direct-topup-config-json").text() || "{}");
+    } catch (e) {
+        return {};
+    }
+}
+
+function shouldEnforceDirectTopUpVerifyUi(config) {
+    return !!config.requires_account_verification && config.show_verify_button !== false;
+}
+
+function resetDirectTopUpVerificationState($root) {
+    const config = getDirectTopUpModalConfig();
+    const enforceVerifyUi = shouldEnforceDirectTopUpVerifyUi(config);
+
+    $root.data("directTopupVerified", false);
+    $root.data("directTopupVerifiedAccountId", null);
+    $root.data("directTopupVerifiedUsername", null);
+
+    const $status = $root.find("#direct-topup-verify-status");
+    $status.removeClass("text-success text-danger text-muted").text("");
+
+    const $proceedBtn = $root.find("#direct-topup-proceed-btn");
+    if (enforceVerifyUi) {
+        $proceedBtn.prop("disabled", true);
+    } else {
+        $proceedBtn.prop("disabled", false);
+    }
+}
+
+function setDirectTopUpVerificationSuccess($root, accountId, username, message) {
+    const config = getDirectTopUpModalConfig();
+    const $status = $root.find("#direct-topup-verify-status");
+    const verifiedLabel = config.labels?.verified || "Verified";
+    const successText = username
+        ? verifiedLabel + ": " + username
+        : (message || verifiedLabel);
+
+    $root.data("directTopupVerified", true);
+    $root.data("directTopupVerifiedAccountId", accountId);
+    $root.data("directTopupVerifiedUsername", username || null);
+
+    $status
+        .removeClass("text-danger text-muted")
+        .addClass("text-success")
+        .text(successText);
+
+    $root.find("#direct-topup-proceed-btn").prop("disabled", false);
+}
+
+function setDirectTopUpVerificationError($root, message) {
+    const config = getDirectTopUpModalConfig();
+    const $status = $root.find("#direct-topup-verify-status");
+
+    $root.data("directTopupVerified", false);
+    $root.data("directTopupVerifiedAccountId", null);
+    $root.data("directTopupVerifiedUsername", null);
+
+    $status
+        .removeClass("text-success text-muted")
+        .addClass("text-danger")
+        .text(message || config.labels?.invalid || "Player ID is invalid.");
+
+    $root.find("#direct-topup-proceed-btn").prop("disabled", true);
+}
+
+function verifyDirectTopUpAccount($root) {
+    const config = getDirectTopUpModalConfig();
+    const validateUrl = config.validate_account_url;
+    const accountId = $.trim($root.find("#direct-topup-account-input").val() || "");
+    const $verifyBtn = $root.find("#direct-topup-verify-btn");
+    const $status = $root.find("#direct-topup-verify-status");
+
+    if (!validateUrl) {
+        return;
+    }
+
+    if (accountId === "") {
+        setDirectTopUpVerificationError(
+            $root,
+            $("#message-direct-topup-account-required").data("text") || "Account ID is required."
+        );
+        return;
+    }
+
+    resetDirectTopUpVerificationState($root);
+
+    $verifyBtn.prop("disabled", true);
+    $status
+        .removeClass("text-success text-danger")
+        .addClass("text-muted")
+        .text(config.labels?.verifying || "Verifying...");
+
+    $.ajax({
+        type: "POST",
+        url: validateUrl,
+        dataType: "json",
+        headers: {
+            "X-CSRF-TOKEN": $('meta[name="_token"]').attr("content"),
+            "X-Requested-With": "XMLHttpRequest",
+        },
+        data: {
+            _token: $('meta[name="_token"]').attr("content"),
+            product_id: config.product_id,
+            direct_topup_account_id: accountId,
+        },
+        success: function (response) {
+            if (response.supported === false) {
+                setDirectTopUpVerificationSuccess($root, accountId, null, null);
+                return;
+            }
+
+            if (response.valid) {
+                setDirectTopUpVerificationSuccess(
+                    $root,
+                    accountId,
+                    response.username || null,
+                    response.message || null
+                );
+                return;
+            }
+
+            setDirectTopUpVerificationError($root, response.message);
+        },
+        error: function (xhr) {
+            let message = config.labels?.invalid || "Player ID is invalid.";
+            if (xhr.responseJSON && xhr.responseJSON.message) {
+                message = xhr.responseJSON.message;
+            }
+            setDirectTopUpVerificationError($root, message);
+        },
+        complete: function () {
+            $verifyBtn.prop("disabled", false);
+        },
+    });
+}
+
 function initDirectTopUpModalBehavior($root) {
     const $section = $root.find("#direct-topup-purchase-section");
     if (!$section.length) {
         return;
     }
 
-    const minQty = parseFloat($section.data("min-quantity")) || 0;
-    const maxQty = parseFloat($section.data("max-quantity")) || 0;
+    const minQty = parseFloat($section.data("min-quantity")) || 1;
     const perUnit = parseFloat($section.data("price-per-unit")) || 0;
 
-    const $qtyPane = $root.find("#direct-topup-qty-pane");
-    const $pricePane = $root.find("#direct-topup-price-pane");
-    const $qtyInput = $root.find("#direct-topup-quantity-input");
-    const $priceInput = $root.find("#direct-topup-price-input");
     const $hiddenQty = $root.find("#direct-topup-quantity-hidden");
-    const $qtyFromPr = $root.find("#direct-topup-qty-from-price");
-    const $actualT = $root.find("#direct-topup-actual-total");
-    const $actualRow = $root.find("#direct-topup-actual-row");
     const $modalTotal = $root.find("#direct-topup-modal-total");
 
-    let currencyConfig = {};
-    try {
-        currencyConfig = JSON.parse($("#direct-topup-config-json").text() || "{}");
-    } catch (e) {
-        currencyConfig = {};
-    }
+    const currencyConfig = getDirectTopUpModalConfig();
 
     const currencySymbol = currencyConfig.currency_symbol || "";
     const symbolPosition = currencyConfig.symbol_position || "left";
     const decimalPoints = parseInt(currencyConfig.decimal_points, 10) || 2;
-
-    let currentQty = minQty;
-    let syncing = false;
 
     function formatPrice(value) {
         const num = Number(value).toFixed(decimalPoints);
         return symbolPosition === "left" ? currencySymbol + num : num + currencySymbol;
     }
 
-    function totalFor(q) {
-        return Math.round(q * perUnit * 100) / 100;
-    }
+    const quantity = Math.floor(minQty);
+    const total = Math.round(quantity * perUnit * 100) / 100;
 
-    function clampQ(q) {
-        if (q < minQty) {
-            return minQty;
-        }
-        if (q > maxQty) {
-            return maxQty;
-        }
-        return Math.round(q);
-    }
+    $hiddenQty.val(quantity);
+    $modalTotal.text(formatPrice(total));
 
-    function refresh() {
-        const q = clampQ(currentQty);
-        const t = totalFor(q);
-        $hiddenQty.val(q);
-        $qtyFromPr.text(q);
-        $modalTotal.text(formatPrice(t));
-    }
-
-    function switchToQty() {
-        if (syncing) {
-            return;
-        }
-        syncing = true;
-        $qtyPane.removeClass("d-none");
-        $pricePane.addClass("d-none");
-        $qtyInput.val(Math.floor(clampQ(currentQty)));
-        refresh();
-        $actualRow.addClass("d-none");
-        syncing = false;
-    }
-
-    function switchToPrice() {
-        if (syncing) {
-            return;
-        }
-        syncing = true;
-        $pricePane.removeClass("d-none");
-        $qtyPane.addClass("d-none");
-        $priceInput.val(totalFor(clampQ(currentQty)).toFixed(decimalPoints));
-        refresh();
-        $actualRow.addClass("d-none");
-        syncing = false;
-    }
-
-    $qtyInput.off("input.directTopUp").on("input.directTopUp", function () {
-        if (syncing) {
-            return;
-        }
-        syncing = true;
-        let v = parseInt(String(this.value).replace(/[^0-9]/g, ""), 10);
-        if (isNaN(v) || v < 1) {
-            v = minQty;
-        }
-        currentQty = clampQ(v);
-        this.value = Math.floor(currentQty);
-        refresh();
-        $actualRow.addClass("d-none");
-        syncing = false;
-    });
-
-    $qtyInput.off("change.directTopUp blur.directTopUp").on("change.directTopUp blur.directTopUp", refresh);
-
-    $priceInput.off("input.directTopUp").on("input.directTopUp", function () {
-        if (syncing) {
-            return;
-        }
-        syncing = true;
-        let v = parseFloat(String(this.value).replace(/[^0-9.]/g, ""));
-        if (isNaN(v) || v <= 0) {
-            v = totalFor(minQty);
-        }
-        const lo = totalFor(minQty);
-        const hi = totalFor(maxQty);
-        if (v > hi) {
-            v = hi;
-        }
-        if (v < lo) {
-            v = lo;
-        }
-
-        currentQty = perUnit > 0 ? clampQ(v / perUnit) : minQty;
-        refresh();
-
-        const a = totalFor(clampQ(currentQty));
-        if (Math.abs(a - v) > 0.001) {
-            $actualT.text(formatPrice(a));
-            $actualRow.removeClass("d-none");
-        } else {
-            $actualRow.addClass("d-none");
-        }
-        syncing = false;
-    });
-
-    $root.find('input[name="direct_topup_mode"]').off("change.directTopUp").on("change.directTopUp", function () {
-        if ($(this).val() === "price") {
-            switchToPrice();
-        } else {
-            switchToQty();
-        }
-    });
-
-    currentQty = minQty;
-    refresh();
+    resetDirectTopUpVerificationState($root);
 }
 
 function openDirectTopUpBuyNowModal($button) {
@@ -1470,6 +1492,10 @@ function submitDirectTopUpBuyNowModal() {
     if (!$form.length) {
         return;
     }
+
+    const $root = $("#buyNowModal-body");
+    const config = getDirectTopUpModalConfig();
+    const enforceVerifyUi = shouldEnforceDirectTopUpVerifyUi(config);
 
     const authStatus = $("#buyNowModal").data("auth")?.toString() ?? "true";
     const fallbackRoute = $("#buyNowModal").data("route");
@@ -1502,6 +1528,22 @@ function submitDirectTopUpBuyNowModal() {
             ProgressBar: true,
         });
         return;
+    }
+
+    if (enforceVerifyUi) {
+        const isVerified = $root.data("directTopupVerified") === true;
+        const verifiedAccountId = $root.data("directTopupVerifiedAccountId");
+
+        if (!isVerified || verifiedAccountId !== accountId) {
+            toastr.error(
+                config.labels?.verify_first || "Please verify your account before proceeding.",
+                {
+                    CloseButton: true,
+                    ProgressBar: true,
+                }
+            );
+            return;
+        }
     }
 
     if (directTopUpQty <= 0) {
@@ -1583,6 +1625,15 @@ $(document).on("submit", "#direct-topup-buy-now-form", function (event) {
 $(document).on("click", "#direct-topup-proceed-btn", function (event) {
     event.preventDefault();
     submitDirectTopUpBuyNowModal();
+});
+
+$(document).on("click", "#direct-topup-verify-btn", function (event) {
+    event.preventDefault();
+    verifyDirectTopUpAccount($("#buyNowModal-body"));
+});
+
+$(document).on("input", "#direct-topup-account-input", function () {
+    resetDirectTopUpVerificationState($("#buyNowModal-body"));
 });
 
 function addToCart(
@@ -2704,11 +2755,21 @@ function updateProductDetailsBottomSection(formSelector, response) {
     }
 }
 
+function isDirectTopUpDetailsPage() {
+    const $detailsForm = $(".add-to-cart-details-form");
+
+    return parseInt($detailsForm.data("is-direct-topup"), 10) === 1
+        || parseInt($detailsForm.find(".product-buy-now-button").data("is-direct-topup"), 10) === 1
+        || $("#direct-topup-buy-now-modal-template").length > 0;
+}
+
 function updateProductDetailsTopSection(formSelector, response) {
     $(formSelector).find(".product-details-chosen-price-section").removeClass("d-none");
     $(formSelector).find(".product-details-chosen-price-amount").html(response?.price);
 
-    if (response?.is_direct_topup) {
+    const isDirectTopUp = response?.is_direct_topup || isDirectTopUpDetailsPage();
+
+    if (isDirectTopUp) {
         const topUpQty = Math.floor(parseFloat(response?.direct_topup_quantity ?? response?.in_cart_quantity ?? 0));
         $('#direct-topup-quantity-hidden').val(topUpQty);
         $('#direct-topup-quantity-input').val(topUpQty);
@@ -2716,7 +2777,7 @@ function updateProductDetailsTopSection(formSelector, response) {
         $(formSelector).find(".product-quantity").hide();
         $(formSelector).find(".product-add-to-cart-button").hide();
         $(formSelector).find(".product-add-and-buy-section").show().addClass("d-flex");
-    } else {
+    } else if (!isDirectTopUpDetailsPage()) {
         $(formSelector).find(".product-quantity").show();
         $(formSelector).find(".product-add-to-cart-button").show();
         $(formSelector).find(".product-details-cart-qty").val(response?.in_cart_quantity);
