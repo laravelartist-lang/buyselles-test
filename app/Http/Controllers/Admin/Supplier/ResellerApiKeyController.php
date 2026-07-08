@@ -6,12 +6,14 @@ use App\Http\Controllers\BaseController;
 use App\Models\PartnerApiLog;
 use App\Models\ResellerApiKey;
 use App\Services\ResellerApiService;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Brian2694\Toastr\Facades\Toastr;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Cache;
 
@@ -259,6 +261,22 @@ class ResellerApiKeyController extends BaseController
     public function apiDocs(): View
     {
         return view('admin-views.reseller.api-docs');
+    }
+
+    public function downloadApiDocsPdf(): Response
+    {
+        $partnerApiBaseUrl = url('/api/v1/partner');
+        $partnerApiHost = parse_url(config('app.url'), PHP_URL_HOST) ?? config('app.url');
+
+        $pdf = Pdf::loadView('admin-views.reseller.api-docs-pdf', [
+            'generatedAt' => now()->format('Y-m-d H:i'),
+            'partnerApiBaseUrl' => $partnerApiBaseUrl,
+            'partnerApiHost' => $partnerApiHost,
+        ])->setPaper('a4', 'portrait');
+
+        $filename = 'buyselles-partner-api-documentation-v1.pdf';
+
+        return $pdf->download($filename);
     }
 
     /**

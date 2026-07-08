@@ -1372,6 +1372,7 @@ Route::group(['prefix' => 'admin', 'as' => 'admin.', 'middleware' => ['admin', '
             Route::post('toggle-status', 'toggleStatus')->name('toggle-status');
             Route::post('delete', 'delete')->name('delete');
             Route::get('api-docs', 'apiDocs')->name('api-docs');
+            Route::get('api-docs/download', 'downloadApiDocsPdf')->name('api-docs.download');
             Route::get('{id}/edit', 'edit')->name('edit');
             Route::post('{id}/update', 'updateKey')->name('update');
             Route::get('{id}/logs', 'keyLogs')->name('logs');
