@@ -11669,4 +11669,8 @@ return [
 	"player_id" => "Player id",
 	"direct_topup_mapping_hint_simple" => "Direct topup mapping hint simple",
 	"player_id_input_label" => "Player id input label",
+	"partner_api_key_approved" => "Partner api key approved",
+	"date_from" => "Date from",
+	"note_optional" => "Note optional",
+	"partner_wallet_help" => "Partner wallet help",
 ];
