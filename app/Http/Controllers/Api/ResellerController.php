@@ -26,9 +26,12 @@ class ResellerController extends Controller
 
         $products = $this->resellerService->listProducts(
             search: $request->query('search'),
-            categoryId: $request->query('category_id'),
+            categoryId: $request->query('category_id') ? (int) $request->query('category_id') : null,
             page: (int) $request->query('page', 1),
             perPage: min((int) $request->query('per_page', 20), 100),
+            includeVendor: $request->boolean('include_vendor'),
+            fulfillmentType: $this->normalizeFulfillmentType($request->query('fulfillment_type')),
+            sellerType: $this->normalizeSellerType($request->query('seller_type')),
         );
 
         return response()->json($products);
@@ -46,7 +49,7 @@ class ResellerController extends Controller
             return response()->json(['error' => 'Permission denied.'], 403);
         }
 
-        $product = $this->resellerService->getProduct($id);
+        $product = $this->resellerService->getProduct($id, $request->boolean('include_vendor'));
 
         if (! $product) {
             return response()->json(['error' => 'Product not found.'], 404);
@@ -133,5 +136,23 @@ class ResellerController extends Controller
                 'key_name' => $resellerKey->name,
             ],
         ]);
+    }
+
+    private function normalizeFulfillmentType(mixed $value): ?string
+    {
+        if (! is_string($value) || $value === '') {
+            return null;
+        }
+
+        return in_array($value, ['local_codes', 'supplier_codes'], true) ? $value : null;
+    }
+
+    private function normalizeSellerType(mixed $value): ?string
+    {
+        if (! is_string($value) || $value === '') {
+            return null;
+        }
+
+        return in_array($value, ['in_house', 'vendor'], true) ? $value : null;
     }
 }

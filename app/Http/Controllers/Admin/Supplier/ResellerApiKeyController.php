@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin\Supplier;
 use App\Http\Controllers\BaseController;
 use App\Models\PartnerApiLog;
 use App\Models\ResellerApiKey;
+use App\Services\Partner\PartnerPostmanCollectionService;
 use App\Services\ResellerApiService;
 use Brian2694\Toastr\Facades\Toastr;
 use Illuminate\Contracts\View\View;
@@ -14,6 +15,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Cache;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ResellerApiKeyController extends BaseController
 {
@@ -259,6 +261,19 @@ class ResellerApiKeyController extends BaseController
     public function apiDocs(): View
     {
         return view('admin-views.reseller.api-docs');
+    }
+
+    public function downloadPostmanCollection(PartnerPostmanCollectionService $postmanService): StreamedResponse
+    {
+        $json = $postmanService->generate();
+
+        return response()->streamDownload(
+            static function () use ($json): void {
+                echo $json;
+            },
+            'Buyselles_Partner_API.postman_collection.json',
+            ['Content-Type' => 'application/json'],
+        );
     }
 
     /**

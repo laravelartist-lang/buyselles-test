@@ -46,9 +46,14 @@
                     </h3>
                     <p class="text-muted mb-0">{{ translate('partner_api_docs_description') }}</p>
                 </div>
-                <a href="{{ route('admin.reseller-keys.list') }}" class="btn btn-outline-secondary btn-sm">
-                    <i class="fi fi-rr-arrow-left me-1"></i>{{ translate('back_to_keys') }}
-                </a>
+                <div class="d-flex gap-2 flex-wrap">
+                    <a href="{{ route('admin.reseller-keys.api-docs.postman') }}" class="btn btn-primary btn-sm">
+                        <i class="fi fi-rr-download me-1"></i>{{ translate('download_postman_collection') ?: 'Download Postman Collection' }}
+                    </a>
+                    <a href="{{ route('admin.reseller-keys.list') }}" class="btn btn-outline-secondary btn-sm">
+                        <i class="fi fi-rr-arrow-left me-1"></i>{{ translate('back_to_keys') }}
+                    </a>
+                </div>
             </div>
 
             {{-- Table of contents --}}
@@ -57,6 +62,7 @@
                 <div class="d-flex flex-wrap gap-3">
                     <a class="toc-link" href="#overview">Overview</a>
                     <a class="toc-link" href="#authentication">Authentication</a>
+                    <a class="toc-link" href="#product-catalog">Product Catalog</a>
                     <a class="toc-link" href="#endpoints">Endpoints</a>
                     <a class="toc-link" href="#idempotency">Idempotency</a>
                     <a class="toc-link" href="#escrow">Escrow</a>
@@ -123,6 +129,37 @@ Accept: application/json</pre>
 { "error": "IP address not allowed." }</pre>
             </div>
 
+            {{-- ── Product Catalog ─────────────────────────────────────── --}}
+            <div class="docs-section" id="product-catalog">
+                <h5 class="fw-bold mb-3">Product Catalog</h5>
+                <p>By default, the Partner API returns <strong>in-house</strong> digital products only (<code>added_by = admin</code>) that are <code>partner_approved</code>. Direct top-up products are excluded in v1.</p>
+                <div class="info-box mb-3">
+                    <strong>Upstream suppliers (Bamboo, Golf API):</strong> Supplier catalog SKUs are not exposed directly. Admin maps a supplier product to an in-house digital SKU; partners order that in-house product ID. Fulfillment uses the mapped supplier when local codes are unavailable.
+                </div>
+                <table class="table table-sm table-bordered mb-3">
+                    <thead class="table-light">
+                        <tr><th>Query param</th><th>Values</th><th>Description</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td><code>include_vendor</code></td><td><code>1</code></td><td>Also include partner-approved vendor (<code>added_by = seller</code>) products</td></tr>
+                        <tr><td><code>fulfillment_type</code></td><td><code>local_codes</code> | <code>supplier_codes</code></td><td>Filter by fulfillment source</td></tr>
+                        <tr><td><code>seller_type</code></td><td><code>in_house</code> | <code>vendor</code></td><td>Filter by product owner type</td></tr>
+                    </tbody>
+                </table>
+                <div class="fw-semibold mb-2">Product response fields</div>
+<pre class="code-block">{
+  "id": 14,
+  "name": "PUBG UC 200",
+  "unit_price": 20.00,
+  "available_stock": 379,
+  "seller_type": "in_house",
+  "fulfillment_type": "supplier_codes",
+  "supplier": "bamboo",
+  "requires_account_id": false
+}</pre>
+                <p class="text-muted small mt-2">Direct top-up products (<code>requires_account_id: true</code>) will be supported in a future API version.</p>
+            </div>
+
             {{-- ── Endpoints ───────────────────────────────────────────── --}}
             <div class="docs-section" id="endpoints">
                 <h5 class="fw-bold mb-4">{{ translate('endpoints') }}</h5>
@@ -165,6 +202,9 @@ Accept: application/json</pre>
                                 <tr><td><code>category_id</code></td><td>integer</td><td>No</td><td>{{ translate('filter_by_category') }}</td></tr>
                                 <tr><td><code>page</code></td><td>integer</td><td>No</td><td>{{ translate('page_number_default_1') }}</td></tr>
                                 <tr><td><code>per_page</code></td><td>integer</td><td>No</td><td>{{ translate('items_per_page_default_20_max_100') }}</td></tr>
+                                <tr><td><code>include_vendor</code></td><td>boolean</td><td>No</td><td>Pass <code>1</code> to include vendor products</td></tr>
+                                <tr><td><code>fulfillment_type</code></td><td>string</td><td>No</td><td><code>local_codes</code> or <code>supplier_codes</code></td></tr>
+                                <tr><td><code>seller_type</code></td><td>string</td><td>No</td><td><code>in_house</code> or <code>vendor</code></td></tr>
                             </tbody>
                         </table>
                         <div class="fw-semibold mb-2">{{ translate('response_example') }} <span class="badge bg-success text-white">200</span></div>
@@ -178,7 +218,11 @@ Accept: application/json</pre>
       "unit_price": 20.00,
       "purchase_price": 0,
       "available_stock": 379,
-      "thumbnail": "https://{{ parse_url(config('app.url'), PHP_URL_HOST) }}/storage/product/thumbnail/example.webp"
+      "thumbnail": "https://{{ parse_url(config('app.url'), PHP_URL_HOST) }}/storage/product/thumbnail/example.webp",
+      "seller_type": "in_house",
+      "fulfillment_type": "local_codes",
+      "supplier": null,
+      "requires_account_id": false
     }
   ],
   "meta": {
@@ -213,7 +257,11 @@ Accept: application/json</pre>
     "purchase_price": 0,
     "available_stock": 379,
     "thumbnail": "https://{{ parse_url(config('app.url'), PHP_URL_HOST) }}/storage/product/thumbnail/example.webp",
-    "description": "&lt;p&gt;200 PUBG Mobile UC delivered instantly.&lt;/p&gt;"
+    "description": "&lt;p&gt;200 PUBG Mobile UC delivered instantly.&lt;/p&gt;",
+    "seller_type": "in_house",
+    "fulfillment_type": "supplier_codes",
+    "supplier": "golf_api",
+    "requires_account_id": false
   }
 }</pre>
                         <div class="fw-semibold mb-2 mt-3">{{ translate('error_example') }} <span class="badge bg-danger text-white">404</span></div>
@@ -230,6 +278,10 @@ Accept: application/json</pre>
                     </div>
                     <div class="endpoint-body">
                         <p class="text-muted mb-3">{{ translate('create_order_endpoint_description') }}</p>
+                        <div class="warning-box mb-3">
+                            <i class="fi fi-sr-triangle-warning text-warning me-1"></i>
+                            <strong>Supplier-backed orders:</strong> If codes are fetched asynchronously from an upstream supplier, the response may return <code>status: pending_fulfillment</code> with partial or empty <code>codes</code>. Poll <code>GET /orders/{id}</code> until <code>fulfillment_status</code> is <code>fulfilled</code>.
+                        </div>
                         <div class="warning-box mb-3">
                             <i class="fi fi-sr-triangle-warning text-warning me-1"></i>
                             <strong>Idempotency recommended:</strong> always send <code>X-Idempotency-Key</code> to prevent double-charging on retries. See the <a href="#idempotency">Idempotency</a> section below.
@@ -289,6 +341,16 @@ Content-Type: application/json
   }
 }
 
+// Supplier-backed — codes may arrive asynchronously:
+{
+  "data": {
+    "order_id": 100054,
+    "status": "pending_fulfillment",
+    "quantity_fulfilled": 0,
+    "codes": []
+  }
+}
+
 // If X-Idempotency-Key was already used — same response returned, no charge:
 {
   "data": { ... },
@@ -327,6 +389,9 @@ Content-Type: application/json
     "order_id": 100053,
     "status": "delivered",
     "payment_status": "paid",
+    "fulfillment_status": "fulfilled",
+    "quantity_requested": 1,
+    "quantity_fulfilled": 1,
     "total": 20.00,
     "created_at": "2026-04-09T12:34:56+00:00",
     "items": [
