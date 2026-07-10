@@ -535,6 +535,10 @@ class GenericRestDriver implements SupplierDriverInterface
             $timeout,
         );
 
+        if (! filter_var($this->getSetting('http_verify_ssl', true), FILTER_VALIDATE_BOOLEAN)) {
+            $request = $request->withoutVerifying();
+        }
+
         $request = $this->applyAuth($request);
 
         $customHeaders = $this->getSetting('custom_headers', []);

@@ -56,6 +56,7 @@ class RouteServiceProvider extends ServiceProvider
         $this->mapBetaAdminRoutes();
         $this->mapBetaVendorRoutes();
         $this->mapBetaWebRoutes();
+        $this->mapDemoRoutes();
     }
 
     /**
@@ -134,6 +135,17 @@ class RouteServiceProvider extends ServiceProvider
         Route::middleware(['web', 'logUserBrowsingNavigation'])
             ->namespace($this->namespace)
             ->group(base_path('routes/web/routes.php'));
+    }
+
+    protected function mapDemoRoutes(): void
+    {
+        if (! app()->environment('local')) {
+            return;
+        }
+
+        Route::middleware('web')
+            ->namespace($this->namespace)
+            ->group(base_path('routes/demo.php'));
     }
 
     /**

@@ -25,7 +25,7 @@ class ConnectSecretOrcaApiCommand extends Command
     /**
      * @return array<string, mixed>
      */
-    protected function secretOrcaSettings(): array
+    public function secretOrcaSettings(): array
     {
         return [
             'api_key_header' => 'X-API-Key',
@@ -74,6 +74,7 @@ class ConnectSecretOrcaApiCommand extends Command
 
             'source_currency' => 'USD',
             'price_decimal_places' => '10',
+            'http_verify_ssl' => env('SECRETORCA_HTTP_VERIFY_SSL', app()->environment('local') ? '0' : '1'),
         ];
     }
 
