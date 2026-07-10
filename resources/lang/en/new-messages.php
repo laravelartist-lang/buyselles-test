@@ -11665,4 +11665,8 @@ return [
 	"request_body" => "Request body",
 	"field" => "Field",
 	"error_examples" => "Error examples",
+	"direct_topup_player_id_hint" => "Direct topup player id hint",
+	"player_id" => "Player id",
+	"direct_topup_mapping_hint_simple" => "Direct topup mapping hint simple",
+	"player_id_input_label" => "Player id input label",
 ];

@@ -157,40 +157,17 @@
                                 {{ translate('enable_direct_topup') ?: 'Enable Direct Top-Up' }}
                             </label>
                             <br>
-                            <small class="text-muted">{{ translate('direct_topup_mapping_hint') ?: 'When enabled, customers can enter an account ID and quantity. The supplier must support direct top-up to enable this.' }}</small>
+                            <small class="text-muted">{{ translate('direct_topup_mapping_hint_simple') ?: 'When enabled, customers only enter their Player ID at checkout. Price and quantity come from the mapped product.' }}</small>
                         </div>
                     </div>
 
                     <div class="col-lg-6 direct-topup-fields direct-topup-section-content" style="display:none;">
                         <div class="form-group">
-                            <label class="form-label">{{ translate('direct_topup_account_label') ?: 'Account ID Input Label' }}</label>
+                            <label class="form-label">{{ translate('player_id_input_label') ?: 'Player ID input label' }} <span class="text-danger">*</span></label>
                             <input type="text" name="direct_topup_account_label" class="form-control"
                                    value="{{ old('direct_topup_account_label') }}"
-                                   placeholder="{{ translate('direct_topup_account_label_placeholder') ?: 'Enter Account ID' }}">
-                        </div>
-                    </div>
-
-                    <div class="col-lg-3 direct-topup-fields direct-topup-section-content" style="display:none;">
-                        <div class="form-group">
-                            <label class="form-label">{{ translate('direct_topup_min_quantity') ?: 'Minimum Quantity' }}</label>
-                            <input type="number" step="0.0001" min="0" name="direct_topup_min_quantity" class="form-control"
-                                   value="{{ old('direct_topup_min_quantity') }}">
-                        </div>
-                    </div>
-
-                    <div class="col-lg-3 direct-topup-fields direct-topup-section-content" style="display:none;">
-                        <div class="form-group">
-                            <label class="form-label">{{ translate('direct_topup_max_quantity') ?: 'Maximum Quantity' }}</label>
-                            <input type="number" step="0.0001" min="0" name="direct_topup_max_quantity" class="form-control"
-                                   value="{{ old('direct_topup_max_quantity') }}">
-                        </div>
-                    </div>
-
-                    <div class="col-lg-6 direct-topup-fields direct-topup-section-content" style="display:none;">
-                        <div class="form-group">
-                            <label class="form-label">{{ translate('direct_topup_price_per_unit') ?: 'Price Per Unit' }}</label>
-                            <input type="number" step="0.00000001" min="0" name="direct_topup_price_per_unit" class="form-control"
-                                   value="{{ old('direct_topup_price_per_unit') }}">
+                                   placeholder="{{ translate('player_id') ?: 'Player ID' }}">
+                            <small class="text-muted">{{ translate('direct_topup_player_id_hint') ?: 'Label shown to customers on the product page (e.g. Player ID).' }}</small>
                         </div>
                     </div>
                 </div>

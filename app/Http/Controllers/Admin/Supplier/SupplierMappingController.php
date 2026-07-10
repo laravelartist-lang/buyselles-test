@@ -403,12 +403,20 @@ class SupplierMappingController extends BaseController
 
         $isDirectTopup = (bool) $request->input('is_direct_topup', false);
 
+        $accountLabel = $isDirectTopup
+            ? trim((string) $request->input('direct_topup_account_label', ''))
+            : null;
+
+        if ($isDirectTopup && $accountLabel === '') {
+            $accountLabel = translate('player_id') ?: 'Player ID';
+        }
+
         return [
             'is_direct_topup' => $isDirectTopup,
-            'direct_topup_account_label' => $isDirectTopup ? $request->input('direct_topup_account_label') : null,
-            'direct_topup_min_quantity' => $isDirectTopup ? $request->input('direct_topup_min_quantity') : null,
-            'direct_topup_max_quantity' => $isDirectTopup ? $request->input('direct_topup_max_quantity') : null,
-            'direct_topup_price_per_unit' => $isDirectTopup ? $request->input('direct_topup_price_per_unit') : null,
+            'direct_topup_account_label' => $accountLabel,
+            'direct_topup_min_quantity' => $isDirectTopup ? 1 : null,
+            'direct_topup_max_quantity' => $isDirectTopup ? 1 : null,
+            'direct_topup_price_per_unit' => null,
         ];
     }
 
