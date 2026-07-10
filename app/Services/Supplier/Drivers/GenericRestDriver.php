@@ -90,10 +90,15 @@ class GenericRestDriver implements SupplierDriverInterface
             return $this->fetchProductsPaginated($endpoint, $filters, $pageParam, $perPageParam, $startPage, $perPage);
         }
 
-        $response = $this->makeRequest('GET', $endpoint, $filters);
+        $response = $this->requestProducts($endpoint, $filters);
+
+        if ($response->failed()) {
+            throw new \RuntimeException("fetchProducts failed: HTTP {$response->status()} — {$response->body()}");
+        }
+
         $raw = $response->json() ?? [];
         $data = $this->unwrapResponseData($raw);
-        $items = data_get($data, $this->getSetting('products_response_path', 'data'), []);
+        $items = $this->resolveProductItems($data, (string) $this->getSetting('products_response_path', 'data'));
 
         $onPage = $filters['on_page'] ?? null;
         if (is_callable($onPage)) {
@@ -141,8 +146,8 @@ class GenericRestDriver implements SupplierDriverInterface
             $data = $this->unwrapResponseData($raw);
 
             $items = $dataPath
-                ? data_get($data, $dataPath, [])
-                : data_get($data, $this->getSetting('products_response_path', 'data'), []);
+                ? $this->resolveProductItems($data, $dataPath)
+                : $this->resolveProductItems($data, (string) $this->getSetting('products_response_path', 'data'));
 
             $lastPage = (int) data_get($data, $lastPagePath, $currentPage);
             $total = (int) data_get($data, $totalPath, 0);
@@ -172,11 +177,17 @@ class GenericRestDriver implements SupplierDriverInterface
         $priceField = $this->getSetting('product_price_field', 'price');
         $stockField = $this->getSetting('product_stock_field', 'stock');
         $categoryField = $this->getSetting('product_category_field', 'category');
+        $regionField = $this->getSetting('product_region_field', '');
 
-        return array_map(function ($item) use ($idField, $nameField, $priceField, $stockField, $categoryField): SupplierProductDTO {
+        return array_map(function ($item) use ($idField, $nameField, $priceField, $stockField, $categoryField, $regionField): SupplierProductDTO {
             $catValue = data_get($item, $categoryField);
             $rawPrice = (float) data_get($item, $priceField, 0);
             $resolved = $this->resolveSupplierPrice($rawPrice);
+            $stockValue = data_get($item, $stockField);
+            $stockAvailable = $stockValue !== null && $stockValue !== ''
+                ? (int) $stockValue
+                : (int) $this->getSetting('product_stock_default', 0);
+            $regionValue = $regionField !== '' ? data_get($item, $regionField) : null;
 
             return new SupplierProductDTO(
                 supplierProductId: (string) data_get($item, $idField, ''),
@@ -186,7 +197,8 @@ class GenericRestDriver implements SupplierDriverInterface
                 imageUrl: data_get($item, 'image'),
                 price: $resolved['price'],
                 currency: $resolved['currency'],
-                stockAvailable: (int) data_get($item, $stockField, 0),
+                stockAvailable: $stockAvailable,
+                region: is_string($regionValue) ? $regionValue : (is_scalar($regionValue) ? (string) $regionValue : null),
                 rawData: (array) $item,
             );
         }, $items);
@@ -467,13 +479,18 @@ class GenericRestDriver implements SupplierDriverInterface
             'pagination_data_path' => ['label' => 'Pagination Data Path (dot notation, e.g. "data")', 'type' => 'text', 'default' => ''],
             'pagination_last_page_path' => ['label' => 'Pagination Last Page Path (dot notation, e.g. "meta.last_page")', 'type' => 'text', 'default' => 'meta.last_page'],
             'pagination_total_path' => ['label' => 'Pagination Total Path (dot notation, e.g. "meta.total")', 'type' => 'text', 'default' => 'meta.total'],
+            'pagination_page_base' => ['label' => 'Pagination Page Base (0 or 1 for first page)', 'type' => 'number', 'default' => 1],
             'products_endpoint' => ['label' => 'Products Endpoint', 'type' => 'text', 'default' => '/products'],
             'products_response_path' => ['label' => 'Products Response Path', 'type' => 'text', 'default' => 'data'],
             'product_id_field' => ['label' => 'Product ID Field', 'type' => 'text', 'default' => 'id'],
             'product_name_field' => ['label' => 'Product Name Field', 'type' => 'text', 'default' => 'name'],
             'product_price_field' => ['label' => 'Product Price Field', 'type' => 'text', 'default' => 'price'],
             'product_stock_field' => ['label' => 'Product Stock Field', 'type' => 'text', 'default' => 'stock'],
+            'product_stock_default' => ['label' => 'Default Stock When Field Missing', 'type' => 'number', 'default' => 0],
             'product_category_field' => ['label' => 'Product Category Field (dot notation, e.g. "category.title")', 'type' => 'text', 'default' => 'category'],
+            'product_region_field' => ['label' => 'Product Region Field', 'type' => 'text', 'default' => ''],
+            'price_decimal_places' => ['label' => 'Price Decimal Places (for micro unit prices)', 'type' => 'number', 'default' => ''],
+            'api_key_header' => ['label' => 'API Key Header Name (for api_key auth)', 'type' => 'text', 'default' => 'X-API-KEY'],
             'stock_endpoint' => ['label' => 'Stock Endpoint', 'type' => 'text', 'default' => '/products/{product_id}/stock'],
             'order_endpoint' => ['label' => 'Order Endpoint', 'type' => 'text', 'default' => '/orders'],
             'order_product_id_field' => ['label' => 'Order Product ID Field', 'type' => 'text', 'default' => 'product_id'],
@@ -517,6 +534,10 @@ class GenericRestDriver implements SupplierDriverInterface
             $this->settings,
             $timeout,
         );
+
+        if (! filter_var($this->getSetting('http_verify_ssl', true), FILTER_VALIDATE_BOOLEAN)) {
+            $request = $request->withoutVerifying();
+        }
 
         $request = $this->applyAuth($request);
 
@@ -687,6 +708,38 @@ class GenericRestDriver implements SupplierDriverInterface
     // ─── Helpers ──────────────────────────────────────────────────────────
 
     /**
+     * @param  array<string, mixed>  $filters
+     */
+    private function requestProducts(string $endpoint, array $filters): Response
+    {
+        try {
+            return $this->makeRequest('GET', $endpoint, $filters);
+        } catch (\Illuminate\Http\Client\RequestException $e) {
+            throw new \RuntimeException(
+                "fetchProducts failed: HTTP {$e->response->status()} — {$e->response->body()}",
+                0,
+                $e
+            );
+        }
+    }
+
+    /**
+     * Resolve product items from a response body using a dot path or root array.
+     *
+     * @return array<int, mixed>
+     */
+    private function resolveProductItems(mixed $data, string $path): array
+    {
+        if ($path === '' || $path === '.' || $path === '@') {
+            return is_array($data) && array_is_list($data) ? $data : [];
+        }
+
+        $items = data_get($data, $path, []);
+
+        return is_array($items) ? $items : [];
+    }
+
+    /**
      * Unwrap a JSON response body according to response_unwrap_path setting.
      *
      * Example: "result.data" unwraps { result: { data: {...} } } → {...}
@@ -816,7 +869,8 @@ class GenericRestDriver implements SupplierDriverInterface
      */
     private function resolveSupplierPrice(float $amount): array
     {
-        $decimalPointSettings = (int) (getWebConfig('decimal_point_settings') ?? 2);
+        $decimalPointSettings = (int) ($this->getSetting('price_decimal_places')
+            ?: (getWebConfig('decimal_point_settings') ?? 2));
         $rounded = round($amount, $decimalPointSettings);
         $sourceCurrency = $this->getSourceCurrency();
 
