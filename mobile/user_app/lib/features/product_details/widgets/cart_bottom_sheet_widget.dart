@@ -16,6 +16,7 @@ import 'package:flutter_sixvalley_ecommerce/features/product_details/widgets/shi
 import 'package:flutter_sixvalley_ecommerce/features/shipping/domain/models/shipping_method_model.dart';
 import 'package:flutter_sixvalley_ecommerce/features/splash/controllers/splash_controller.dart';
 import 'package:flutter_sixvalley_ecommerce/helper/price_converter.dart';
+import 'package:flutter_sixvalley_ecommerce/helper/direct_topup_helper.dart';
 import 'package:flutter_sixvalley_ecommerce/helper/product_helper.dart';
 import 'package:flutter_sixvalley_ecommerce/helper/route_healper.dart';
 import 'package:flutter_sixvalley_ecommerce/localization/app_localization.dart';
@@ -46,6 +47,7 @@ class CartBottomSheetWidgetState extends State<CartBottomSheetWidget> {
   void initState() {
     Provider.of<ProductDetailsController>(context, listen: false).initData(widget.product!, 1, context);
     Provider.of<ProductDetailsController>(context, listen: false).initDigitalVariationIndex();
+    Provider.of<ProductDetailsController>(context, listen: false).initializeDirectTopUpDefaults();
     super.initState();
   }
 
@@ -148,7 +150,7 @@ class CartBottomSheetWidgetState extends State<CartBottomSheetWidget> {
                   widget.product!.discountType
               )!;
       
-              double priceWithQuantity = widget.product?.directTopup?.enabled == true
+              double priceWithQuantity = DirectTopUpHelper.shouldPromptDirectTopUpSheet(widget.product)
                   ? productDetailsController.directTopUpTotalPrice
                   : priceWithDiscount * productDetailsController.quantity!;
       
@@ -167,14 +169,14 @@ class CartBottomSheetWidgetState extends State<CartBottomSheetWidget> {
                   color: (widget.product!.colors != null && widget.product!.colors!.isNotEmpty) ?
                   widget.product!.colors![productDetailsController.variantIndex!].code : '',
                   variation : variation,
-                  quantity: widget.product?.directTopup?.enabled == true ? 1 : productDetailsController.quantity,
+                  quantity: DirectTopUpHelper.shouldPromptDirectTopUpSheet(widget.product) ? 1 : productDetailsController.quantity,
                   variantKey: variantKey,
                   digitalVariantPrice: digitalVariantPrice,
                   productType: widget.product!.productType,
-                  directTopupAccountId: widget.product?.directTopup?.enabled == true
+                  directTopupAccountId: DirectTopUpHelper.shouldPromptDirectTopUpSheet(widget.product)
                       ? productDetailsController.directTopUpAccountId
                       : null,
-                  directTopupQuantity: widget.product?.directTopup?.enabled == true
+                  directTopupQuantity: DirectTopUpHelper.shouldPromptDirectTopUpSheet(widget.product)
                       ? productDetailsController.directTopUpQuantity
                       : null,
               );
@@ -571,13 +573,37 @@ class CartBottomSheetWidgetState extends State<CartBottomSheetWidget> {
                 ),
                 SizedBox(height: Dimensions.paddingSizeSmall),
 
-                if (widget.product?.directTopup?.enabled == true && widget.product?.directTopup != null)
-                  DirectTopUpPurchaseWidget(config: widget.product!.directTopup!),
+                if (DirectTopUpHelper.resolveDirectTopUpConfig(widget.product) != null)
+                  DirectTopUpPurchaseWidget(
+                    config: DirectTopUpHelper.resolveDirectTopUpConfig(widget.product)!,
+                  ),
 
-                if (widget.product?.directTopup?.enabled == true && widget.product?.directTopup != null)
-                  SizedBox(height: Dimensions.paddingSizeSmall),
+                if (DirectTopUpHelper.resolveDirectTopUpConfig(widget.product)?.requiresAccountVerification == true) ...[
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: Dimensions.homePagePadding),
+                    child: CustomButton(
+                      isLoading: productDetailsController.directTopUpVerifyLoading,
+                      buttonText: getTranslated('verify', context),
+                      onTap: productDetailsController.directTopUpVerifyLoading ? null : () async {
+                        final cartController = Provider.of<CartController>(context, listen: false);
+                        productDetailsController.setDirectTopUpVerifyLoading(true);
+                        await cartController.ensureDirectTopUpPurchaseValid(
+                          context,
+                          productDetailsController,
+                          widget.product!,
+                          showSuccessOnVerify: true,
+                        );
+                        productDetailsController.setDirectTopUpVerifyLoading(false);
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: Dimensions.paddingSizeSmall),
+                ],
 
-                if (widget.product?.directTopup?.enabled != true)
+                if (DirectTopUpHelper.resolveDirectTopUpConfig(widget.product) != null)
+                  const SizedBox(height: Dimensions.paddingSizeSmall),
+
+                if (!DirectTopUpHelper.shouldPromptDirectTopUpSheet(widget.product))
                 // Quantity
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: Dimensions.homePagePadding),
@@ -609,27 +635,29 @@ class CartBottomSheetWidgetState extends State<CartBottomSheetWidget> {
                     ),
                   ]),
                 ),
-                if (widget.product?.directTopup?.enabled != true)
+                if (!DirectTopUpHelper.shouldPromptDirectTopUpSheet(widget.product))
                 const SizedBox(height: Dimensions.paddingSizeSmall),
 
 
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: Dimensions.homePagePadding),
-                  child: MinOrderQuantityWidget(minOrderQty: widget.product?.minimumOrderQty),
-                ),
+                if (!DirectTopUpHelper.shouldPromptDirectTopUpSheet(widget.product))
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: Dimensions.homePagePadding),
+                    child: MinOrderQuantityWidget(minOrderQty: widget.product?.minimumOrderQty),
+                  ),
 
+                if (!DirectTopUpHelper.shouldPromptDirectTopUpSheet(widget.product))
+                  Padding(padding: const EdgeInsets.all(Dimensions.paddingSizeDefault),
+                    child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
 
-                Padding(padding: const EdgeInsets.all(Dimensions.paddingSizeDefault),
-                  child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-      
-                      Text(getTranslated('total_price', context)!, style: robotoBold.copyWith(color: Theme.of(context).textTheme.bodyLarge?.color)),
-                      const SizedBox(width: Dimensions.paddingSizeSmall),
-                      CustomDirectionalityWidget(
-                        child: Text(PriceConverter.convertPrice(context, priceWithQuantity),
-                            style: titilliumBold.copyWith(color: Theme.of(context).textTheme.bodyLarge?.color, fontSize: Dimensions.fontSizeLarge)),
-                      ),
-                  ])),
-                const SizedBox(height: Dimensions.paddingSizeSmall),
+                        Text(getTranslated('total_price', context)!, style: robotoBold.copyWith(color: Theme.of(context).textTheme.bodyLarge?.color)),
+                        const SizedBox(width: Dimensions.paddingSizeSmall),
+                        CustomDirectionalityWidget(
+                          child: Text(PriceConverter.convertPrice(context, priceWithQuantity),
+                              style: titilliumBold.copyWith(color: Theme.of(context).textTheme.bodyLarge?.color, fontSize: Dimensions.fontSizeLarge)),
+                        ),
+                    ])),
+                if (!DirectTopUpHelper.shouldPromptDirectTopUpSheet(widget.product))
+                  const SizedBox(height: Dimensions.paddingSizeSmall),
       
                 ((stock! <= 0 && widget.product!.productType == "physical") && (widget.product!.hasActiveSupplierMapping ?? 0) != 1) ?  Provider.of<AuthController>(context, listen: false).isLoggedIn() ?
                 Padding(
@@ -686,6 +714,18 @@ class CartBottomSheetWidgetState extends State<CartBottomSheetWidget> {
                             } else if( stock! < widget.product!.minimumOrderQty!  &&  widget.product!.productType == "physical" && (widget.product!.hasActiveSupplierMapping ?? 0) != 1 ) {
                               showCustomSnackBarWidget(getTranslated('out_of_stock', context), context, snackBarType: SnackBarType.warning);
                             } else if(stock >= widget.product!.minimumOrderQty! || widget.product!.productType == "digital" || (widget.product!.hasActiveSupplierMapping ?? 0) == 1) {
+                              if (DirectTopUpHelper.shouldPromptDirectTopUpSheet(widget.product)) {
+                                final cartController = Provider.of<CartController>(context, listen: false);
+                                final bool isValid = await cartController.ensureDirectTopUpPurchaseValid(
+                                  context,
+                                  productDetailsController,
+                                  widget.product!,
+                                );
+                                if (!isValid) {
+                                  return;
+                                }
+                              }
+
                               final ApiResponseModel apiResponse = await  Provider.of<CartController>(context, listen: false).addToCartAPI(
                                 cart, context, widget.product!.choiceOptions!,
                                 productDetailsController.variationIndex, buyNow: 1,
@@ -701,7 +741,7 @@ class CartBottomSheetWidgetState extends State<CartBottomSheetWidget> {
       
                       Expanded(child: CustomButton(
                         radius: 6,                          buttonText: getTranslated(stock == 0 && widget.product!.productType == "physical" && (widget.product!.hasActiveSupplierMapping ?? 0) != 1 ? 'out_of_stock' : 'add_to_cart', context),
-                        onTap: () {
+                        onTap: () async {
       
                           if((productDetailsController.quantity ?? 0) < (widget.product?.minimumOrderQty ?? 1) ) {
                             showCustomSnackBarWidget(getTranslated('to_order_this_item_minimum_order_quantity_is', context), context, snackBarType: SnackBarType.warning);
@@ -709,6 +749,18 @@ class CartBottomSheetWidgetState extends State<CartBottomSheetWidget> {
                           }                            if( stock! < widget.product!.minimumOrderQty!  &&  widget.product!.productType == "physical" && (widget.product!.hasActiveSupplierMapping ?? 0) != 1 ){
                             showCustomSnackBarWidget(getTranslated('out_of_stock', context), context, snackBarType: SnackBarType.warning);
                           } else if(stock >= widget.product!.minimumOrderQty!  || widget.product!.productType == "digital" || (widget.product!.hasActiveSupplierMapping ?? 0) == 1) {
+                            if (DirectTopUpHelper.shouldPromptDirectTopUpSheet(widget.product)) {
+                              final cartController = Provider.of<CartController>(context, listen: false);
+                              final bool isValid = await cartController.ensureDirectTopUpPurchaseValid(
+                                context,
+                                productDetailsController,
+                                widget.product!,
+                              );
+                              if (!isValid) {
+                                return;
+                              }
+                            }
+
                             Provider.of<CartController>(context, listen: false).addToCartAPI(
                               cart, context, widget.product!.choiceOptions!,
                               productDetailsController.variationIndex,
@@ -748,10 +800,12 @@ class CartBottomSheetWidgetState extends State<CartBottomSheetWidget> {
   bool _isSelectShippingMethod(Response<dynamic>? response) => response?.data['status'] == 2;
 
   void _navigateToCheckoutScreen(BuildContext context, CartModel cart, double shippingCost) {
+    final bool isDirectTopUp = DirectTopUpHelper.shouldPromptDirectTopUpSheet(widget.product)
+        || DirectTopUpHelper.isDirectTopUpCartItem(cart);
     final double discount = cart.discount! * cart.quantity!;
     final double amount = (cart.price! - cart.discount!) * cart.quantity!;
     final int totalQuantity = cart.quantity ?? 0;
-    final bool hasPhysical = cart.productType == "physical";
+    final bool hasPhysical = !isDirectTopUp && cart.productType == "physical";
     double tax = 0.0;
     double shippingAmount = (shippingCost + cart.shippingCost!);
 
@@ -773,8 +827,8 @@ class CartBottomSheetWidgetState extends State<CartBottomSheetWidget> {
       discount: discount,
       tax: tax,
       sellerId: null,
-      onlyDigital: !hasPhysical,
-      onlyDirectTopUp: !hasPhysical && (widget.product?.directTopup?.enabled == true),
+      onlyDigital: isDirectTopUp || !hasPhysical,
+      onlyDirectTopUp: isDirectTopUp,
       hasPhysical: hasPhysical,
       quantity: totalQuantity,
     );

@@ -23,6 +23,10 @@ class PartnerPostmanCollectionService
         /** @var array<string, mixed> $collection */
         $collection = json_decode(File::get($templatePath), true, 512, JSON_THROW_ON_ERROR);
 
+        $items = $collection['item'] ?? [];
+        $this->normalizeCollectionUrls($items);
+        $collection['item'] = $items;
+
         $collection['variable'] = $this->buildVariables();
         $collection['item'][] = $this->buildExamplesFolder();
 
@@ -144,21 +148,7 @@ class PartnerPostmanCollectionService
     {
         $path = ltrim(parse_url($rawUrl, PHP_URL_PATH) ?: $rawUrl, '/');
         $query = parse_url($rawUrl, PHP_URL_QUERY);
-        $url = [
-            'raw' => '{{base_url}}/'.$path.($query ? '?'.$query : ''),
-            'host' => ['{{base_url}}'],
-            'path' => explode('/', $path),
-        ];
-
-        if ($query) {
-            $url['query'] = array_map(
-                fn (string $pair): array => [
-                    'key' => explode('=', $pair, 2)[0],
-                    'value' => explode('=', $pair, 2)[1] ?? '',
-                ],
-                explode('&', $query)
-            );
-        }
+        $url = '{{base_url}}/'.$path.($query ? '?'.$query : '');
 
         return [
             'name' => $name,
@@ -189,14 +179,27 @@ class PartnerPostmanCollectionService
                     'raw' => "{\n  \"product_id\": {{$productIdVariable}},\n  \"quantity\": 1,\n  \"reference\": \"postman-example\"\n}",
                     'options' => ['raw' => ['language' => 'json']],
                 ],
-                'url' => [
-                    'raw' => '{{base_url}}/api/v1/partner/orders',
-                    'host' => ['{{base_url}}'],
-                    'path' => ['api', 'v1', 'partner', 'orders'],
-                ],
+                'url' => '{{base_url}}/api/v1/partner/orders',
                 'description' => $description,
             ],
         ];
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $items
+     */
+    private function normalizeCollectionUrls(array &$items): void
+    {
+        foreach ($items as &$item) {
+            if (isset($item['request']['url']) && is_array($item['request']['url'])) {
+                $item['request']['url'] = $item['request']['url']['raw']
+                    ?? '{{base_url}}';
+            }
+
+            if (! empty($item['item']) && is_array($item['item'])) {
+                $this->normalizeCollectionUrls($item['item']);
+            }
+        }
     }
 
     /**

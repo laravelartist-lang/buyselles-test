@@ -20,4 +20,6 @@ abstract class CartRepositoryInterface implements RepositoryInterface{
 
   Future<dynamic> getCartList({String? couponCode});
 
+  Future<ApiResponseModel> validateDirectTopUpAccount(int productId, String accountId);
+
 }

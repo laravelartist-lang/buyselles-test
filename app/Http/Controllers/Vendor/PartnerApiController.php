@@ -61,7 +61,7 @@ class PartnerApiController extends BaseController
             return redirect()->back();
         }
 
-        $new = ResellerApiService::generateKeyPair(
+        $generated = ResellerApiService::generateKeyPair(
             userId: null,
             name: $request->input('name'),
             sellerId: $sellerId,
@@ -69,8 +69,8 @@ class PartnerApiController extends BaseController
         );
 
         // Flash raw values once so the view can show them — they are never retrievable again
-        session()->flash('new_api_key', $new->raw_api_key);
-        session()->flash('new_api_secret', $new->raw_api_secret);
+        session()->flash('new_api_key', $generated['raw_api_key']);
+        session()->flash('new_api_secret', $generated['raw_api_secret']);
 
         ToastMagic::success(message: translate('api_key_request_submitted_awaiting_approval'));
 
@@ -95,19 +95,10 @@ class PartnerApiController extends BaseController
             return redirect()->route('vendor.developer.index');
         }
 
-        Cache::forget("reseller_key:{$apiKey->api_key}");
+        $generated = ResellerApiService::regenerateCredentials($apiKey);
 
-        $rawKey = 'rslr_'.\Illuminate\Support\Str::random(40);
-        $rawSecret = \Illuminate\Support\Str::random(48);
-
-        $apiKey->update([
-            'api_key' => hash('sha256', $rawKey),
-            'api_secret' => hash('sha256', $rawSecret),
-        ]);
-
-        // Flash raw values once — vendor must copy them now
-        session()->flash('new_api_key', $rawKey);
-        session()->flash('new_api_secret', $rawSecret);
+        session()->flash('new_api_key', $generated['raw_api_key']);
+        session()->flash('new_api_secret', $generated['raw_api_secret']);
 
         ToastMagic::success(message: translate('api_key_regenerated_successfully'));
 

@@ -26,6 +26,7 @@ import 'package:flutter_sixvalley_ecommerce/common/basewidget/show_custom_snakba
 import 'package:flutter_sixvalley_ecommerce/common/basewidget/custom_textfield_widget.dart';
 import 'package:flutter_sixvalley_ecommerce/features/checkout/widgets/choose_payment_widget.dart';
 import 'package:flutter_sixvalley_ecommerce/features/checkout/widgets/coupon_apply_widget.dart';
+import 'package:flutter_sixvalley_ecommerce/features/checkout/widgets/create_account_widget.dart';
 import 'package:flutter_sixvalley_ecommerce/features/checkout/widgets/shipping_details_widget.dart';
 import 'package:flutter_sixvalley_ecommerce/features/checkout/widgets/wallet_payment_widget.dart';
 import 'package:provider/provider.dart';
@@ -86,14 +87,36 @@ class CheckoutScreenState extends State<CheckoutScreen> {
     final checkoutController =
         Provider.of<CheckoutController>(context, listen: false);
 
-    if (widget.hasPhysical && checkoutController.addressIndex == null) {
+    if (_requiresShippingAddress && checkoutController.addressIndex == null) {
       checkoutController.setAddressIndex(0);
     }
 
-    if (_billingAddress && checkoutController.billingAddressIndex == null) {
+    if (_requiresShippingAddress && _billingAddress && checkoutController.billingAddressIndex == null) {
       checkoutController
           .setBillingAddressIndex(checkoutController.addressIndex ?? 0);
     }
+  }
+
+  bool get _requiresShippingAddress =>
+      widget.hasPhysical && !widget.onlyDigital && !widget.onlyDirectTopUp;
+
+  bool get _isDigitalOnlyCheckout =>
+      widget.onlyDigital || widget.onlyDirectTopUp;
+
+  String? _resolveCustomerId(
+      AuthController authController, ProfileController profileController) {
+    if (!authController.isLoggedIn()) {
+      return authController.getGuestToken();
+    }
+
+    final int? userId = profileController.userInfoModel?.id
+        ?? int.tryParse(profileController.userID);
+
+    if (userId != null && userId > 0) {
+      return userId.toString();
+    }
+
+    return null;
   }
 
   @override
@@ -124,6 +147,8 @@ class CheckoutScreenState extends State<CheckoutScreen> {
     if (Provider.of<AuthController>(context, listen: false).isLoggedIn()) {
       Provider.of<CouponController>(context, listen: false)
           .getAvailableCouponList();
+      Provider.of<ProfileController>(context, listen: false)
+          .getUserInfo(context);
     }
 
     if (Provider.of<CheckoutController>(context, listen: false).isAcceptTerms) {
@@ -219,8 +244,8 @@ class CheckoutScreenState extends State<CheckoutScreen> {
                                       !orderProvider.isAcceptTerms)
                                   ? null
                                   : () async {
-                                      if (orderProvider.addressIndex == null &&
-                                          widget.hasPhysical) {
+                                      if (_requiresShippingAddress &&
+                                          orderProvider.addressIndex == null) {
                                         RouterHelper.getSavedAddressListRoute(
                                             fromGuest:
                                                 !Provider.of<AuthController>(
@@ -233,27 +258,22 @@ class CheckoutScreenState extends State<CheckoutScreen> {
                                                 context),
                                             Get.context!,
                                             snackBarType: SnackBarType.warning);
-                                      } else if ((orderProvider
-                                                  .billingAddressIndex ==
-                                              null &&
-                                          widget.hasPhysical &&
-                                          !_billingAddress)) {
+                                      } else if (_requiresShippingAddress &&
+                                          orderProvider.billingAddressIndex == null &&
+                                          !_billingAddress) {
                                         showCustomSnackBarWidget(
                                             getTranslated(
                                                 'you_cant_place_order_of_digital_product_without_billing_address',
                                                 context),
                                             Get.context!,
                                             snackBarType: SnackBarType.warning);
-                                      } else if ((orderProvider
-                                                      .billingAddressIndex ==
-                                                  null &&
-                                              widget.hasPhysical &&
-                                              !orderProvider.sameAsBilling &&
-                                              _billingAddress) ||
-                                          (orderProvider.billingAddressIndex ==
-                                                  null &&
-                                              _billingAddress &&
-                                              !orderProvider.sameAsBilling)) {
+                                      } else if (_requiresShippingAddress &&
+                                          ((orderProvider.billingAddressIndex == null &&
+                                                  !orderProvider.sameAsBilling &&
+                                                  _billingAddress) ||
+                                              (orderProvider.billingAddressIndex == null &&
+                                                  _billingAddress &&
+                                                  !orderProvider.sameAsBilling))) {
                                         RouterHelper
                                             .getSavedBillingAddressListRoute(
                                                 fromGuest: !Provider.of<
@@ -319,21 +339,32 @@ class CheckoutScreenState extends State<CheckoutScreen> {
                                           if (orderProvider
                                                   .paymentMethodIndex !=
                                               -1) {
+                                            final AuthController authController =
+                                                Provider.of<AuthController>(
+                                                    context,
+                                                    listen: false);
+                                            final String? customerId =
+                                                _resolveCustomerId(
+                                                    authController,
+                                                    profileProvider);
+
+                                            if (customerId == null ||
+                                                customerId.isEmpty) {
+                                              showCustomSnackBarWidget(
+                                                getTranslated(
+                                                        'something_went_wrong',
+                                                        context) ??
+                                                    'Something went wrong',
+                                                context,
+                                                snackBarType:
+                                                    SnackBarType.error,
+                                              );
+                                              return;
+                                            }
+
                                             orderProvider.digitalPaymentPlaceOrder(
                                                 orderNote: orderNote,
-                                                customerId: Provider.of<
-                                                                AuthController>(
-                                                            context,
-                                                            listen: false)
-                                                        .isLoggedIn()
-                                                    ? profileProvider
-                                                        .userInfoModel?.id
-                                                        .toString()
-                                                    : Provider.of<
-                                                                AuthController>(
-                                                            context,
-                                                            listen: false)
-                                                        .getGuestToken(),
+                                                customerId: customerId,
                                                 addressId: addressId,
                                                 billingAddressId:
                                                     billingAddressId,
@@ -344,7 +375,7 @@ class CheckoutScreenState extends State<CheckoutScreen> {
                                                     .selectedDigitalPaymentMethodName);
                                           } else if (orderProvider
                                                   .isCODChecked &&
-                                              !widget.onlyDigital) {
+                                              !_isDigitalOnlyCheckout) {
                                             orderProvider.placeOrder(
                                                 callback: _callback,
                                                 addressID: addressId,
@@ -354,7 +385,8 @@ class CheckoutScreenState extends State<CheckoutScreen> {
                                                     billingAddressId,
                                                 orderNote: orderNote);
                                           } else if (orderProvider
-                                              .isOfflineChecked) {
+                                                  .isOfflineChecked &&
+                                              !_isDigitalOnlyCheckout) {
                                             // Navigator.of(context).push(MaterialPageRoute(builder: (_)=> OfflinePaymentScreen(payableAmount: _payableAmount(), callback: _callback)));
                                             RouterHelper
                                                 .getOfflinePaymentScreen(
@@ -421,15 +453,23 @@ class CheckoutScreenState extends State<CheckoutScreen> {
                   padding: const EdgeInsets.all(0),
                   children: [
                     SizedBox(height: Dimensions.paddingSizeSmall),
-                    Padding(
-                      padding: const EdgeInsets.only(
-                          bottom: Dimensions.paddingSizeDefault),
-                      child: ShippingDetailsWidget(
-                        hasPhysical: widget.hasPhysical,
-                        billingAddress: _billingAddress,
-                        passwordFormKey: passwordFormKey,
+                    if (_requiresShippingAddress)
+                      Padding(
+                        padding: const EdgeInsets.only(
+                            bottom: Dimensions.paddingSizeDefault),
+                        child: ShippingDetailsWidget(
+                          hasPhysical: widget.hasPhysical,
+                          billingAddress: _billingAddress,
+                          passwordFormKey: passwordFormKey,
+                        ),
                       ),
-                    ),
+                    if (!_requiresShippingAddress &&
+                        !Provider.of<AuthController>(context, listen: false).isLoggedIn())
+                      Padding(
+                        padding: const EdgeInsets.only(
+                            bottom: Dimensions.paddingSizeDefault),
+                        child: CreateAccountWidget(formKey: passwordFormKey),
+                      ),
                     if (Provider.of<AuthController>(context, listen: false)
                         .isLoggedIn())
                       Padding(
@@ -443,7 +483,9 @@ class CheckoutScreenState extends State<CheckoutScreen> {
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 0),
                       child:
-                          ChoosePaymentWidget(onlyDigital: widget.onlyDigital),
+                          ChoosePaymentWidget(
+                              onlyDigital:
+                                  widget.onlyDigital || widget.onlyDirectTopUp),
                     ),
                     if (orderProvider.isWalletChecked &&
                         Provider.of<AuthController>(context, listen: false)

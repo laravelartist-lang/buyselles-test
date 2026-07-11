@@ -5,8 +5,10 @@ import 'package:flutter_sixvalley_ecommerce/data/model/api_response.dart';
 import 'package:flutter_sixvalley_ecommerce/features/cart/domain/models/cart_model.dart';
 import 'package:flutter_sixvalley_ecommerce/features/product/domain/models/product_model.dart';
 import 'package:flutter_sixvalley_ecommerce/features/product_details/controllers/product_details_controller.dart';
+import 'package:flutter_sixvalley_ecommerce/features/product_details/domain/models/product_details_model.dart';
 import 'package:flutter_sixvalley_ecommerce/features/shipping/controllers/shipping_controller.dart';
 import 'package:flutter_sixvalley_ecommerce/helper/api_checker.dart';
+import 'package:flutter_sixvalley_ecommerce/helper/direct_topup_helper.dart';
 import 'package:flutter_sixvalley_ecommerce/main.dart';
 import 'package:flutter_sixvalley_ecommerce/common/basewidget/show_custom_snakbar_widget.dart';
 import 'package:flutter_sixvalley_ecommerce/localization/language_constrants.dart';
@@ -156,6 +158,68 @@ class CartController extends ChangeNotifier {
     }
     notifyListeners();
     return apiResponse;
+  }
+
+  Future<ApiResponseModel> validateDirectTopUpAccount(int productId, String accountId) async {
+    return await cartServiceInterface!.validateDirectTopUpAccount(productId, accountId);
+  }
+
+  Future<bool> ensureDirectTopUpPurchaseValid(
+    BuildContext context,
+    ProductDetailsController detailsController,
+    ProductDetailsModel product, {
+    bool showSuccessOnVerify = false,
+  }) async {
+    final clientError = detailsController.validateDirectTopUpClientSide(context);
+    if (clientError != null) {
+      showCustomSnackBarWidget(clientError, context, snackBarType: SnackBarType.warning);
+      return false;
+    }
+
+    if (DirectTopUpHelper.resolveDirectTopUpConfig(product)?.requiresAccountVerification != true) {
+      return true;
+    }
+
+    final ApiResponseModel apiResponse = await validateDirectTopUpAccount(
+      product.id!,
+      detailsController.directTopUpAccountId,
+    );
+
+    final int? statusCode = apiResponse.response?.statusCode;
+    if (statusCode == 200 || statusCode == 422) {
+      final dynamic rawData = apiResponse.response?.data;
+      if (rawData is Map) {
+        final result = DirectTopUpAccountValidationResult.fromJson(
+          Map<String, dynamic>.from(rawData),
+        );
+
+        if (result.supported && !result.valid) {
+          showCustomSnackBarWidget(
+            result.message ?? getTranslated('direct_topup_account_invalid', context) ?? 'Account is invalid',
+            context,
+            snackBarType: SnackBarType.warning,
+          );
+          detailsController.markDirectTopUpAccountVerified(false);
+          return false;
+        }
+
+        if (result.supported && result.valid) {
+          detailsController.markDirectTopUpAccountVerified(true);
+          if (showSuccessOnVerify) {
+            final String successMessage = result.username != null && result.username!.isNotEmpty
+                ? '${getTranslated('direct_topup_account_verified', context) ?? 'Verified'}: ${result.username}'
+                : getTranslated('direct_topup_account_verified', context) ?? 'Account verified';
+            showCustomSnackBarWidget(successMessage, context, snackBarType: SnackBarType.success);
+          }
+          return true;
+        }
+      }
+
+      return true;
+    }
+
+    ApiChecker.checkApi(apiResponse);
+    return false;
   }
 
 

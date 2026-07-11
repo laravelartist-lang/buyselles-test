@@ -95,6 +95,22 @@ class DirectTopUpAccountValidationTest extends TestCase
             $table->boolean('status')->default(1);
             $table->timestamps();
         });
+
+        $this->recreateTable('guest_users', function (Blueprint $table): void {
+            $table->id();
+            $table->string('ip_address')->nullable();
+            $table->string('fcm_token')->nullable();
+            $table->timestamps();
+        });
+    }
+
+    private function createApiGuestId(): int
+    {
+        return (int) $this->app['db']->table('guest_users')->insertGetId([
+            'ip_address' => '127.0.0.1',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
     }
 
     public function test_validate_direct_topup_account_returns_valid_player(): void
@@ -231,6 +247,97 @@ class DirectTopUpAccountValidationTest extends TestCase
             ]);
 
         Http::assertNothingSent();
+    }
+
+    public function test_api_validate_direct_topup_account_returns_valid_player(): void
+    {
+        $product = $this->createGolfDirectTopUpProduct();
+
+        Http::fake([
+            'api.golf-test.com/api/products/195' => Http::response([
+                'status' => 'success',
+                'result' => [
+                    'data' => [
+                        'id' => 195,
+                        'api_type' => 'jawaker',
+                        'custom_fields' => [
+                            ['id' => 3, 'name' => 'Player ID', 'desc' => 'Player ID', 'sort' => 1],
+                        ],
+                    ],
+                ],
+            ]),
+            'api.golf-test.com/api/order/jawaker/validate' => Http::response([
+                'status' => 'success',
+                'result' => [
+                    'data' => [
+                        'userId' => '12345',
+                        'username' => 'GamerPro',
+                    ],
+                ],
+                'message' => 'Player ID is valid',
+            ]),
+        ]);
+
+        $response = $this->postJson('/api/v1/cart/validate-direct-topup-account', [
+            'guest_id' => $this->createApiGuestId(),
+            'product_id' => $product->id,
+            'direct_topup_account_id' => '12345',
+        ]);
+
+        $response->assertOk()
+            ->assertJson([
+                'supported' => true,
+                'valid' => true,
+                'player_id' => '12345',
+                'username' => 'GamerPro',
+            ]);
+    }
+
+    public function test_api_validate_direct_topup_account_returns_invalid_player(): void
+    {
+        $product = $this->createGolfDirectTopUpProduct();
+
+        Http::fake([
+            'api.golf-test.com/api/products/195' => Http::response([
+                'status' => 'success',
+                'result' => [
+                    'data' => [
+                        'id' => 195,
+                        'api_type' => 'jawaker',
+                        'custom_fields' => [],
+                    ],
+                ],
+            ]),
+            'api.golf-test.com/api/order/jawaker/validate' => Http::response([
+                'status' => 'error',
+                'message' => 'Player ID is invalid',
+                'result' => null,
+            ], 422),
+        ]);
+
+        $response = $this->postJson('/api/v1/cart/validate-direct-topup-account', [
+            'guest_id' => $this->createApiGuestId(),
+            'product_id' => $product->id,
+            'direct_topup_account_id' => 'bad-id',
+        ]);
+
+        $response->assertStatus(422)
+            ->assertJson([
+                'supported' => true,
+                'valid' => false,
+                'message' => 'Player ID is invalid',
+            ]);
+    }
+
+    public function test_api_validate_direct_topup_account_requires_product_id(): void
+    {
+        $response = $this->postJson('/api/v1/cart/validate-direct-topup-account', [
+            'guest_id' => $this->createApiGuestId(),
+            'direct_topup_account_id' => '12345',
+        ]);
+
+        $response->assertStatus(403)
+            ->assertJsonStructure(['errors']);
     }
 
     private function createGolfDirectTopUpProduct(): Product

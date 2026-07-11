@@ -75,6 +75,23 @@ class CartRepository extends DataSyncService implements CartRepositoryInterface 
 
 
   @override
+  Future<ApiResponseModel> validateDirectTopUpAccount(int productId, String accountId) async {
+    try {
+      final response = await dioClient.post(
+        AppConstants.validateDirectTopupAccountUri,
+        data: {
+          'product_id': productId,
+          'direct_topup_account_id': accountId,
+        },
+      );
+      return ApiResponseModel.withSuccess(response);
+    } catch (e) {
+      return ApiResponseModel.withError(ApiErrorHandler.getMessage(e));
+    }
+  }
+
+
+  @override
   Future<ApiResponseModel> restockRequest(CartModelBody cart, List<ChoiceOptions> choiceOptions, List<int>? variationIndexes,
       int? buyNow, int? shippingMethodExist, int? shippingMethodId) async {
     Map<String?, dynamic> choice = {};

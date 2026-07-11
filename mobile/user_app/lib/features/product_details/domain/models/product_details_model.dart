@@ -72,8 +72,10 @@ class ProductDetailsModel {
   int? isRestockRequested;
   ClearanceSale? clearanceSale;
   DirectTopUpConfig? _directTopup;
+  bool? _isDirectTopup;
 
   DirectTopUpConfig? get directTopup => _directTopup;
+  bool get isDirectTopup => _isDirectTopup == true;
 
   ProductDetailsModel(
       {int? id,
@@ -503,14 +505,13 @@ class ProductDetailsModel {
     _discountType = json['discount_type'];
     _currentStock = json['current_stock'];
     final supplierMapping = json['has_active_supplier_mapping'];
-    if (supplierMapping is bool) {
-      _hasActiveSupplierMapping = supplierMapping ? 1 : 0;
-    } else     if (supplierMapping != null) {
-      _hasActiveSupplierMapping = int.tryParse(supplierMapping.toString());
+    _hasActiveSupplierMapping = _parseTruthyInt(supplierMapping);
+    if (json['direct_topup'] != null && json['direct_topup'] is Map) {
+      _directTopup = DirectTopUpConfig.fromJson(
+        Map<String, dynamic>.from(json['direct_topup'] as Map),
+      );
     }
-    if (json['direct_topup'] != null) {
-      _directTopup = DirectTopUpConfig.fromJson(json['direct_topup']);
-    }
+    _isDirectTopup = _parseDirectTopUpFlag(json['is_direct_topup']);
     if(json['minimum_order_qty'] != null){
       _minimumOrderQty = int.parse(json['minimum_order_qty'].toString());
     }else{
@@ -928,6 +929,7 @@ class DirectTopUpConfig {
   double? maxQuantity;
   double? pricePerUnit;
   String? currency;
+  bool? requiresAccountVerification;
 
   DirectTopUpConfig({
     this.enabled,
@@ -936,14 +938,67 @@ class DirectTopUpConfig {
     this.maxQuantity,
     this.pricePerUnit,
     this.currency,
+    this.requiresAccountVerification,
   });
 
   DirectTopUpConfig.fromJson(Map<String, dynamic> json) {
-    enabled = json['enabled'] == true;
-    accountLabel = json['account_label'];
+    enabled = _parseDirectTopUpFlag(json['enabled']);
+    accountLabel = json['account_label']?.toString();
     minQuantity = double.tryParse('${json['min_quantity']}');
     maxQuantity = double.tryParse('${json['max_quantity']}');
     pricePerUnit = double.tryParse('${json['price_per_unit']}');
-    currency = json['currency'];
+    currency = json['currency']?.toString();
+    requiresAccountVerification = _parseDirectTopUpFlag(json['requires_account_verification']);
+
+    if (enabled != true && accountLabel?.trim().isNotEmpty == true) {
+      enabled = true;
+    }
   }
+}
+
+bool _parseDirectTopUpFlag(dynamic value) {
+  if (value == null) {
+    return false;
+  }
+
+  if (value is bool) {
+    return value;
+  }
+
+  if (value is num) {
+    return value == 1;
+  }
+
+  final normalized = value.toString().trim().toLowerCase();
+
+  return normalized == '1' || normalized == 'true';
+}
+
+int? _parseTruthyInt(dynamic value) {
+  if (value == null) {
+    return null;
+  }
+
+  if (value is bool) {
+    return value ? 1 : 0;
+  }
+
+  if (value is int) {
+    return value;
+  }
+
+  if (value is num) {
+    return value.toInt();
+  }
+
+  final normalized = value.toString().trim().toLowerCase();
+  if (normalized == 'true' || normalized == '1') {
+    return 1;
+  }
+
+  if (normalized == 'false' || normalized == '0') {
+    return 0;
+  }
+
+  return int.tryParse(normalized);
 }

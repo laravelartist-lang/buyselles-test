@@ -47,6 +47,8 @@ class CartModel {
   double? appliedTax;
   String? appliedTaxType;
   double? shippingCostTax;
+  double? directTopupQuantity;
+  bool? isDirectTopup;
 
   static int? _parseInt(dynamic value, {int? defaultValue}) {
     if (value == null) {
@@ -192,6 +194,8 @@ class CartModel {
     appliedTax = _parseDouble(json['applied_tax']);
     appliedTaxType = json['applied_tax_type'];
     shippingCostTax = _parseDouble(json['shipping_cost_tax']);
+    directTopupQuantity = _parseDouble(json['direct_topup_quantity']);
+    isDirectTopup = json['direct_topup_quantity'] != null;
   }
 
   Map<String, dynamic> toJson() {
@@ -370,6 +374,32 @@ class CartModelBody{
     return data;
   }
 
+}
+
+class DirectTopUpAccountValidationResult {
+  final bool supported;
+  final bool valid;
+  final String? playerId;
+  final String? username;
+  final String? message;
+
+  DirectTopUpAccountValidationResult({
+    required this.supported,
+    required this.valid,
+    this.playerId,
+    this.username,
+    this.message,
+  });
+
+  factory DirectTopUpAccountValidationResult.fromJson(Map<String, dynamic> json) {
+    return DirectTopUpAccountValidationResult(
+      supported: json['supported'] == true,
+      valid: json['valid'] == true,
+      playerId: json['player_id']?.toString(),
+      username: json['username']?.toString(),
+      message: json['message']?.toString(),
+    );
+  }
 }
 
 class ReferralAmount {

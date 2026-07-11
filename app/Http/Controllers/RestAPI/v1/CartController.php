@@ -12,6 +12,7 @@ use App\Models\Color;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\SupplierProductMapping;
+use App\Services\DirectTopUp\DirectTopUpService;
 use App\Services\RestockProductService;
 use App\Utils\CartManager;
 use App\Utils\CustomerManager;
@@ -165,6 +166,26 @@ class CartController extends Controller
         $cart = CartManager::add_to_cart($request);
 
         return response()->json($cart, 200);
+    }
+
+    public function validateDirectTopUpAccount(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'product_id' => 'required|integer|exists:products,id',
+            'direct_topup_account_id' => 'required|string|max:255',
+        ]);
+
+        if ($validator->errors()->count() > 0) {
+            return response()->json(['errors' => Helpers::validationErrorProcessor($validator)], 403);
+        }
+
+        $product = Product::query()->findOrFail($request->integer('product_id'));
+        $response = app(DirectTopUpService::class)->buildAccountValidationResponse(
+            $product,
+            (string) $request->input('direct_topup_account_id'),
+        );
+
+        return response()->json($response['payload'], $response['status']);
     }
 
     public function update_cart(Request $request): JsonResponse

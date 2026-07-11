@@ -22,7 +22,7 @@
         <div>
             <h3 class="mb-1">{{ translate('api_request_logs') }}</h3>
             <div class="text-muted small">
-                <span class="font-monospace">{{ $key->api_key }}</span>
+                {{ $key->name }} (#{{ $key->id }})
                 &nbsp;&mdash;&nbsp;
                 {{ translate('total_requests') }}: <strong>{{ number_format($key->total_requests) }}</strong>
             </div>

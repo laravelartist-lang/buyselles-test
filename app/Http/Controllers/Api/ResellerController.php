@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Services\Partner\PartnerWalletService;
 use App\Services\ResellerApiService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -10,7 +11,10 @@ use Illuminate\Support\Facades\Validator;
 
 class ResellerController extends Controller
 {
-    public function __construct(private readonly ResellerApiService $resellerService) {}
+    public function __construct(
+        private readonly ResellerApiService $resellerService,
+        private readonly PartnerWalletService $partnerWallet,
+    ) {}
 
     /**
      * GET /api/reseller/products
@@ -130,10 +134,11 @@ class ResellerController extends Controller
 
         return response()->json([
             'data' => [
-                'balance' => (float) $resellerKey->wallet_balance,
+                'balance' => $this->partnerWallet->getAvailableBalance($resellerKey),
                 'currency' => 'USD',
                 'key_id' => $resellerKey->id,
                 'key_name' => $resellerKey->name,
+                'wallet_source' => $this->partnerWallet->usesVendorWallet($resellerKey) ? 'vendor' : 'customer',
             ],
         ]);
     }

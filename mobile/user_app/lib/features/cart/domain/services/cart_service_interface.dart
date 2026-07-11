@@ -21,4 +21,6 @@ abstract class CartServiceInterface{
 
   Future<dynamic> mergeGuestCart();
 
+  Future<ApiResponseModel> validateDirectTopUpAccount(int productId, String accountId);
+
 }

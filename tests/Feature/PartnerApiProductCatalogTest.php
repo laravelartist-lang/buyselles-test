@@ -88,7 +88,18 @@ class PartnerApiProductCatalogTest extends TestCase
         $response->assertJsonPath('data.seller_type', 'vendor');
     }
 
-    private function seedProduct(int $id, string $addedBy, bool $partnerApproved, string $name): void
+    public function test_list_products_include_ready_after_sell_type(): void
+    {
+        $this->seedProduct(id: 8, addedBy: 'admin', partnerApproved: true, name: 'After Sell Product', digitalProductType: 'ready_after_sell');
+
+        $response = $this->getJson('/api/v1/partner/products', $this->partnerApiHeaders());
+
+        $response->assertOk();
+        $response->assertJsonCount(1, 'data');
+        $response->assertJsonPath('data.0.id', 8);
+    }
+
+    private function seedProduct(int $id, string $addedBy, bool $partnerApproved, string $name, string $digitalProductType = 'ready_product'): void
     {
         $this->app['db']->table('products')->insert([
             'id' => $id,
@@ -97,7 +108,7 @@ class PartnerApiProductCatalogTest extends TestCase
             'name' => $name,
             'slug' => 'product-'.$id,
             'product_type' => 'digital',
-            'digital_product_type' => 'ready_product',
+            'digital_product_type' => $digitalProductType,
             'status' => 1,
             'request_status' => 1,
             'partner_approved' => $partnerApproved,

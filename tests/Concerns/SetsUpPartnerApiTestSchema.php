@@ -29,6 +29,10 @@ trait SetsUpPartnerApiTestSchema
                 'type' => 'company_name',
                 'value' => 'Test Shop',
             ],
+            [
+                'type' => 'wallet_status',
+                'value' => '1',
+            ],
         ]);
 
         $this->recreateTable('translations', function (Blueprint $table): void {
@@ -61,6 +65,28 @@ trait SetsUpPartnerApiTestSchema
             $table->id();
             $table->string('f_name')->nullable();
             $table->string('email')->nullable();
+            $table->decimal('wallet_balance', 24, 4)->default(0);
+            $table->timestamps();
+        });
+
+        $this->recreateTable('customer_wallets', function (Blueprint $table): void {
+            $table->id();
+            $table->unsignedBigInteger('customer_id');
+            $table->decimal('balance', 24, 4)->default(0);
+            $table->timestamps();
+        });
+
+        $this->recreateTable('wallet_transactions', function (Blueprint $table): void {
+            $table->id();
+            $table->unsignedBigInteger('user_id');
+            $table->uuid('transaction_id')->nullable();
+            $table->string('reference')->nullable();
+            $table->string('transaction_type')->nullable();
+            $table->string('payment_method')->nullable();
+            $table->decimal('credit', 24, 4)->default(0);
+            $table->decimal('debit', 24, 4)->default(0);
+            $table->decimal('balance', 24, 4)->default(0);
+            $table->json('order_ids')->nullable();
             $table->timestamps();
         });
 
@@ -73,8 +99,9 @@ trait SetsUpPartnerApiTestSchema
         $this->recreateTable('seller_wallets', function (Blueprint $table): void {
             $table->id();
             $table->unsignedBigInteger('seller_id')->index();
+            $table->decimal('total_earning', 24, 4)->default(0);
             $table->decimal('pending_balance', 24, 4)->default(0);
-            $table->decimal('available_balance', 24, 4)->default(0);
+            $table->decimal('pending_withdraw', 24, 4)->default(0);
             $table->timestamps();
         });
 
@@ -218,13 +245,14 @@ trait SetsUpPartnerApiTestSchema
         $userId = $this->app['db']->table('users')->insertGetId([
             'f_name' => 'Partner',
             'email' => 'partner@test.com',
+            'wallet_balance' => $walletBalance,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
 
         return ResellerApiKey::query()->create([
             'user_id' => $userId,
-            'seller_id' => $sellerId,
+            'seller_id' => null,
             'name' => 'Test Partner Key',
             'api_key' => hash('sha256', $this->rawApiKey),
             'api_secret' => hash('sha256', $this->rawApiSecret),
@@ -232,7 +260,7 @@ trait SetsUpPartnerApiTestSchema
             'rate_limit_per_minute' => 60,
             'is_active' => true,
             'status' => 'active',
-            'wallet_balance' => $walletBalance,
+            'wallet_balance' => 0,
         ]);
     }
 

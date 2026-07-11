@@ -24,7 +24,8 @@ class _DirectTopUpPurchaseWidgetState extends State<DirectTopUpPurchaseWidget> {
   void initState() {
     super.initState();
     final controller = Provider.of<ProductDetailsController>(context, listen: false);
-    _quantityController.text = '${widget.config.minQuantity ?? 0}';
+    controller.initializeDirectTopUpDefaults();
+    _quantityController.text = '${widget.config.minQuantity ?? controller.directTopUpQuantity}';
     _priceController.text = controller.directTopUpTotalPrice.toStringAsFixed(2);
     _accountController.addListener(() {
       controller.setDirectTopUpAccountId(_accountController.text);

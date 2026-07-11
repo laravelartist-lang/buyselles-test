@@ -5,7 +5,7 @@ namespace App\Http\Controllers\Admin\Supplier;
 use App\Http\Controllers\BaseController;
 use App\Models\PartnerApiLog;
 use App\Models\ResellerApiKey;
-use App\Services\Partner\PartnerPostmanCollectionService;
+use App\Services\Partner\PartnerWalletService;
 use App\Services\ResellerApiService;
 use Brian2694\Toastr\Facades\Toastr;
 use Illuminate\Contracts\View\View;
@@ -15,10 +15,13 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Cache;
-use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ResellerApiKeyController extends BaseController
 {
+    public function __construct(
+        private readonly PartnerWalletService $partnerWallet,
+    ) {}
+
     /**
      * Display all reseller API keys.
      */
@@ -53,20 +56,20 @@ class ResellerApiKeyController extends BaseController
             'name' => 'required|string|max:100',
         ]);
 
-        $keyRecord = ResellerApiService::generateKeyPair(
+        $generated = ResellerApiService::generateKeyPair(
             userId: (int) $request->input('user_id'),
             name: $request->input('name'),
         );
 
         // Admin-generated keys are immediately active
-        $keyRecord->update(['status' => 'active', 'is_active' => true]);
+        $generated['key']->update(['status' => 'active', 'is_active' => true]);
 
         Toastr::success(translate('api_key_generated_successfully'));
 
         return redirect()->route('admin.reseller-keys.list')->with([
-            'new_key_id' => $keyRecord->id,
-            'raw_api_key' => $keyRecord->raw_api_key,
-            'raw_api_secret' => $keyRecord->raw_api_secret,
+            'new_key_id' => $generated['key']->id,
+            'raw_api_key' => $generated['raw_api_key'],
+            'raw_api_secret' => $generated['raw_api_secret'],
         ]);
     }
 
@@ -179,7 +182,9 @@ class ResellerApiKeyController extends BaseController
             'balance.view' => 'Balance — View',
         ];
 
-        return view('admin-views.reseller.edit', compact('key', 'allPermissions'));
+        $accountWalletBalance = $this->partnerWallet->getAvailableBalance($key);
+
+        return view('admin-views.reseller.edit', compact('key', 'allPermissions', 'accountWalletBalance'));
     }
 
     /**
@@ -226,6 +231,23 @@ class ResellerApiKeyController extends BaseController
     }
 
     /**
+     * Regenerate credentials for an API key (invalidates the previous pair).
+     */
+    public function regenerateKey(Request $request, int $id): RedirectResponse
+    {
+        $key = ResellerApiKey::findOrFail($id);
+
+        $generated = ResellerApiService::regenerateCredentials($key);
+
+        Toastr::success(translate('api_key_regenerated_successfully'));
+
+        return redirect()->route('admin.reseller-keys.edit', $id)->with([
+            'raw_api_key' => $generated['raw_api_key'],
+            'raw_api_secret' => $generated['raw_api_secret'],
+        ]);
+    }
+
+    /**
      * Show paginated logs for a specific API key.
      */
     public function keyLogs(Request $request, int $id): View
@@ -256,45 +278,10 @@ class ResellerApiKeyController extends BaseController
     }
 
     /**
-     * Show the API documentation page.
+     * Redirect to the public API documentation page.
      */
-    public function apiDocs(): View
+    public function apiDocs(): RedirectResponse
     {
-        return view('admin-views.reseller.api-docs');
-    }
-
-    public function downloadPostmanCollection(PartnerPostmanCollectionService $postmanService): StreamedResponse
-    {
-        $json = $postmanService->generate();
-
-        return response()->streamDownload(
-            static function () use ($json): void {
-                echo $json;
-            },
-            'Buyselles_Partner_API.postman_collection.json',
-            ['Content-Type' => 'application/json'],
-        );
-    }
-
-    /**
-     * Top up the partner wallet balance for a specific API key.
-     */
-    public function topUpWallet(Request $request, int $id): RedirectResponse
-    {
-        $request->validate([
-            'amount' => 'required|numeric|min:0.01|max:99999',
-            'note' => 'nullable|string|max:255',
-        ]);
-
-        $key = ResellerApiKey::findOrFail($id);
-
-        $amount = round((float) $request->input('amount'), 2);
-        $key->increment('wallet_balance', $amount);
-
-        Cache::forget("reseller_key:{$key->api_key}");
-
-        Toastr::success(translate('wallet_topped_up_successfully') ?: "Wallet topped up by \${$amount} successfully.");
-
-        return redirect()->route('admin.reseller-keys.edit', $id);
+        return redirect()->route('partner-api.docs');
     }
 }

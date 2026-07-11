@@ -63,6 +63,19 @@ class PaymentController extends Controller
             }
         }
 
+        if (in_array($request['payment_request_from'], ['app'])) {
+            if (empty($request['customer_id']) && $request->user) {
+                $request->merge([
+                    'customer_id' => $request->user->id,
+                    'is_guest' => 0,
+                ]);
+            } elseif (empty($request['customer_id']) && in_array($request['is_guest'], [1, '1', true], true)) {
+                $request->merge([
+                    'customer_id' => $request['guest_id'],
+                ]);
+            }
+        }
+
         $validator->sometimes('customer_id', 'required', function ($input) {
             return in_array($input->payment_request_from, ['app']);
         });

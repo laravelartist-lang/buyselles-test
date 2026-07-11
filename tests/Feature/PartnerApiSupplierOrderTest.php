@@ -27,8 +27,9 @@ class PartnerApiSupplierOrderTest extends TestCase
 
         $this->app['db']->table('seller_wallets')->insert([
             'seller_id' => 1,
+            'total_earning' => 0,
             'pending_balance' => 0,
-            'available_balance' => 0,
+            'pending_withdraw' => 0,
             'created_at' => now(),
             'updated_at' => now(),
         ]);

@@ -14,7 +14,9 @@ use App\Models\SellerWallet;
 use App\Services\Partner\PartnerProductCatalogQuery;
 use App\Services\Partner\PartnerProductPresenter;
 use App\Services\Partner\PartnerProductStockResolver;
+use App\Services\Partner\PartnerWalletService;
 use App\Services\Supplier\SupplierOrderEligibilityService;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -27,10 +29,11 @@ class ResellerApiService
         private readonly PartnerProductStockResolver $stockResolver,
         private readonly DigitalProductCodeService $codeService,
         private readonly SupplierOrderEligibilityService $supplierOrderEligibilityService,
+        private readonly PartnerWalletService $partnerWallet,
     ) {}
 
     /**
-     * List digital "ready_product" products with available stock counts.
+     * List digital ready-product catalog items with available stock counts.
      */
     public function listProducts(
         ?string $search,
@@ -124,11 +127,12 @@ class ResellerApiService
         }
 
         $totalCost = $product->unit_price * $quantity;
+        $availableBalance = $this->partnerWallet->getAvailableBalance($resellerKey);
 
-        if ((float) $resellerKey->wallet_balance < $totalCost) {
+        if ($availableBalance < $totalCost) {
             return [
                 'error' => 'Insufficient wallet balance.',
-                'balance' => (float) $resellerKey->wallet_balance,
+                'balance' => $availableBalance,
                 'required' => $totalCost,
                 'status' => 402,
             ];
@@ -136,10 +140,6 @@ class ResellerApiService
 
         try {
             return DB::transaction(function () use ($resellerKey, $product, $productId, $quantity, $totalCost, $reference, $idempotencyKey) {
-                ResellerApiKey::where('id', $resellerKey->id)
-                    ->lockForUpdate()
-                    ->decrement('wallet_balance', $totalCost);
-
                 $order = Order::withoutEvents(function () use ($resellerKey, $totalCost, $reference) {
                     return Order::create([
                         'customer_id' => null,
@@ -155,6 +155,8 @@ class ResellerApiService
                     ]);
                 });
 
+                $this->partnerWallet->debitForOrder($resellerKey, $totalCost, $order->id);
+
                 OrderDetail::create([
                     'order_id' => $order->id,
                     'product_id' => $productId,
@@ -165,7 +167,7 @@ class ResellerApiService
                     'tax' => 0,
                     'discount' => 0,
                     'product_type' => 'digital',
-                    'digital_product_type' => 'ready_product',
+                    'digital_product_type' => $product->digital_product_type,
                     'payment_status' => 'paid',
                 ]);
 
@@ -289,13 +291,15 @@ class ResellerApiService
     /**
      * Generate a new API key pair for a seller.
      * Key starts as pending — requires admin approval before it becomes active.
+     *
+     * @return array{key: ResellerApiKey, raw_api_key: string, raw_api_secret: string}
      */
-    public static function generateKeyPair(?int $userId, string $name = 'API Key', ?int $sellerId = null, ?string $requestNote = null): ResellerApiKey
+    public static function generateKeyPair(?int $userId, string $name = 'API Key', ?int $sellerId = null, ?string $requestNote = null): array
     {
         $rawKey = 'rslr_'.Str::random(40);
         $rawSecret = Str::random(48);
 
-        return ResellerApiKey::create([
+        $key = ResellerApiKey::create([
             'user_id' => $userId,
             'seller_id' => $sellerId,
             'name' => $name,
@@ -306,7 +310,36 @@ class ResellerApiService
             'is_active' => false,
             'status' => 'pending',
             'request_note' => $requestNote,
-        ])->setAttribute('raw_api_key', $rawKey)
-            ->setAttribute('raw_api_secret', $rawSecret);
+        ]);
+
+        return [
+            'key' => $key,
+            'raw_api_key' => $rawKey,
+            'raw_api_secret' => $rawSecret,
+        ];
+    }
+
+    /**
+     * Replace credentials for an existing key while preserving settings.
+     *
+     * @return array{key: ResellerApiKey, raw_api_key: string, raw_api_secret: string}
+     */
+    public static function regenerateCredentials(ResellerApiKey $key): array
+    {
+        $rawKey = 'rslr_'.Str::random(40);
+        $rawSecret = Str::random(48);
+
+        Cache::forget("reseller_key:{$key->api_key}");
+
+        $key->update([
+            'api_key' => hash('sha256', $rawKey),
+            'api_secret' => hash('sha256', $rawSecret),
+        ]);
+
+        return [
+            'key' => $key->fresh(),
+            'raw_api_key' => $rawKey,
+            'raw_api_secret' => $rawSecret,
+        ];
     }
 }

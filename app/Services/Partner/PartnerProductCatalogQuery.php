@@ -9,6 +9,16 @@ use Illuminate\Database\Eloquent\Builder;
 class PartnerProductCatalogQuery
 {
     /**
+     * Digital product types eligible for Partner API catalog and orders.
+     *
+     * @return array<int, string>
+     */
+    public function eligibleDigitalProductTypes(): array
+    {
+        return ['ready_product', 'ready_after_sell'];
+    }
+
+    /**
      * @return array{
      *     in_house_local: int|null,
      *     supplier_mapped: int|null,
@@ -54,7 +64,7 @@ class PartnerProductCatalogQuery
     ): Builder {
         $query = Product::query()
             ->where('product_type', 'digital')
-            ->where('digital_product_type', 'ready_product')
+            ->whereIn('digital_product_type', $this->eligibleDigitalProductTypes())
             ->where('status', 1)
             ->where('request_status', 1)
             ->where('partner_approved', 1)
@@ -128,7 +138,7 @@ class PartnerProductCatalogQuery
     {
         return Product::query()
             ->where('product_type', 'digital')
-            ->where('digital_product_type', 'ready_product')
+            ->whereIn('digital_product_type', $this->eligibleDigitalProductTypes())
             ->where('status', 1)
             ->where('request_status', 1)
             ->where('partner_approved', 1)

@@ -10,6 +10,7 @@ import 'package:flutter_sixvalley_ecommerce/features/product_details/domain/serv
 import 'package:flutter_sixvalley_ecommerce/features/product_details/enums/preview_type.dart';
 import 'package:flutter_sixvalley_ecommerce/features/splash/controllers/splash_controller.dart';
 import 'package:flutter_sixvalley_ecommerce/helper/api_checker.dart';
+import 'package:flutter_sixvalley_ecommerce/helper/direct_topup_helper.dart';
 import 'package:flutter_sixvalley_ecommerce/localization/language_constrants.dart';
 import 'package:flutter_sixvalley_ecommerce/main.dart';
 import 'package:flutter_sixvalley_ecommerce/common/basewidget/show_custom_snakbar_widget.dart';
@@ -51,23 +52,30 @@ class ProductDetailsController extends ChangeNotifier {
 
   String _directTopUpAccountId = '';
   double _directTopUpQuantity = 0;
+  bool _directTopUpAccountVerified = false;
+  bool _directTopUpVerifyLoading = false;
 
   String get directTopUpAccountId => _directTopUpAccountId;
   double get directTopUpQuantity => _directTopUpQuantity;
+  bool get directTopUpAccountVerified => _directTopUpAccountVerified;
+  bool get directTopUpVerifyLoading => _directTopUpVerifyLoading;
 
   double get directTopUpTotalPrice {
-    final pricePerUnit = _productDetailsModel?.directTopup?.pricePerUnit ?? 0;
+    final pricePerUnit =
+        DirectTopUpHelper.resolveDirectTopUpConfig(_productDetailsModel)?.pricePerUnit ?? 0;
     return _directTopUpQuantity * pricePerUnit;
   }
 
   void setDirectTopUpAccountId(String value) {
     _directTopUpAccountId = value.trim();
+    _directTopUpAccountVerified = false;
     notifyListeners();
   }
 
   void setDirectTopUpQuantity(double value) {
-    final min = _productDetailsModel?.directTopup?.minQuantity ?? value;
-    final max = _productDetailsModel?.directTopup?.maxQuantity ?? value;
+    final config = DirectTopUpHelper.resolveDirectTopUpConfig(_productDetailsModel);
+    final min = config?.minQuantity ?? value;
+    final max = config?.maxQuantity ?? value;
     if (value < min) {
       value = min;
     }
@@ -79,20 +87,67 @@ class ProductDetailsController extends ChangeNotifier {
   }
 
   void setDirectTopUpQuantityFromPrice(double price) {
-    final pricePerUnit = _productDetailsModel?.directTopup?.pricePerUnit ?? 0;
+    final config = DirectTopUpHelper.resolveDirectTopUpConfig(_productDetailsModel);
+    final pricePerUnit = config?.pricePerUnit ?? 0;
     if (pricePerUnit <= 0) {
-      setDirectTopUpQuantity(_productDetailsModel?.directTopup?.minQuantity ?? 0);
+      setDirectTopUpQuantity(config?.minQuantity ?? 0);
       return;
     }
     setDirectTopUpQuantity((price / pricePerUnit).floorToDouble());
   }
 
   void initializeDirectTopUpDefaults() {
-    final config = _productDetailsModel?.directTopup;
-    if (config?.enabled == true) {
-      _directTopUpQuantity = config?.minQuantity ?? 1;
-      _directTopUpAccountId = '';
+    final config = DirectTopUpHelper.resolveDirectTopUpConfig(_productDetailsModel);
+    if (config == null) {
+      return;
     }
+
+    _directTopUpQuantity = config.minQuantity ?? 1;
+    _directTopUpAccountId = '';
+    _directTopUpAccountVerified = false;
+    notifyListeners();
+  }
+
+  bool _isDirectTopUpActive() {
+    return DirectTopUpHelper.shouldPromptDirectTopUpSheet(_productDetailsModel);
+  }
+
+  String? validateDirectTopUpClientSide(BuildContext context) {
+    if (!_isDirectTopUpActive()) {
+      return null;
+    }
+
+    final config = DirectTopUpHelper.resolveDirectTopUpConfig(_productDetailsModel);
+    if (_directTopUpQuantity <= 0) {
+      _directTopUpQuantity = config?.minQuantity ?? 1;
+    }
+
+    if (_directTopUpAccountId.isEmpty) {
+      return getTranslated('direct_topup_account_id_required', context)
+          ?? 'Account ID is required';
+    }
+
+    if (_directTopUpAccountId.length > 255) {
+      return getTranslated('direct_topup_account_id_too_long', context)
+          ?? 'Account ID is too long';
+    }
+
+    if (!RegExp(r'^[a-zA-Z0-9_\-\.@]+$').hasMatch(_directTopUpAccountId)) {
+      return getTranslated('direct_topup_account_id_invalid_format', context)
+          ?? 'Account ID format is invalid';
+    }
+
+    return null;
+  }
+
+  void setDirectTopUpVerifyLoading(bool value) {
+    _directTopUpVerifyLoading = value;
+    notifyListeners();
+  }
+
+  void markDirectTopUpAccountVerified(bool value) {
+    _directTopUpAccountVerified = value;
+    notifyListeners();
   }
 
 

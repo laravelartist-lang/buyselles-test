@@ -60,7 +60,7 @@
                         </div>
                     </form>
 
-                    <a href="{{ route('admin.reseller-keys.api-docs') }}" class="btn btn-outline-primary">
+                    <a href="{{ route('partner-api.docs') }}" class="btn btn-outline-primary" target="_blank">
                         <i class="fi fi-rr-document me-1"></i> {{ translate('api_docs') }}
                     </a>
 

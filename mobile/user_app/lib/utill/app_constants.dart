@@ -105,6 +105,8 @@ class AppConstants {
   static const String seenNotificationUri = '/api/v1/notifications/seen';
   static const String getCartDataUri = '/api/v1/cart';
   static const String addToCartUri = '/api/v1/cart/add';
+  static const String validateDirectTopupAccountUri =
+      '/api/v1/cart/validate-direct-topup-account';
   static const String updateCartQuantityUri = '/api/v1/cart/update';
   static const String removeFromCartUri = '/api/v1/cart/remove';
   static const String getShippingMethod = '/api/v1/shipping-method/by-seller';

@@ -130,6 +130,57 @@ class DirectTopUpServiceTest extends TestCase
         $this->assertSame(0.01, $payload['price_per_unit']);
     }
 
+    public function test_is_direct_topup_product_when_mapping_has_label_without_supplier_support_flag(): void
+    {
+        $product = Product::create([
+            'added_by' => 'admin',
+            'name' => 'Zain GSM Direct Top-up',
+            'slug' => 'zain-gsm-direct-topup',
+            'code' => 'ZAIN001',
+            'product_type' => 'digital',
+            'digital_product_type' => 'ready_after_sell',
+            'unit_price' => 1.72,
+            'status' => 1,
+        ]);
+
+        $supplierId = $this->app['db']->table('supplier_apis')->insertGetId([
+            'name' => 'Zain Supplier',
+            'driver' => 'generic_rest',
+            'is_active' => true,
+            'supports_direct_top_up' => false,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->app['db']->table('supplier_product_mappings')->insert([
+            'product_id' => $product->id,
+            'supplier_api_id' => $supplierId,
+            'supplier_product_id' => 'ZAIN-GSM-1',
+            'cost_price' => 1.62,
+            'markup_type' => 'percent',
+            'markup_value' => 0,
+            'is_active' => true,
+            'is_direct_topup' => true,
+            'direct_topup_account_label' => 'Mobile Number',
+            'direct_topup_min_quantity' => 1,
+            'direct_topup_max_quantity' => 100,
+            'direct_topup_price_per_unit' => 1.72,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $product->load(['supplierMapping.supplierApi']);
+
+        $this->assertTrue($this->service->isDirectTopUpProduct($product));
+        $this->assertTrue($product->is_direct_topup);
+
+        $payload = $this->service->buildApiPayload($product);
+
+        $this->assertNotNull($payload);
+        $this->assertTrue($payload['enabled']);
+        $this->assertSame('Mobile Number', $payload['account_label']);
+    }
+
     public function test_requires_account_verification_is_true_for_golf_api_supplier(): void
     {
         $product = $this->makeGolfDirectTopUpProduct();
