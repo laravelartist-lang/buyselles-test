@@ -471,9 +471,11 @@ class SupplierCatalogSyncService
         $sizeKey = $config['size_key'];
         $pageSize = $config['default_size'];
 
+        $pageBase = (int) ($config['page_base'] ?? 1);
+
         return [
             'fetch_all' => false,
-            $pageKey => $pageIndex,
+            $pageKey => $pageIndex + $pageBase,
             $sizeKey => $pageSize,
             'size' => $pageSize,
             'limit' => $pageSize,
@@ -627,7 +629,7 @@ class SupplierCatalogSyncService
 
             return array_merge(
                 $item,
-                $this->buildCatalogPriceFields((float) $rawPricesById->get($id), $sourceCurrency),
+                $this->buildCatalogPriceFields((float) $rawPricesById->get($id), $sourceCurrency, $supplier),
             );
         }, $items);
     }
@@ -699,7 +701,7 @@ class SupplierCatalogSyncService
         }
 
         return array_map(
-            fn (array $item): array => $this->normalizeCatalogItem($item, $sourceCurrency),
+            fn (array $item): array => $this->normalizeCatalogItem($item, $sourceCurrency, $supplier),
             $items,
         );
     }
@@ -708,13 +710,13 @@ class SupplierCatalogSyncService
      * @param  array<string, mixed>  $item
      * @return array<string, mixed>
      */
-    private function normalizeCatalogItem(array $item, string $sourceCurrency): array
+    private function normalizeCatalogItem(array $item, string $sourceCurrency, ?SupplierApi $supplier = null): array
     {
         if ($item['price_converted'] ?? false) {
             if (isset($item['source_price']) && $item['source_price'] !== '') {
                 return array_merge(
                     $item,
-                    $this->buildCatalogPriceFields((float) $item['source_price'], $sourceCurrency),
+                    $this->buildCatalogPriceFields((float) $item['source_price'], $sourceCurrency, $supplier),
                 );
             }
 
@@ -727,7 +729,7 @@ class SupplierCatalogSyncService
             return $item;
         }
 
-        return array_merge($item, $this->buildCatalogPriceFields($sourcePrice, $sourceCurrency));
+        return array_merge($item, $this->buildCatalogPriceFields($sourcePrice, $sourceCurrency, $supplier));
     }
 
     /**
@@ -735,10 +737,11 @@ class SupplierCatalogSyncService
      *
      * @return array<string, mixed>
      */
-    private function buildCatalogPriceFields(float $rawPrice, string $sourceCurrency): array
+    private function buildCatalogPriceFields(float $rawPrice, string $sourceCurrency, ?SupplierApi $supplier = null): array
     {
         $sourceCurrency = strtoupper(trim($sourceCurrency));
-        $decimalPointSettings = (int) (getWebConfig('decimal_point_settings') ?? 2);
+        $decimalPointSettings = (int) ($supplier?->settings['price_decimal_places']
+            ?? (getWebConfig('decimal_point_settings') ?? 2));
         $rawPrice = round($rawPrice, $decimalPointSettings);
 
         if ($sourceCurrency === '' || $sourceCurrency === 'USD') {
@@ -768,7 +771,7 @@ class SupplierCatalogSyncService
         $sourceCurrency = strtoupper(trim((string) ($supplier?->settings['source_currency'] ?? '')));
         $sourcePriceField = (string) ($supplier?->settings['product_price_field'] ?? 'price');
 
-        return collect($products)->map(function (SupplierProductDTO $product) use ($sourceCurrency, $sourcePriceField): array {
+        return collect($products)->map(function (SupplierProductDTO $product) use ($sourceCurrency, $sourcePriceField, $supplier): array {
             $rawPrice = (float) data_get($product->rawData, $sourcePriceField, $product->price);
 
             $entry = [
@@ -779,7 +782,7 @@ class SupplierCatalogSyncService
                 'image' => $product->imageUrl,
             ];
 
-            return array_merge($entry, $this->buildCatalogPriceFields($rawPrice, $sourceCurrency));
+            return array_merge($entry, $this->buildCatalogPriceFields($rawPrice, $sourceCurrency, $supplier));
         })->values()->all();
     }
 }
