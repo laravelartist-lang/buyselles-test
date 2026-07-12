@@ -61,4 +61,49 @@ class SupplierProductMappingPriceTest extends TestCase
 
         $this->assertSame(22.0, $mapping->getStartingDisplayPrice());
     }
+
+    public function test_resolve_supplier_face_value_never_uses_wholesale_cost(): void
+    {
+        $mapping = new SupplierProductMapping([
+            'cost_price' => 4.8,
+            'min_amount' => null,
+        ]);
+
+        $this->assertNull($mapping->resolveSupplierFaceValue());
+    }
+
+    public function test_resolve_supplier_face_value_uses_fixed_denomination(): void
+    {
+        $mapping = new SupplierProductMapping(['cost_price' => 4.8]);
+
+        $denomination = new SupplierProductDenomination([
+            'type' => 'fixed',
+            'face_value' => 10,
+        ]);
+
+        $this->assertSame(10.0, $mapping->resolveSupplierFaceValue(null, $denomination));
+    }
+
+    public function test_resolve_supplier_face_value_uses_custom_amount_for_variable_denomination(): void
+    {
+        $mapping = new SupplierProductMapping(['cost_price' => 4.8]);
+
+        $denomination = new SupplierProductDenomination([
+            'type' => 'variable',
+            'min_face_value' => 5,
+            'max_face_value' => 500,
+        ]);
+
+        $this->assertSame(25.0, $mapping->resolveSupplierFaceValue(25, $denomination));
+    }
+
+    public function test_resolve_supplier_face_value_uses_mapping_min_amount_when_no_custom_amount(): void
+    {
+        $mapping = new SupplierProductMapping([
+            'cost_price' => 4.8,
+            'min_amount' => 5,
+        ]);
+
+        $this->assertSame(5.0, $mapping->resolveSupplierFaceValue());
+    }
 }

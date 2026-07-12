@@ -11677,4 +11677,5 @@ return [
     'copy_your_credentials_now' => 'Copy your credentials now',
     'partner_api_key_approved' => 'Partner api key approved',
     'server_error' => 'Server error',
+    'no_settings_available_for_this_driver' => 'No settings available for this driver',
 ];

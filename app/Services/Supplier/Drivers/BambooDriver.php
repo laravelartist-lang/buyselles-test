@@ -588,18 +588,17 @@ class BambooDriver implements SupplierDriverInterface
         $products = $data['Products'] ?? $data['products'] ?? [];
 
         foreach ($products as $product) {
-            // V1: PinCode / SerialNumber (PascalCase); V2: pinCode / serialNumber (camelCase)
-            $pin = trim((string) ($product['PinCode'] ?? $product['pinCode'] ?? ''));
+            $cardCode = trim((string) ($product['CardCode'] ?? $product['cardCode'] ?? $product['PinCode'] ?? $product['pinCode'] ?? ''));
+            $pin = trim((string) ($product['Pin'] ?? $product['pin'] ?? ''));
             $serial = trim((string) ($product['SerialNumber'] ?? $product['serialNumber'] ?? ''));
 
-            if ($pin !== '') {
-                // If both exist, combine as "SERIAL:PIN" so nothing is lost
-                $codes[] = $serial !== '' && $serial !== $pin
-                    ? "{$serial}:{$pin}"
-                    : $pin;
-            } elseif ($serial !== '') {
-                $codes[] = $serial;
+            $record = $this->buildBambooCardRecord($cardCode, $pin, $serial, null);
+
+            if ($record === null) {
+                continue;
             }
+
+            $codes[] = $record;
         }
 
         return $codes;
@@ -629,31 +628,78 @@ class BambooDriver implements SupplierDriverInterface
                 $serial = trim((string) ($card['SerialNumber'] ?? $card['serialNumber'] ?? ''));
                 $expiry = $card['ExpirationDate'] ?? $card['expirationDate'] ?? null;
 
-                if ($cardCode === '') {
-                    continue;
-                }
+                $record = $this->buildBambooCardRecord($cardCode, $pin, $serial, $expiry);
 
-                $entry = ['code' => $cardCode];
-
-                if ($pin !== '') {
-                    $entry['pin'] = $pin;
+                if ($record !== null) {
+                    $codes[] = $record;
                 }
-                if ($serial !== '') {
-                    $entry['serial_number'] = $serial;
-                }
-                if ($expiry !== null) {
-                    try {
-                        $entry['expiry_date'] = \Carbon\Carbon::parse($expiry)->format('Y-m-d');
-                    } catch (\Throwable) {
-                        $entry['expiry_date'] = null;
-                    }
-                }
-
-                $codes[] = $entry;
             }
         }
 
         return $codes;
+    }
+
+    /**
+     * Normalize Bamboo card fields into a pool record.
+     *
+     * Bamboo sometimes returns cardCode as a portal URL
+     * (https://bamboocardportal.com/viewcard?Code=...). Strip the URL wrapper
+     * and store only the Code token; pin and serial_number stay in their own fields.
+     *
+     * @return array{code: string, pin?: string|null, serial_number?: string|null, expiry_date?: string|null}|null
+     */
+    private function buildBambooCardRecord(string $cardCode, string $pin, string $serial, mixed $expiry): ?array
+    {
+        $cardCode = trim($cardCode);
+        $pin = trim($pin);
+        $serial = trim($serial);
+
+        if ($cardCode === '') {
+            return null;
+        }
+
+        $entry = ['code' => $this->normalizeBambooCardCode($cardCode)];
+
+        if ($pin !== '') {
+            $entry['pin'] = $pin;
+        }
+
+        if ($serial !== '') {
+            $entry['serial_number'] = $serial;
+        }
+
+        if ($expiry !== null) {
+            try {
+                $entry['expiry_date'] = \Carbon\Carbon::parse($expiry)->format('Y-m-d');
+            } catch (\Throwable) {
+                $entry['expiry_date'] = null;
+            }
+        }
+
+        return $entry;
+    }
+
+    private function normalizeBambooCardCode(string $cardCode): string
+    {
+        if ($this->isBambooPortalRedemptionUrl($cardCode)) {
+            return $this->extractBambooPortalCodeToken($cardCode);
+        }
+
+        return $cardCode;
+    }
+
+    private function isBambooPortalRedemptionUrl(string $value): bool
+    {
+        return (bool) preg_match('#^https?://(?:www\.)?bamboocardportal\.com/viewcard#i', $value);
+    }
+
+    private function extractBambooPortalCodeToken(string $url): string
+    {
+        if (preg_match('/[?&]Code=([a-f0-9]+)/i', $url, $matches)) {
+            return $matches[1];
+        }
+
+        return $url;
     }
 
     /**
