@@ -20,85 +20,44 @@ class DirectTopUpHelper {
     return normalized == '1' || normalized == 'true';
   }
 
+  /// True only when the API marks this product as a direct top-up product.
   static bool isDirectTopUpProduct(ProductDetailsModel? product) {
-    if (product == null) {
+    if (product == null || product.productType != 'digital') {
       return false;
-    }
-
-    if (isTruthy(product.directTopup?.enabled)) {
-      return true;
     }
 
     if (product.isDirectTopup) {
       return true;
     }
 
-    final DirectTopUpConfig? config = product.directTopup;
-    if (product.productType == 'digital' && config != null) {
-      if (isTruthy(config.enabled)) {
-        return true;
-      }
-
-      if (config.accountLabel?.trim().isNotEmpty == true) {
-        return true;
-      }
-
-      if (config.minQuantity != null || config.pricePerUnit != null) {
-        return true;
-      }
-    }
-
-    return false;
+    return isTruthy(product.directTopup?.enabled);
   }
 
   /// Whether the purchase flow must collect a direct top-up account before checkout.
   static bool shouldPromptDirectTopUpSheet(ProductDetailsModel? product) {
-    if (product == null || product.productType != 'digital') {
-      return false;
-    }
-
-    if (isDirectTopUpProduct(product)) {
-      return true;
-    }
-
-    final bool hasDigitalFileVariants = product.digitalProductExtensions != null
-        && product.digitalProductExtensions!.isNotEmpty;
-
-    if (hasDigitalFileVariants) {
-      return false;
-    }
-
-    return isTruthy(product.hasActiveSupplierMapping);
+    return isDirectTopUpProduct(product);
   }
 
   static DirectTopUpConfig? resolveDirectTopUpConfig(ProductDetailsModel? product) {
-    if (product == null || !shouldPromptDirectTopUpSheet(product)) {
+    if (!isDirectTopUpProduct(product)) {
       return null;
     }
 
-    final DirectTopUpConfig? existing = product.directTopup;
-    if (existing != null) {
-      return DirectTopUpConfig(
-        enabled: true,
-        accountLabel: existing.accountLabel?.trim().isNotEmpty == true
-            ? existing.accountLabel
-            : 'Player ID',
-        minQuantity: existing.minQuantity ?? product.minimumOrderQty?.toDouble() ?? 1,
-        maxQuantity: existing.maxQuantity ?? existing.minQuantity ?? 100,
-        pricePerUnit: existing.pricePerUnit ?? product.unitPrice,
-        currency: existing.currency,
-        requiresAccountVerification: existing.requiresAccountVerification ?? false,
-      );
+    final DirectTopUpConfig? existing = product?.directTopup;
+    if (existing == null) {
+      return null;
     }
 
     return DirectTopUpConfig(
       enabled: true,
-      accountLabel: 'Player ID',
-      minQuantity: product.minimumOrderQty?.toDouble() ?? 1,
-      maxQuantity: 100,
-      pricePerUnit: product.unitPrice,
-      currency: null,
-      requiresAccountVerification: false,
+      accountLabel: existing.accountLabel?.trim().isNotEmpty == true
+          ? existing.accountLabel
+          : 'Player ID',
+      minQuantity: existing.minQuantity ?? product?.minimumOrderQty?.toDouble() ?? 1,
+      maxQuantity: existing.maxQuantity ?? existing.minQuantity ?? 100,
+      pricePerUnit: existing.pricePerUnit ?? product?.unitPrice,
+      currency: existing.currency,
+      requiresAccountVerification: existing.requiresAccountVerification ?? false,
     );
   }
 
