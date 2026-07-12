@@ -1626,7 +1626,7 @@
                     </li>
                     <li class="nav-item">
                         <a class="nav-link {{ Request::is('admin/reseller-keys/api-docs') ? 'active' : '' }}"
-                            href="{{ route('admin.reseller-keys.api-docs') }}" title="{{ translate('api_documentation') }}">
+                            href="{{ route('partner-api.docs') }}" title="{{ translate('api_documentation') }}" target="_blank">
                             <span class="text-truncate">{{ translate('api_documentation') }}</span>
                         </a>
                     </li>

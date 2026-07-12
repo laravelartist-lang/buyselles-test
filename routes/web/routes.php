@@ -32,6 +32,7 @@ use App\Http\Controllers\Web\DigitalProductDownloadController;
 use App\Http\Controllers\Web\HomeController;
 use App\Http\Controllers\Web\LocaleController;
 use App\Http\Controllers\Web\PageController;
+use App\Http\Controllers\Web\PartnerApiDocsController;
 use App\Http\Controllers\Web\ProductCompareController;
 use App\Http\Controllers\Web\ProductDetailsController;
 use App\Http\Controllers\Web\ProductListController;
@@ -68,6 +69,11 @@ Route::get('/image-proxy', function () {
     return response($response->body(), $response->status())
         ->header('Content-Type', $response->header('Content-Type'))
         ->header('Access-Control-Allow-Origin', '*');
+});
+
+Route::controller(PartnerApiDocsController::class)->group(function () {
+    Route::get('partner-api/documentation', 'index')->name('partner-api.docs');
+    Route::get('partner-api/documentation/postman', 'downloadPostman')->name('partner-api.docs.postman');
 });
 
 Route::controller(WebController::class)->group(function () {

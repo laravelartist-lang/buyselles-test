@@ -7,6 +7,7 @@ import 'package:flutter_sixvalley_ecommerce/features/cart/widgets/circular_progr
 import 'package:flutter_sixvalley_ecommerce/features/shipping/controllers/shipping_controller.dart';
 import 'package:flutter_sixvalley_ecommerce/features/splash/domain/models/config_model.dart';
 import 'package:flutter_sixvalley_ecommerce/helper/cart_healper.dart';
+import 'package:flutter_sixvalley_ecommerce/helper/direct_topup_helper.dart';
 import 'package:flutter_sixvalley_ecommerce/helper/price_converter.dart';
 import 'package:flutter_sixvalley_ecommerce/helper/route_healper.dart';
 import 'package:flutter_sixvalley_ecommerce/helper/shop_helper.dart';
@@ -461,6 +462,7 @@ class CartScreenState extends State<CartScreen> {
                                         sellerGroupLenght += 1;
                                       }
                                     }
+                                    final bool onlyDirectTopUp = DirectTopUpHelper.cartListHasDirectTopUp(cartList);
                                     RouterHelper.getCheckoutScreenRoute(
                                       action: RouteAction.push,
                                       cartList: cartList,
@@ -470,8 +472,9 @@ class CartScreenState extends State<CartScreen> {
                                       discount: discount,
                                       tax: tax,
                                       sellerId: null,
-                                      onlyDigital: sellerGroupLenght != totalPhysical,
-                                      hasPhysical: totalPhysical > 0,
+                                      onlyDigital: onlyDirectTopUp || sellerGroupLenght != totalPhysical,
+                                      onlyDirectTopUp: onlyDirectTopUp,
+                                      hasPhysical: totalPhysical > 0 && !onlyDirectTopUp,
                                       quantity: totalQuantity,
                                     );
                                   }

@@ -5,6 +5,38 @@
 @section('content')
 <div class="content container-fluid">
 
+    {{-- One-time display after generate or regenerate --}}
+    @if(session('raw_api_key'))
+    <div class="alert alert-success border-0 mb-4">
+        <h5 class="fw-bold mb-3"><i class="fi fi-sr-key me-2"></i>{{ translate('new_api_key_generated') }}</h5>
+        <p class="mb-2 text-danger fw-semibold">{{ translate('these_credentials_are_shown_only_once_and_cannot_be_recovered_store_them_securely') }}</p>
+        <div class="row g-2">
+            <div class="col-12">
+                <label class="form-label fw-semibold mb-1">{{ translate('API_Key') }}</label>
+                <div class="input-group">
+                    <input type="text" class="form-control font-monospace" readonly
+                           value="{{ session('raw_api_key') }}" id="new-api-key">
+                    <button class="btn btn-outline-secondary copy-btn" data-target="new-api-key"
+                            title="{{ translate('copy') }}">
+                        <i class="fi fi-rr-copy"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="col-12">
+                <label class="form-label fw-semibold mb-1">{{ translate('API_Secret') }}</label>
+                <div class="input-group">
+                    <input type="text" class="form-control font-monospace" readonly
+                           value="{{ session('raw_api_secret') }}" id="new-api-secret">
+                    <button class="btn btn-outline-secondary copy-btn" data-target="new-api-secret"
+                            title="{{ translate('copy') }}">
+                        <i class="fi fi-rr-copy"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    @endif
+
     {{-- Breadcrumb --}}
     <div class="d-flex align-items-center gap-2 mb-4">
         <a href="{{ route('admin.reseller-keys.list') }}" class="text-muted text-decoration-none">
@@ -19,7 +51,7 @@
             <h3 class="mb-1">
                 {{ translate('edit_api_key') }}
             </h3>
-            <span class="text-muted small font-monospace">{{ $key->api_key }}</span>
+            <span class="text-muted small">#{{ $key->id }} — {{ $key->name }}</span>
         </div>
         <div class="d-flex gap-2 flex-wrap">
             @php $s = $key->status ?? ($key->is_active ? 'active' : 'inactive'); @endphp
@@ -262,13 +294,30 @@
                         <h5 class="mb-0"><i class="fi fi-rr-key me-2"></i>{{ translate('key_details') }}</h5>
                     </div>
                     <div class="card-body d-flex flex-column gap-3">
-                        <div>
-                            <div class="text-muted small mb-1">{{ translate('api_key') }}</div>
-                            <div class="font-monospace small text-break">{{ $key->api_key }}</div>
+                        @unless(session('raw_api_key'))
+                        <div class="p-3 rounded border bg-light">
+                            <div class="d-flex align-items-center gap-2 mb-1">
+                                <i class="fi fi-sr-lock text-muted"></i>
+                                <span class="fw-semibold small">{{ translate('api_key') }}</span>
+                            </div>
+                            <div class="font-monospace text-muted small">rslr_••••••••••••••••••••••••••••••••••••••••</div>
+                            <div class="mt-2 d-flex align-items-center gap-2 mb-1">
+                                <i class="fi fi-sr-lock text-muted"></i>
+                                <span class="fw-semibold small">{{ translate('api_secret') }}</span>
+                            </div>
+                            <div class="font-monospace text-muted small">••••••••••••••••••••••••••••••••••••••••••••••••</div>
+                            <div class="mt-2 small text-muted fst-italic">
+                                <i class="fi fi-sr-info me-1"></i>{{ translate('credentials_are_hidden_use_regenerate_to_get_new_ones') }}
+                            </div>
                         </div>
+                        @endunless
+                        <hr class="my-1">
                         <div>
-                            <div class="text-muted small mb-1">{{ translate('api_secret') }}</div>
-                            <div class="font-monospace small text-muted">{{ translate('hidden_for_security') }}</div>
+                            <div class="text-muted small">{{ translate('wallet_balance') }}</div>
+                            <div class="fw-semibold text-success">${{ number_format((float) $accountWalletBalance, 2) }}</div>
+                            <div class="text-muted small fst-italic mt-1">
+                                {{ translate('partner_wallet_uses_linked_account_balance') }}
+                            </div>
                         </div>
                         <hr class="my-1">
                         <div class="row g-2">
@@ -311,6 +360,9 @@
                         <h5 class="mb-0"><i class="fi fi-rr-bolt me-2"></i>{{ translate('quick_actions') }}</h5>
                     </div>
                     <div class="card-body d-flex flex-column gap-2">
+                        <button type="button" class="btn btn-outline-warning w-100" id="regenerate-key-btn">
+                            <i class="fi fi-rr-refresh me-1"></i>{{ translate('regenerate_key') }}
+                        </button>
                         @if(($key->status ?? '') !== 'pending')
                             <button type="button"
                                     class="btn btn-outline-{{ ($key->status ?? '') === 'active' ? 'warning' : 'success' }} w-100"
@@ -323,32 +375,6 @@
                         <button type="button" class="btn btn-outline-danger w-100" id="delete-key-btn">
                             <i class="fi fi-rr-trash me-1"></i>{{ translate('delete_key') }}
                         </button>
-                    </div>
-                </div>
-
-                {{-- Wallet Balance --}}
-                <div class="card border-success border-opacity-25">
-                    <div class="card-header d-flex justify-content-between align-items-center">
-                        <h5 class="mb-0"><i class="fi fi-rr-wallet me-2"></i>{{ translate('partner_wallet') }}</h5>
-                        <span class="fw-bold fs-5 text-success">${{ number_format((float) $key->wallet_balance, 2) }}</span>
-                    </div>
-                    <div class="card-body">
-                        <p class="text-muted small mb-3">{{ translate('partner_wallet_help') ?? 'Prepaid credit deducted when partner places API orders.' }}</p>
-                        <form method="POST" action="{{ route('admin.reseller-keys.top-up', $key->id) }}" id="top-up-form">
-                            @csrf
-                            <div class="input-group">
-                                <span class="input-group-text">$</span>
-                                <input type="number" name="amount" min="0.01" step="0.01" max="99999"
-                                       class="form-control" placeholder="0.00" required>
-                                <button type="submit" class="btn btn-success">
-                                    <i class="fi fi-sr-inbox-in me-1"></i>Top Up
-                                </button>
-                            </div>
-                            <div class="mt-2">
-                                <input type="text" name="note" class="form-control form-control-sm"
-                                       placeholder="{{ translate('note_optional') ?? 'Note (optional)' }}" maxlength="255">
-                            </div>
-                        </form>
                     </div>
                 </div>
 
@@ -366,6 +392,9 @@
         @csrf
         <input type="hidden" name="id" value="{{ $key->id }}">
     </form>
+    <form method="POST" action="{{ route('admin.reseller-keys.regenerate', $key->id) }}" id="regenerate-key-form" class="d-none">
+        @csrf
+    </form>
 
 </div>
 @endsection
@@ -379,6 +408,42 @@
 
 <script>
 (function () {
+    // ─── Copy credentials ─────────────────────────────────────────────
+    document.querySelectorAll('.copy-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var targetId = this.dataset.target;
+            var input = document.getElementById(targetId);
+            if (!input) { return; }
+            input.select();
+            input.setSelectionRange(0, 99999);
+            navigator.clipboard.writeText(input.value).catch(function () {
+                document.execCommand('copy');
+            });
+        });
+    });
+
+    // ─── Regenerate key confirmation ──────────────────────────────────
+    var regenerateBtn = document.getElementById('regenerate-key-btn');
+    if (regenerateBtn) {
+        regenerateBtn.addEventListener('click', function () {
+            Swal.fire({
+                title:              '{{ translate('regenerate_api_key') }}?',
+                text:               '{{ translate('the_current_credentials_will_stop_working_immediately') }}',
+                icon:               'warning',
+                showCancelButton:   true,
+                confirmButtonColor: '#fd7e14',
+                cancelButtonColor:  '#6c757d',
+                cancelButtonText:   '{{ translate('cancel') }}',
+                confirmButtonText:  '{{ translate('yes_regenerate') }}',
+                reverseButtons:     true,
+            }).then(function (result) {
+                if (result.isConfirmed) {
+                    document.getElementById('regenerate-key-form').submit();
+                }
+            });
+        });
+    }
+
     // ─── Toggle status confirmation ───────────────────────────────────
     var toggleBtn = document.getElementById('toggle-status-btn');
     if (toggleBtn) {

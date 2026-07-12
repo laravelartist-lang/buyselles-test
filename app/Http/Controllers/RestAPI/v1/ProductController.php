@@ -359,6 +359,9 @@ class ProductController extends Controller
 
         if (isset($product)) {
             $restockRequestedIds = $this->restockProductRepo->getListWhere(filters: ['product_id' => $product['id']], dataLimit: 'all')?->pluck('id')->toArray() ?? [];
+            $isDirectTopupApi = false;
+            $directTopupApi = null;
+            $supplierMapping = null;
 
             $product = Helpers::product_data_formatting($product, false);
             if (isset($product->reviews) && ! empty($product->reviews)) {
@@ -374,17 +377,34 @@ class ProductController extends Controller
 
             if ($product['product_type'] === 'digital') {
                 $directTopUpService = app(\App\Services\DirectTopUp\DirectTopUpService::class);
-                $productModel = Product::find($product['id']);
+                $productModel = Product::query()
+                    ->with(['supplierMapping.supplierApi'])
+                    ->find($product['id']);
 
-                if ($productModel && $directTopUpService->isDirectTopUpProduct($productModel)) {
+                $supplierMapping = SupplierProductMapping::query()
+                    ->where('product_id', $product['id'])
+                    ->where('is_active', true)
+                    ->with(['supplierApi', 'activeDenominations' => function ($q) {
+                        $q->orderBy('sort_order');
+                    }])
+                    ->first();
+
+                $isDirectTopupApi = $productModel
+                    ? $directTopUpService->isDirectTopUpProduct($productModel)
+                    : false;
+                $product['is_direct_topup'] = $isDirectTopupApi;
+
+                if ($productModel && $isDirectTopupApi) {
                     $product['can_add_to_cart'] = $directTopUpService->canAddToCart($productModel);
-                    $product['direct_topup'] = $directTopUpService->buildApiPayload($productModel);
+                    $directTopupApi = $directTopUpService->buildApiPayload($productModel);
+                    $product['direct_topup'] = $directTopupApi;
                 } else {
                     $availableDigitalCodesCount = DigitalProductCode::where('product_id', $product['id'])
                         ->available()
                         ->count();
 
-                    $hasMapping = SupplierProductMapping::hasActiveMapping((int) $product['id']);
+                    $hasMapping = $supplierMapping !== null
+                        && (bool) ($supplierMapping->supplierApi?->is_active ?? false);
                     $product['current_stock'] = $hasMapping ? 100 : $availableDigitalCodesCount;
                     $product['total_current_stock'] = $hasMapping ? 100 : $availableDigitalCodesCount;
                     $product['available_digital_codes_count'] = $hasMapping ? 100 : $availableDigitalCodesCount;
@@ -406,8 +426,8 @@ class ProductController extends Controller
                 $product['is_restock_requested'] = 0;
             }
 
-            // Denomination / Customizable amount info from supplier mapping
-            $supplierMapping = \App\Models\SupplierProductMapping::where('product_id', $product['id'])
+            $supplierMapping ??= SupplierProductMapping::query()
+                ->where('product_id', $product['id'])
                 ->where('is_active', true)
                 ->with(['activeDenominations' => function ($q) {
                     $q->orderBy('sort_order');
@@ -441,6 +461,14 @@ class ProductController extends Controller
                 'max_face_value' => (float) $variableDenom->max_face_value,
                 'face_value_currency' => $variableDenom->face_value_currency,
             ] : null;
+
+            $responseData = json_decode(json_encode($product), true);
+            if ($product['product_type'] === 'digital') {
+                $responseData['is_direct_topup'] = $isDirectTopupApi;
+                $responseData['direct_topup'] = $directTopupApi;
+            }
+
+            return response()->json($responseData, 200);
         }
 
         return response()->json($product, 200);

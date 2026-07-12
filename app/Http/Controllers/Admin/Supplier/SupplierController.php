@@ -6,7 +6,7 @@ use App\Http\Controllers\BaseController;
 use App\Models\SupplierApi;
 use App\Services\Supplier\SupplierHealthMonitor;
 use App\Services\Supplier\SupplierManager;
-use Brian2694\Toastr\Facades\Toastr;
+use Devrabiul\ToastMagic\Facades\ToastMagic;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\JsonResponse;
@@ -46,15 +46,17 @@ class SupplierController extends BaseController
      */
     public function getAddView(): View
     {
-        $drivers = $this->supplierManager->getAvailableDrivers();
-        $driverSchemas = $this->supplierManager->getAvailableDriversWithSchemas();
-        $defaultDriver = $drivers[0] ?? 'generic_rest';
+        $drivers = $this->supplierManager->getAdminUiDriverKeys();
+        $driverSchemas = $this->supplierManager->getAdminUiDriversWithSchemas();
+        $driverPresets = $this->supplierManager->getAdminUiDriverPresets();
+        $defaultDriver = old('driver', $drivers[0] ?? 'generic_rest');
 
         $defaultSchema = $driverSchemas[$defaultDriver] ?? ['credentials' => [], 'settings' => []];
 
         return view('admin-views.supplier.add', compact(
             'drivers',
             'driverSchemas',
+            'driverPresets',
             'defaultDriver',
             'defaultSchema',
         ));
@@ -67,7 +69,7 @@ class SupplierController extends BaseController
     {
         $validator = Validator::make($request->all(), [
             'name' => 'required|string|max:100',
-            'driver' => 'required|string|in:'.implode(',', $this->supplierManager->getAvailableDrivers()),
+            'driver' => 'required|string|in:'.implode(',', $this->supplierManager->getAdminUiDriverKeys()),
             'base_url' => 'required|url|max:500',
             'auth_type' => 'required|in:api_key,bearer_token,oauth2,basic,hmac,login_via',
             'rate_limit_per_minute' => 'required|integer|min:1|max:1000',
@@ -76,10 +78,23 @@ class SupplierController extends BaseController
             'supports_direct_top_up' => 'nullable|boolean',
         ]);
 
-        if ($validator->fails()) {
-            Toastr::error($validator->errors()->first());
+        $credentials = is_array($request->input('credentials')) ? $request->input('credentials') : [];
 
-            return redirect()->back()->withInput();
+        $validator->after(function ($validator) use ($request, $credentials): void {
+            $credentialErrors = $this->supplierManager->validateCredentialsForDriver(
+                driver: (string) $request->input('driver'),
+                authType: (string) $request->input('auth_type'),
+                credentials: $credentials,
+                requireValues: true,
+            );
+
+            foreach ($credentialErrors as $key => $message) {
+                $validator->errors()->add($key, $message);
+            }
+        });
+
+        if ($validator->fails()) {
+            return redirect()->back()->withInput()->withErrors($validator);
         }
 
         $supplier = new SupplierApi;
@@ -94,19 +109,22 @@ class SupplierController extends BaseController
         $supplier->supports_direct_top_up = (bool) $request->input('supports_direct_top_up', false);
         $supplier->health_status = 'unknown';
 
-        // Encrypt credentials
-        $credentials = $request->input('credentials', []);
-        if (is_array($credentials) && count($credentials) > 0) {
-            $supplier->setEncryptedCredentials($credentials);
+        $supplier->setEncryptedCredentials(array_filter($credentials, fn ($value) => filled($value)));
+
+        $settings = $request->input('settings', []);
+        $supplier->settings = is_array($settings) ? array_filter($settings, fn ($value) => $value !== null) : [];
+
+        try {
+            $supplier->save();
+        } catch (\Throwable $exception) {
+            report($exception);
+
+            return redirect()->back()->withInput()->withErrors([
+                'supplier' => translate('something_went_wrong').': '.$exception->getMessage(),
+            ]);
         }
 
-        // Driver-specific settings
-        $settings = $request->input('settings', []);
-        $supplier->settings = is_array($settings) ? $settings : [];
-
-        $supplier->save();
-
-        Toastr::success(translate('supplier_added_successfully'));
+        ToastMagic::success(translate('supplier_added_successfully'));
 
         return redirect()->route('admin.supplier.list');
     }
@@ -117,26 +135,39 @@ class SupplierController extends BaseController
     public function getUpdateView(int $id): View|RedirectResponse
     {
         $supplier = SupplierApi::findOrFail($id);
-        $drivers = $this->supplierManager->getAvailableDrivers();
+        $drivers = $this->supplierManager->getAdminUiDriverKeys();
 
-        // Get driver-specific config schema
-        try {
-            $driver = $this->supplierManager->driver($supplier);
-            $credentialFields = $driver->getRequiredCredentialFields();
-            $configSchema = $driver->getConfigSchema();
-        } catch (\Throwable) {
-            $credentialFields = [];
-            $configSchema = [];
+        if (! in_array($supplier->driver, $drivers, true)) {
+            $drivers[] = $supplier->driver;
         }
 
+        $driverSchemas = $this->supplierManager->getAdminUiDriversWithSchemas();
+
+        if (! isset($driverSchemas[$supplier->driver])) {
+            try {
+                $driver = $this->supplierManager->driver($supplier);
+                $driverSchemas[$supplier->driver] = [
+                    'credentials' => $driver->getRequiredCredentialFields(),
+                    'settings' => $driver->getConfigSchema(),
+                ];
+            } catch (\Throwable) {
+                $driverSchemas[$supplier->driver] = ['credentials' => [], 'settings' => []];
+            }
+        }
+
+        $driverPresets = $this->supplierManager->getAdminUiDriverPresets();
         $decryptedCredentials = $supplier->getDecryptedCredentials();
+        $credentialStatus = collect($decryptedCredentials)
+            ->map(fn ($value) => filled($value))
+            ->all();
 
         return view('admin-views.supplier.edit', compact(
             'supplier',
             'drivers',
-            'credentialFields',
-            'configSchema',
+            'driverSchemas',
+            'driverPresets',
             'decryptedCredentials',
+            'credentialStatus',
         ));
     }
 
@@ -145,9 +176,16 @@ class SupplierController extends BaseController
      */
     public function update(Request $request, int $id): RedirectResponse
     {
+        $supplier = SupplierApi::findOrFail($id);
+
+        $allowedDrivers = array_unique(array_merge(
+            $this->supplierManager->getAdminUiDriverKeys(),
+            [$supplier->driver],
+        ));
+
         $validator = Validator::make($request->all(), [
             'name' => 'required|string|max:100',
-            'driver' => 'required|string|in:'.implode(',', $this->supplierManager->getAvailableDrivers()),
+            'driver' => 'required|string|in:'.implode(',', $allowedDrivers),
             'base_url' => 'required|url|max:500',
             'auth_type' => 'required|in:api_key,bearer_token,oauth2,basic,hmac,login_via',
             'rate_limit_per_minute' => 'required|integer|min:1|max:1000',
@@ -157,12 +195,9 @@ class SupplierController extends BaseController
         ]);
 
         if ($validator->fails()) {
-            Toastr::error($validator->errors()->first());
-
-            return redirect()->back()->withInput();
+            return redirect()->back()->withInput()->withErrors($validator);
         }
 
-        $supplier = SupplierApi::findOrFail($id);
         $supplier->name = $request->input('name');
         $supplier->driver = $request->input('driver');
         $supplier->base_url = rtrim($request->input('base_url'), '/');
@@ -172,21 +207,27 @@ class SupplierController extends BaseController
         $supplier->is_sandbox = (bool) $request->input('is_sandbox', false);
         $supplier->supports_direct_top_up = (bool) $request->input('supports_direct_top_up', false);
 
-        // Update credentials only if provided
-        $credentials = $request->input('credentials', []);
-        if (is_array($credentials) && count(array_filter($credentials)) > 0) {
-            $supplier->setEncryptedCredentials($credentials);
+        $credentials = is_array($request->input('credentials')) ? $request->input('credentials') : [];
+        if (count(array_filter($credentials, fn ($value) => filled($value))) > 0) {
+            $supplier->setEncryptedCredentials(array_filter($credentials, fn ($value) => filled($value)));
         }
 
-        // Update settings
         $settings = $request->input('settings', []);
         if (is_array($settings)) {
             $supplier->settings = $settings;
         }
 
-        $supplier->save();
+        try {
+            $supplier->save();
+        } catch (\Throwable $exception) {
+            report($exception);
 
-        Toastr::success(translate('supplier_updated_successfully'));
+            return redirect()->back()->withInput()->withErrors([
+                'supplier' => translate('something_went_wrong').': '.$exception->getMessage(),
+            ]);
+        }
+
+        ToastMagic::success(translate('supplier_updated_successfully'));
 
         return redirect()->route('admin.supplier.list');
     }
@@ -212,7 +253,7 @@ class SupplierController extends BaseController
     {
         SupplierApi::findOrFail($request->input('id'))->delete();
 
-        Toastr::success(translate('supplier_deleted_successfully'));
+        ToastMagic::success(translate('supplier_deleted_successfully'));
 
         return redirect()->back();
     }

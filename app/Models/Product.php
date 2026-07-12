@@ -591,10 +591,16 @@ class Product extends Model
         if ($this->relationLoaded('supplierMapping')) {
             $mapping = $this->getRelation('supplierMapping');
 
-            return $mapping !== null
-                && $mapping->is_active === true
-                && (bool) $mapping->is_direct_topup
-                && (bool) ($mapping->supplierApi?->supports_direct_top_up ?? false);
+            if ($mapping === null || ! $mapping->is_active || ! (bool) $mapping->is_direct_topup) {
+                return false;
+            }
+
+            if (! (bool) ($mapping->supplierApi?->is_active ?? false)) {
+                return false;
+            }
+
+            return (bool) ($mapping->supplierApi?->supports_direct_top_up ?? false)
+                || trim((string) ($mapping->direct_topup_account_label ?? '')) !== '';
         }
 
         return false;

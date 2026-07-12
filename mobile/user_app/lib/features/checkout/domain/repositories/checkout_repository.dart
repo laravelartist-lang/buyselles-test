@@ -127,9 +127,14 @@ class CheckoutRepository implements CheckoutRepositoryInterface{
 
     try {
       int isCheckAccount = isCheckCreateAccount! ? 1: 0;
+      final AuthController authController =
+          Provider.of<AuthController>(Get.context!, listen: false);
+      final bool isGuest = !authController.isLoggedIn();
+      final String? guestId = authController.getGuestToken();
+
       final response = await dioClient!.post(AppConstants.digitalPayment, data: {
         "order_note": orderNote,
-        "customer_id":  customerId,
+        "customer_id": customerId ?? '',
         "address_id": addressId,
         "billing_address_id": billingAddressId,
         "coupon_code": couponCode,
@@ -138,8 +143,8 @@ class CheckoutRepository implements CheckoutRepositoryInterface{
         "payment_method" : paymentMethod,
         "callback" : null,
         "payment_request_from" : "app",
-        'guest_id' : Provider.of<AuthController>(Get.context!, listen: false).getGuestToken(),
-        'is_guest': !Provider.of<AuthController>(Get.context!, listen: false).isLoggedIn(),
+        'guest_id' : guestId ?? '',
+        'is_guest': isGuest ? 1 : 0,
         'is_check_create_account' : isCheckAccount.toString(),
         'password' : password,
       });

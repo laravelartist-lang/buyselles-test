@@ -111,8 +111,10 @@ class PaymentMethodBottomSheetWidgetState
               )),
             ]),
           ),
-          _isPaymentMethodsAvailable(Get.context!,
-                  checkoutController.offlinePaymentModel?.offlineMethods)
+          _isPaymentMethodsAvailable(
+                  Get.context!,
+                  checkoutController.offlinePaymentModel?.offlineMethods,
+                  onlyDigital: widget.onlyDigital)
               ? Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
@@ -254,7 +256,8 @@ class PaymentMethodBottomSheetWidgetState
                         (configModel?.paymentMethods?.isNotEmpty ?? false))
                       SizedBox(height: Dimensions.paddingSizeSmall),
 
-                    if (configModel?.offlinePayment != null &&
+                    if (!widget.onlyDigital &&
+                        configModel?.offlinePayment != null &&
                         (checkoutController.offlinePaymentModel?.offlineMethods
                                 ?.isNotEmpty ??
                             false))
@@ -493,16 +496,19 @@ class PaymentMethodBottomSheetWidgetState
 }
 
 bool _isPaymentMethodsAvailable(
-    BuildContext context, List<OfflineMethods>? offlineMethods) {
+    BuildContext context, List<OfflineMethods>? offlineMethods,
+    {bool onlyDigital = false}) {
   final ConfigModel? configModel =
       Provider.of<SplashController>(context, listen: false).configModel;
 
-  bool isCashOnDeliveryOn = configModel?.cashOnDelivery ?? false;
+  bool isCashOnDeliveryOn =
+      !onlyDigital && (configModel?.cashOnDelivery ?? false);
   bool isWalletOn = configModel?.walletStatus == 1 &&
       Provider.of<AuthController>(context, listen: false).isLoggedIn();
   bool isOnlinePaymentMethodsOn =
       configModel?.paymentMethods?.isNotEmpty ?? false;
-  bool isOfflinePaymentMethodsOn = offlineMethods?.isNotEmpty ?? false;
+  bool isOfflinePaymentMethodsOn =
+      !onlyDigital && (offlineMethods?.isNotEmpty ?? false);
 
   return isCashOnDeliveryOn ||
       isWalletOn ||

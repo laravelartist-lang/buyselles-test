@@ -112,6 +112,7 @@ Route::group(['prefix' => 'v1', 'middleware' => ['api_lang']], function () {
         Route::controller(CartController::class)->group(function () {
             Route::get('/', 'getCartList');
             Route::post('add', 'addToCart');
+            Route::post('validate-direct-topup-account', 'validateDirectTopUpAccount');
             Route::put('update', 'update_cart');
             Route::delete('remove', 'remove_from_cart');
             Route::delete('remove-all', 'remove_all_from_cart');

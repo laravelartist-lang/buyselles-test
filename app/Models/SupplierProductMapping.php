@@ -214,6 +214,35 @@ class SupplierProductMapping extends Model
     }
 
     /**
+     * Resolve the card face value sent to the supplier when placing an order.
+     *
+     * Wholesale cost_price is never used here — suppliers such as Bamboo require the
+     * denomination (e.g. a $10 card), not what we pay the supplier.
+     */
+    public function resolveSupplierFaceValue(?float $customAmount = null, ?SupplierProductDenomination $denomination = null): ?float
+    {
+        if ($denomination?->isFixed()) {
+            $faceValue = (float) $denomination->face_value;
+
+            return $faceValue > 0 ? $faceValue : null;
+        }
+
+        if ($denomination?->isVariable() && $customAmount !== null && $customAmount > 0) {
+            return $customAmount;
+        }
+
+        if ($customAmount !== null && $customAmount > 0) {
+            return $customAmount;
+        }
+
+        if ($this->min_amount !== null && (float) $this->min_amount > 0) {
+            return (float) $this->min_amount;
+        }
+
+        return null;
+    }
+
+    /**
      * Calculate the sell price for a given custom amount using the mapping markup.
      * For customizable products, the customer's chosen amount replaces the fixed cost.
      */

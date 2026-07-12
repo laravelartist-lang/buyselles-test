@@ -23,9 +23,16 @@ class DirectTopUpService
 
         $mapping = $this->getMapping($product);
 
-        return $mapping !== null
-            && (bool) $mapping->is_direct_topup
-            && (bool) ($mapping->supplierApi?->supports_direct_top_up ?? false);
+        if ($mapping === null || ! (bool) $mapping->is_direct_topup) {
+            return false;
+        }
+
+        if (! (bool) ($mapping->supplierApi?->is_active ?? false)) {
+            return false;
+        }
+
+        return (bool) ($mapping->supplierApi?->supports_direct_top_up ?? false)
+            || trim((string) ($mapping->direct_topup_account_label ?? '')) !== '';
     }
 
     public function hasActiveSupplierMapping(Product $product): bool
@@ -240,6 +247,62 @@ class DirectTopUpService
         ];
     }
 
+    /**
+     * @return array{payload: array<string, mixed>, status: int}
+     */
+    public function buildAccountValidationResponse(Product $product, string $accountId): array
+    {
+        if (! $this->isDirectTopUpProduct($product)) {
+            return [
+                'payload' => [
+                    'supported' => false,
+                    'valid' => false,
+                    'message' => translate('product_is_not_direct_topup'),
+                ],
+                'status' => 400,
+            ];
+        }
+
+        $result = $this->validateAccountWithSupplier($product, $accountId);
+
+        if (! $result['supported']) {
+            return [
+                'payload' => [
+                    'supported' => false,
+                    'valid' => true,
+                    'player_id' => null,
+                    'username' => null,
+                    'message' => null,
+                ],
+                'status' => 200,
+            ];
+        }
+
+        if ($result['valid']) {
+            return [
+                'payload' => [
+                    'supported' => true,
+                    'valid' => true,
+                    'player_id' => $result['player_id'],
+                    'username' => $result['username'],
+                    'message' => $result['message'],
+                ],
+                'status' => 200,
+            ];
+        }
+
+        return [
+            'payload' => [
+                'supported' => true,
+                'valid' => false,
+                'player_id' => null,
+                'username' => null,
+                'message' => $result['message'] ?? translate('direct_topup_account_invalid'),
+            ],
+            'status' => 422,
+        ];
+    }
+
     private function supplierSupportsPlayerIdValidation(?SupplierApi $supplier): bool
     {
         if ($supplier === null || ! $supplier->supports_direct_top_up) {
@@ -387,26 +450,7 @@ class DirectTopUpService
             return null;
         }
 
-        try {
-            $this->validateConfiguration($product);
-        } catch (InvalidArgumentException) {
-            return null;
-        }
-
-        $mapping = $this->getMapping($product);
-
-        if ($mapping === null) {
-            return null;
-        }
-
-        return [
-            'enabled' => true,
-            'account_label' => (string) $mapping->direct_topup_account_label,
-            'min_quantity' => (float) $mapping->direct_topup_min_quantity,
-            'max_quantity' => (float) $mapping->direct_topup_max_quantity,
-            'price_per_unit' => $this->getPricePerUnit($product),
-            'currency' => getWebConfig(name: 'currency_code') ?? 'USD',
-        ];
+        return $this->buildModalConfig($product);
     }
 
     public function sanitizeAccountIdForLogging(string $accountId): string

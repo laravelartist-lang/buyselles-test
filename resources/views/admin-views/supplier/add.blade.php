@@ -8,7 +8,17 @@
         <div class="card-body">
             <h3 class="mb-4">{{ translate('add_supplier') }}</h3>
 
-            <form action="{{ route('admin.supplier.store') }}" method="post" id="supplier-form">
+            @if($errors->any())
+                <div class="alert alert-danger">
+                    <ul class="mb-0 ps-3">
+                        @foreach($errors->all() as $error)
+                            <li>{{ $error }}</li>
+                        @endforeach
+                    </ul>
+                </div>
+            @endif
+
+            <form action="{{ route('admin.supplier.store') }}" method="post" id="supplier-form" novalidate>
                 @csrf
 
                 <div class="row gy-3">
@@ -16,7 +26,7 @@
                         <div class="form-group">
                             <label class="form-label">{{ translate('name') }} <span class="text-danger">*</span></label>
                             <input type="text" name="name" class="form-control"
-                                   placeholder="{{ translate('ex') }}: Reloadly Production"
+                                   placeholder="{{ translate('ex') }}: Secret Orca Production"
                                    value="{{ old('name') }}" required>
                         </div>
                     </div>
@@ -25,20 +35,20 @@
                         <div class="form-group">
                             <label class="form-label">{{ translate('driver') }} <span class="text-danger">*</span></label>
                             <select name="driver" class="form-control" id="driver-select" required>
-                                <option value="">{{ translate('select_driver') }}</option>
                                 @foreach($drivers as $driver)
-                                    <option value="{{ $driver }}" {{ old('driver') == $driver ? 'selected' : '' }}>
-                                        {{ ucfirst(str_replace('_', ' ', $driver)) }}
+                                    <option value="{{ $driver }}" {{ old('driver', $defaultDriver) == $driver ? 'selected' : '' }}>
+                                        {{ $driverPresets[$driver]['label'] ?? ucfirst(str_replace('_', ' ', $driver)) }}
                                     </option>
                                 @endforeach
                             </select>
+                            <small id="driver-description" class="text-muted d-block mt-2"></small>
                         </div>
                     </div>
 
                     <div class="col-lg-6">
                         <div class="form-group">
                             <label class="form-label">{{ translate('base_url') }} <span class="text-danger">*</span></label>
-                            <input type="url" name="base_url" class="form-control"
+                            <input type="url" name="base_url" id="base-url-input" class="form-control"
                                    placeholder="https://api.example.com"
                                    value="{{ old('base_url') }}" required>
                         </div>
@@ -47,21 +57,14 @@
                     <div class="col-lg-6">
                         <div class="form-group">
                             <label class="form-label">{{ translate('auth_type') }} <span class="text-danger">*</span></label>
-                            <select name="auth_type" class="form-control" required>
-                                <option value="api_key" {{ old('auth_type') == 'api_key' ? 'selected' : '' }}>API Key</option>
-                                <option value="bearer_token" {{ old('auth_type') == 'bearer_token' ? 'selected' : '' }}>Bearer Token</option>
-                                <option value="login_via" {{ old('auth_type') == 'login_via' ? 'selected' : '' }}>Login Via</option>
-                                <option value="oauth2" {{ old('auth_type') == 'oauth2' ? 'selected' : '' }}>OAuth2</option>
-                                <option value="basic" {{ old('auth_type') == 'basic' ? 'selected' : '' }}>Basic Auth</option>
-                                <option value="hmac" {{ old('auth_type') == 'hmac' ? 'selected' : '' }}>HMAC</option>
-                            </select>
+                            <select name="auth_type" id="auth-type-select" class="form-control" required></select>
                         </div>
                     </div>
 
                     <div class="col-lg-3">
                         <div class="form-group">
                             <label class="form-label">{{ translate('rate_limit_per_minute') }} <span class="text-danger">*</span></label>
-                            <input type="number" name="rate_limit_per_minute" class="form-control"
+                            <input type="number" name="rate_limit_per_minute" id="rate-limit-input" class="form-control"
                                    value="{{ old('rate_limit_per_minute', 60) }}" min="1" max="1000" required>
                         </div>
                     </div>
@@ -98,54 +101,13 @@
                     </div>
                 </div>
 
-                {{-- Credentials Section --}}
                 <hr class="my-4">
                 <h5 class="mb-3"><i class="fi fi-rr-lock"></i> {{ translate('credentials') }}</h5>
-                <div class="row gy-3" id="credentials-section">
-                    @forelse($defaultSchema['credentials'] as $fieldKey => $fieldConfig)
-                        <div class="col-lg-6">
-                            <div class="form-group">
-                                <label class="form-label">
-                                    {{ $fieldConfig['label'] ?? ucfirst(str_replace('_', ' ', $fieldKey)) }}
-                                    @if(!empty($fieldConfig['required']))
-                                        <span class="text-danger">*</span>
-                                    @endif
-                                </label>
-                                <input type="{{ ($fieldConfig['type'] ?? 'text') === 'password' ? 'password' : 'text' }}"
-                                       name="credentials[{{ $fieldKey }}]"
-                                       class="form-control"
-                                       placeholder="{{ translate('enter_value') }}"
-                                       autocomplete="new-password">
-                            </div>
-                        </div>
-                    @empty
-                        <div class="col-lg-12">
-                            <p class="text-muted">{{ translate('no_credentials_needed_for_this_driver') }}</p>
-                        </div>
-                    @endforelse
-                </div>
+                <div class="row gy-3" id="credentials-section"></div>
 
-                {{-- Settings Section --}}
                 <hr class="my-4">
                 <h5 class="mb-3"><i class="fi fi-rr-settings"></i> {{ translate('driver_settings') }}</h5>
-                <div class="row gy-3" id="settings-section">
-                    @forelse($defaultSchema['settings'] as $settingKey => $settingConfig)
-                        <div class="col-lg-6">
-                            <div class="form-group">
-                                <label class="form-label">{{ $settingConfig['label'] ?? ucfirst(str_replace('_', ' ', $settingKey)) }}</label>
-                                <input type="{{ ($settingConfig['type'] ?? 'text') === 'number' ? 'number' : (($settingConfig['type'] ?? 'text') === 'password' ? 'password' : 'text') }}"
-                                       name="settings[{{ $settingKey }}]"
-                                       class="form-control"
-                                       value="{{ old("settings.{$settingKey}", $settingConfig['default'] ?? '') }}"
-                                       autocomplete="new-password">
-                            </div>
-                        </div>
-                    @empty
-                        <div class="col-lg-12">
-                            <p class="text-muted">{{ translate('no_settings_available_for_this_driver') }}</p>
-                        </div>
-                    @endforelse
-                </div>
+                <div class="row gy-3" id="settings-section"></div>
 
                 <div class="d-flex gap-3 mt-4">
                     <button type="submit" class="btn btn-primary">
@@ -159,4 +121,10 @@
         </div>
     </div>
 </div>
+
+@include('admin-views.supplier.partials._supplier-driver-script', ['formMode' => 'add'])
 @endsection
+
+@push('script')
+    <script src="{{ dynamicAsset(path: 'public/assets/back-end/js/admin/supplier-form.js') }}"></script>
+@endpush

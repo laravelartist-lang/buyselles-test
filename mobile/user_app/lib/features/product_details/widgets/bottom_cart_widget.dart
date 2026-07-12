@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_sixvalley_ecommerce/features/product_details/domain/models/product_details_model.dart';
+import 'package:flutter_sixvalley_ecommerce/helper/direct_topup_helper.dart';
 import 'package:flutter_sixvalley_ecommerce/features/product_details/widgets/cart_bottom_sheet_widget.dart';
+import 'package:flutter_sixvalley_ecommerce/features/product_details/widgets/direct_topup_bottom_sheet_widget.dart';
 import 'package:flutter_sixvalley_ecommerce/features/splash/controllers/splash_controller.dart';
 import 'package:flutter_sixvalley_ecommerce/helper/responsive_helper.dart';
 import 'package:flutter_sixvalley_ecommerce/helper/route_healper.dart';
@@ -132,7 +134,7 @@ class _BottomCartWidgetState extends State<BottomCartWidget> {
                   snackBarType: SnackBarType.error,
                 );
               } else {
-                _buyNowDirectly(context);
+                _handlePurchaseAction(context, buyNow: true);
               }
             },
             child: Container(
@@ -166,7 +168,7 @@ class _BottomCartWidgetState extends State<BottomCartWidget> {
                   snackBarType: SnackBarType.error,
                 );
               } else {
-                _addToCartDirectly(context);
+                _handlePurchaseAction(context, buyNow: false);
               }
             },
             child: Container(
@@ -192,23 +194,142 @@ class _BottomCartWidgetState extends State<BottomCartWidget> {
     );
   }
 
-  void _addToCartDirectly(BuildContext context) async {
-    var productDetailsController = Provider.of<ProductDetailsController>(context, listen: false);
-    var cartController = Provider.of<CartController>(context, listen: false);
-    
+  ProductDetailsModel? _resolveProduct(BuildContext context) {
+    final ProductDetailsModel? controllerProduct =
+        Provider.of<ProductDetailsController>(context, listen: false).productDetailsModel;
+
+    return controllerProduct ?? widget.product;
+  }
+
+  void _handlePurchaseAction(BuildContext context, {required bool buyNow}) {
+    final ProductDetailsModel? product = _resolveProduct(context);
+
+    if (DirectTopUpHelper.shouldPromptDirectTopUpSheet(product)) {
+      if (!_ensureCheckoutAllowed(context)) {
+        return;
+      }
+      _showDirectTopUpPurchaseSheet(context, product);
+      return;
+    }
+
+    if (buyNow) {
+      _buyNowDirectly(context);
+    } else {
+      _addToCartDirectly(context);
+    }
+  }
+
+  BuildContext? _modalContext(BuildContext context) {
+    if (context.mounted) {
+      return context;
+    }
+
+    return Get.context ?? navigatorKey.currentContext;
+  }
+
+  bool _ensureCheckoutAllowed(BuildContext context) {
+    final bool isLoggedIn = Provider.of<AuthController>(context, listen: false).isLoggedIn();
+    final configProvider = Provider.of<SplashController>(context, listen: false);
+
+    if (configProvider.configModel?.guestCheckOut == 0 && !isLoggedIn) {
+      final BuildContext? modalContext = _modalContext(context);
+      if (modalContext == null) {
+        return false;
+      }
+
+      _presentModalBottomSheet(
+        modalContext,
+        builder: (_) => const NotLoggedInBottomSheetWidget(fromPage: RouterHelper.productDetailsScreen),
+      );
+      return false;
+    }
+
+    return true;
+  }
+
+  bool _hasProductVariants(ProductDetailsModel product) {
+    final bool hasColors = product.colors != null && product.colors!.isNotEmpty;
+    final bool hasChoices = product.choiceOptions != null && product.choiceOptions!.isNotEmpty;
+
+    if (DirectTopUpHelper.shouldPromptDirectTopUpSheet(product)) {
+      return hasColors || hasChoices;
+    }
+
+    final bool hasDigitalExtensions = product.digitalProductExtensions != null
+        && product.digitalProductExtensions!.isNotEmpty;
+
+    return hasColors || hasChoices || hasDigitalExtensions;
+  }
+
+  void _presentModalBottomSheet(
+    BuildContext context, {
+    required WidgetBuilder builder,
+  }) {
+    if (!context.mounted) {
+      return;
+    }
+
+    showModalBottomSheet<void>(
+      context: context,
+      useRootNavigator: true,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      isDismissible: true,
+      enableDrag: true,
+      builder: builder,
+    );
+  }
+
+  void _showDirectTopUpPurchaseSheet(BuildContext context, ProductDetailsModel? product) {
+    if (product == null) {
+      return;
+    }
+
+    final BuildContext? modalContext = _modalContext(context);
+    if (modalContext == null) {
+      return;
+    }
+
+    final DirectTopUpConfig? config = DirectTopUpHelper.resolveDirectTopUpConfig(product);
+    if (config == null) {
+      return;
+    }
+
+    Provider.of<ProductDetailsController>(modalContext, listen: false)
+        .initializeDirectTopUpDefaults();
+
+    if (_hasProductVariants(product)) {
+      _presentModalBottomSheet(
+        modalContext,
+        builder: (_) => CartBottomSheetWidget(product: product),
+      );
+      return;
+    }
+
+    _presentModalBottomSheet(
+      modalContext,
+      builder: (_) => DirectTopUpBottomSheetWidget(
+        product: product,
+        config: config,
+        onNavigateToCheckout: _navigateToCheckoutScreen,
+      ),
+    );
+  }
+
+  CartModelBody _buildCartModelBody(ProductDetailsController productDetailsController) {
     String? variantKey;
     double? digitalVariantPrice;
     List<String> variationFileType = [];
     List<List<String>> extensions = [];
-    
+
     Variation? variation;
     String? variantName = (widget.product!.colors != null && widget.product!.colors!.isNotEmpty) ?
     widget.product!.colors![productDetailsController.variantIndex ?? 0].name : null;
     List<String> variationList = [];
     if (widget.product!.choiceOptions != null) {
       for(int index=0; index < widget.product!.choiceOptions!.length; index++) {
-        int variationIdx = (productDetailsController.variationIndex != null && productDetailsController.variationIndex!.length > index) 
-            ? productDetailsController.variationIndex![index] 
+        int variationIdx = (productDetailsController.variationIndex != null && productDetailsController.variationIndex!.length > index)
+            ? productDetailsController.variationIndex![index]
             : 0;
         variationList.add(widget.product!.choiceOptions![index].options![variationIdx].trim());
       }
@@ -216,17 +337,17 @@ class _BottomCartWidgetState extends State<BottomCartWidget> {
     String variationType = '';
     if(variantName != null) {
       variationType = variantName;
-      for (var variation in variationList) {
-        variationType = '$variationType-$variation';
+      for (var variationItem in variationList) {
+        variationType = '$variationType-$variationItem';
       }
     } else {
       bool isFirst = true;
-      for (var variation in variationList) {
+      for (var variationItem in variationList) {
         if(isFirst) {
-          variationType = '$variationType$variation';
+          variationType = '$variationType$variationItem';
           isFirst = false;
         }else {
-          variationType = '$variationType-$variation';
+          variationType = '$variationType-$variationItem';
         }
       }
     }
@@ -239,14 +360,12 @@ class _BottomCartWidgetState extends State<BottomCartWidget> {
     }
 
     double? price = widget.product!.unitPrice;
-    int? stock = widget.product!.currentStock;
     variationType = variationType.replaceAll(' ', '');
     if (widget.product!.variation != null) {
       for(Variation v in widget.product!.variation!) {
         if(v.type == variationType) {
           price = v.price;
           variation = v;
-          stock = v.qty;
           break;
         }
       }
@@ -268,22 +387,36 @@ class _BottomCartWidgetState extends State<BottomCartWidget> {
     }
     digitalVariantPrice = variantKey != null ? price : null;
 
-    int qty = (productDetailsController.quantity ?? 0) < (widget.product!.minimumOrderQty ?? 1) 
-        ? (widget.product!.minimumOrderQty ?? 1) 
+    int qty = (productDetailsController.quantity ?? 0) < (widget.product!.minimumOrderQty ?? 1)
+        ? (widget.product!.minimumOrderQty ?? 1)
         : productDetailsController.quantity!;
 
-    CartModelBody cart = CartModelBody(
-        productId: widget.product!.id,
-        variant: (widget.product!.colors != null && widget.product!.colors!.isNotEmpty) ?
-        widget.product!.colors![productDetailsController.variantIndex ?? 0].name : '',
-        color: (widget.product!.colors != null && widget.product!.colors!.isNotEmpty) ?
-        widget.product!.colors![productDetailsController.variantIndex ?? 0].code : '',
-        variation : variation,
-        quantity: qty,
-        variantKey: variantKey,
-        digitalVariantPrice: digitalVariantPrice,
-        productType: widget.product!.productType
+    return CartModelBody(
+      productId: widget.product!.id,
+      variant: (widget.product!.colors != null && widget.product!.colors!.isNotEmpty) ?
+      widget.product!.colors![productDetailsController.variantIndex ?? 0].name : '',
+      color: (widget.product!.colors != null && widget.product!.colors!.isNotEmpty) ?
+      widget.product!.colors![productDetailsController.variantIndex ?? 0].code : '',
+      variation: variation,
+      quantity: qty,
+      variantKey: variantKey,
+      digitalVariantPrice: digitalVariantPrice,
+      productType: widget.product!.productType,
     );
+  }
+
+  void _addToCartDirectly(BuildContext context) async {
+    final ProductDetailsModel? product = _resolveProduct(context);
+    if (DirectTopUpHelper.shouldPromptDirectTopUpSheet(product)) {
+      _showDirectTopUpPurchaseSheet(context, product);
+      return;
+    }
+
+    var productDetailsController = Provider.of<ProductDetailsController>(context, listen: false);
+    var cartController = Provider.of<CartController>(context, listen: false);
+
+    CartModelBody cart = _buildCartModelBody(productDetailsController);
+    int? stock = cart.variation?.qty ?? widget.product!.currentStock;
 
     final bool isLoggedIn = Provider.of<AuthController>(context, listen: false).isLoggedIn();
     var configProvider = Provider.of<SplashController>(context, listen: false);
@@ -295,7 +428,7 @@ class _BottomCartWidgetState extends State<BottomCartWidget> {
       );
     } else if( (stock! < (widget.product!.minimumOrderQty ?? 1))  &&  widget.product!.productType == "physical" && (widget.product!.hasActiveSupplierMapping ?? 0) != 1 ) {
       showCustomSnackBarWidget(getTranslated('out_of_stock', context), context, snackBarType: SnackBarType.warning);
-    } else if(stock >= (widget.product!.minimumOrderQty ?? 1) || widget.product!.productType == "digital" || (widget.product!.hasActiveSupplierMapping ?? 0) == 1) {
+    } else if(stock >= (widget.product!.minimumOrderQty ?? 1) || widget.product!.productType == "digital" || DirectTopUpHelper.isTruthy(widget.product!.hasActiveSupplierMapping)) {
       await cartController.addToCartAPI(
         cart, context, widget.product!.choiceOptions ?? [],
         productDetailsController.variationIndex, buyNow: 0, showBottomSheet: false,
@@ -304,97 +437,17 @@ class _BottomCartWidgetState extends State<BottomCartWidget> {
   }
 
   void _buyNowDirectly(BuildContext context) async {
+    final ProductDetailsModel? product = _resolveProduct(context);
+    if (DirectTopUpHelper.shouldPromptDirectTopUpSheet(product)) {
+      _showDirectTopUpPurchaseSheet(context, product);
+      return;
+    }
+
     var productDetailsController = Provider.of<ProductDetailsController>(context, listen: false);
     var cartController = Provider.of<CartController>(context, listen: false);
-    
-    String? variantKey;
-    double? digitalVariantPrice;
-    List<String> variationFileType = [];
-    List<List<String>> extensions = [];
-    
-    Variation? variation;
-    String? variantName = (widget.product!.colors != null && widget.product!.colors!.isNotEmpty) ?
-    widget.product!.colors![productDetailsController.variantIndex ?? 0].name : null;
-    List<String> variationList = [];
-    if (widget.product!.choiceOptions != null) {
-      for(int index=0; index < widget.product!.choiceOptions!.length; index++) {
-        int variationIdx = (productDetailsController.variationIndex != null && productDetailsController.variationIndex!.length > index) 
-            ? productDetailsController.variationIndex![index] 
-            : 0;
-        variationList.add(widget.product!.choiceOptions![index].options![variationIdx].trim());
-      }
-    }
-    String variationType = '';
-    if(variantName != null) {
-      variationType = variantName;
-      for (var variation in variationList) {
-        variationType = '$variationType-$variation';
-      }
-    } else {
-      bool isFirst = true;
-      for (var variation in variationList) {
-        if(isFirst) {
-          variationType = '$variationType$variation';
-          isFirst = false;
-        }else {
-          variationType = '$variationType-$variation';
-        }
-      }
-    }
 
-    if(widget.product?.digitalProductExtensions != null){
-      widget.product?.digitalProductExtensions?.keys.forEach((key) {
-        variationFileType.add(key);
-        extensions.add(widget.product?.digitalProductExtensions?[key] ?? []);
-      });
-    }
-
-    double? price = widget.product!.unitPrice;
-    int? stock = widget.product!.currentStock;
-    variationType = variationType.replaceAll(' ', '');
-    if (widget.product!.variation != null) {
-      for(Variation v in widget.product!.variation!) {
-        if(v.type == variationType) {
-          price = v.price;
-          variation = v;
-          stock = v.qty;
-          break;
-        }
-      }
-    }
-
-    if(variationFileType.isNotEmpty && extensions.isNotEmpty) {
-      int dIndex = productDetailsController.digitalVariationIndex ?? 0;
-      int dSubIndex = productDetailsController.digitalVariationSubindex ?? 0;
-      if (dIndex < variationFileType.length && dIndex < extensions.length && dSubIndex < extensions[dIndex].length) {
-        variantKey = '${variationFileType[dIndex]}-${extensions[dIndex][dSubIndex]}';
-        if (widget.product!.digitalVariation != null) {
-          for (int i=0; i<widget.product!.digitalVariation!.length; i++) {
-            if(widget.product!.digitalVariation?[i].variantKey == variantKey){
-              price = double.tryParse(widget.product!.digitalVariation![i].price.toString());
-            }
-          }
-        }
-      }
-    }
-    digitalVariantPrice = variantKey != null ? price : null;
-
-    int qty = (productDetailsController.quantity ?? 0) < (widget.product!.minimumOrderQty ?? 1) 
-        ? (widget.product!.minimumOrderQty ?? 1) 
-        : productDetailsController.quantity!;
-
-    CartModelBody cart = CartModelBody(
-        productId: widget.product!.id,
-        variant: (widget.product!.colors != null && widget.product!.colors!.isNotEmpty) ?
-        widget.product!.colors![productDetailsController.variantIndex ?? 0].name : '',
-        color: (widget.product!.colors != null && widget.product!.colors!.isNotEmpty) ?
-        widget.product!.colors![productDetailsController.variantIndex ?? 0].code : '',
-        variation : variation,
-        quantity: qty,
-        variantKey: variantKey,
-        digitalVariantPrice: digitalVariantPrice,
-        productType: widget.product!.productType
-    );
+    CartModelBody cart = _buildCartModelBody(productDetailsController);
+    int? stock = cart.variation?.qty ?? widget.product!.currentStock;
 
     final bool isLoggedIn = Provider.of<AuthController>(context, listen: false).isLoggedIn();
     var configProvider = Provider.of<SplashController>(context, listen: false);
@@ -404,9 +457,9 @@ class _BottomCartWidgetState extends State<BottomCartWidget> {
         backgroundColor: Colors.transparent,
         context:context, builder: (_)=> const NotLoggedInBottomSheetWidget(fromPage: RouterHelper.productDetailsScreen),
       );
-    } else if( (stock! < (widget.product!.minimumOrderQty ?? 1))  &&  widget.product!.productType == "physical" && (widget.product!.hasActiveSupplierMapping ?? 0) != 1 ) {
+    } else if( (stock! < (widget.product!.minimumOrderQty ?? 1))  &&  widget.product!.productType == "physical" && !DirectTopUpHelper.isTruthy(widget.product!.hasActiveSupplierMapping)) {
       showCustomSnackBarWidget(getTranslated('out_of_stock', context), context, snackBarType: SnackBarType.warning);
-    } else if(stock >= (widget.product!.minimumOrderQty ?? 1) || widget.product!.productType == "digital" || (widget.product!.hasActiveSupplierMapping ?? 0) == 1) {
+    } else if(stock >= (widget.product!.minimumOrderQty ?? 1) || widget.product!.productType == "digital" || DirectTopUpHelper.isTruthy(widget.product!.hasActiveSupplierMapping)) {
       final ApiResponseModel apiResponse = await cartController.addToCartAPI(
         cart, context, widget.product!.choiceOptions ?? [],
         productDetailsController.variationIndex, buyNow: 1, showBottomSheet: false,
@@ -431,10 +484,13 @@ class _BottomCartWidgetState extends State<BottomCartWidget> {
   }
 
   void _navigateToCheckoutScreen(BuildContext context, CartModel cart, double shippingCost) {
+    final ProductDetailsModel? resolvedProduct = _resolveProduct(context);
+    final bool isDirectTopUp = DirectTopUpHelper.shouldPromptDirectTopUpSheet(resolvedProduct)
+        || DirectTopUpHelper.isDirectTopUpCartItem(cart);
     final double discount = cart.discount! * cart.quantity!;
     final double amount = (cart.price! - cart.discount!) * cart.quantity!;
     final int totalQuantity = cart.quantity ?? 0;
-    final bool hasPhysical = cart.productType == "physical";
+    final bool hasPhysical = !isDirectTopUp && cart.productType == "physical";
     double tax = 0.0;
     double shippingAmount = (shippingCost + cart.shippingCost!);
 
@@ -455,8 +511,8 @@ class _BottomCartWidgetState extends State<BottomCartWidget> {
       discount: discount,
       tax: tax,
       sellerId: null,
-      onlyDigital: !hasPhysical,
-      onlyDirectTopUp: !hasPhysical && (widget.product?.directTopup?.enabled == true),
+      onlyDigital: isDirectTopUp || !hasPhysical,
+      onlyDirectTopUp: isDirectTopUp,
       hasPhysical: hasPhysical,
       quantity: totalQuantity,
     );

@@ -73,6 +73,54 @@ class SupplierManager
     }
 
     /**
+     * Driver keys exposed in the admin add/edit supplier UI.
+     *
+     * @return string[]
+     */
+    public function getAdminUiDriverKeys(): array
+    {
+        return ['generic_rest', 'bamboo'];
+    }
+
+    /**
+     * Default form values and auth options per admin UI driver.
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    public function getAdminUiDriverPresets(): array
+    {
+        return [
+            'generic_rest' => [
+                'label' => 'Generic REST',
+                'base_url' => '',
+                'auth_type' => 'bearer_token',
+                'auth_types' => ['api_key', 'bearer_token', 'login_via', 'oauth2', 'basic', 'hmac'],
+                'supports_direct_top_up' => true,
+                'rate_limit_per_minute' => 60,
+                'credential_fields_by_auth' => [
+                    'api_key' => ['api_key'],
+                    'bearer_token' => ['api_key'],
+                    'basic' => ['api_key', 'api_secret'],
+                    'hmac' => ['api_key', 'api_secret'],
+                    'login_via' => ['email', 'password'],
+                    'oauth2' => ['api_key', 'api_secret'],
+                ],
+            ],
+            'bamboo' => [
+                'label' => 'Bamboo',
+                'base_url' => 'https://api.bamboocardportal.com',
+                'auth_type' => 'basic',
+                'auth_types' => ['basic'],
+                'supports_direct_top_up' => false,
+                'rate_limit_per_minute' => 60,
+                'credential_fields_by_auth' => [
+                    'basic' => ['client_id', 'client_secret', 'account_id'],
+                ],
+            ],
+        ];
+    }
+
+    /**
      * Get all registered drivers with their credential field and config schemas.
      * Used by the admin add-supplier form to dynamically render credential/settings fields.
      *
@@ -93,6 +141,48 @@ class SupplierManager
         }
 
         return $result;
+    }
+
+    /**
+     * Admin UI driver schemas (subset of all drivers).
+     *
+     * @return array<string, array{credentials: array, settings: array}>
+     */
+    public function getAdminUiDriversWithSchemas(): array
+    {
+        return array_intersect_key(
+            $this->getAvailableDriversWithSchemas(),
+            array_flip($this->getAdminUiDriverKeys()),
+        );
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function validateCredentialsForDriver(string $driver, string $authType, array $credentials, bool $requireValues = true): array
+    {
+        $schemas = $this->getAdminUiDriversWithSchemas();
+        $presets = $this->getAdminUiDriverPresets();
+        $credentialSchema = $schemas[$driver]['credentials'] ?? [];
+        $visibleKeys = $presets[$driver]['credential_fields_by_auth'][$authType]
+            ?? array_keys($credentialSchema);
+
+        $errors = [];
+
+        foreach ($visibleKeys as $fieldKey) {
+            $fieldConfig = $credentialSchema[$fieldKey] ?? [];
+
+            if (! $requireValues || empty($fieldConfig['required'])) {
+                continue;
+            }
+
+            if (blank($credentials[$fieldKey] ?? null)) {
+                $label = $fieldConfig['label'] ?? ucfirst(str_replace('_', ' ', (string) $fieldKey));
+                $errors["credentials.{$fieldKey}"] = $label.' '.translate('is_required');
+            }
+        }
+
+        return $errors;
     }
 
     /**
@@ -620,14 +710,7 @@ class SupplierManager
         try {
             $driver = $this->driver($supplier);
 
-            // For fixed denominations: use face_value. For variable: use customAmount. Fallback: mapping cost.
-            if ($denomination?->isFixed()) {
-                $unitPrice = (float) $denomination->face_value;
-            } elseif ($denomination?->isVariable() && $customAmount) {
-                $unitPrice = $customAmount;
-            } else {
-                $unitPrice = $customAmount ?? (float) $mapping->cost_price;
-            }
+            $unitPrice = $mapping->resolveSupplierFaceValue($customAmount, $denomination);
 
             $result = $driver->placeOrder($supplierProductId, $quantity, $unitPrice);
 
@@ -712,7 +795,11 @@ class SupplierManager
         SupplierProductMapping $mapping,
         array $codes,
     ): int {
-        $supplierOrder->setEncryptedCodes($codes);
+        $plainCodes = array_map(
+            fn ($code) => is_array($code) ? (string) ($code['code'] ?? '') : (string) $code,
+            $codes,
+        );
+        $supplierOrder->setEncryptedCodes($plainCodes);
 
         $bulkResult = $this->codeService->bulkAddToPool(
             productId: $mapping->product_id,

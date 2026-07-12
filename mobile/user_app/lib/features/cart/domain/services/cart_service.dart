@@ -139,4 +139,9 @@ class CartService implements CartServiceInterface{
     return await cartRepositoryInterface.mergeGuestCart();
   }
 
+  @override
+  Future<ApiResponseModel> validateDirectTopUpAccount(int productId, String accountId) async {
+    return await cartRepositoryInterface.validateDirectTopUpAccount(productId, accountId);
+  }
+
 }
