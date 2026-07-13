@@ -7,19 +7,13 @@ use Tests\TestCase;
 
 class DirectTopUpProductAdminTest extends TestCase
 {
-    public function test_direct_topup_configuration_fields_are_required_when_enabled(): void
+    public function test_direct_topup_account_label_is_required_when_enabled(): void
     {
         $validator = Validator::make([
             'is_direct_topup' => 1,
             'direct_topup_account_label' => '',
-            'direct_topup_min_quantity' => null,
-            'direct_topup_max_quantity' => null,
-            'direct_topup_price_per_unit' => null,
         ], [
             'direct_topup_account_label' => 'required_if:is_direct_topup,1,true|nullable|string|max:255',
-            'direct_topup_min_quantity' => 'required_if:is_direct_topup,1,true|nullable|numeric|min:0.0001',
-            'direct_topup_max_quantity' => 'required_if:is_direct_topup,1,true|nullable|numeric|min:0.0001|gte:direct_topup_min_quantity',
-            'direct_topup_price_per_unit' => 'required_if:is_direct_topup,1,true|nullable|numeric|min:0.00000001',
         ]);
 
         $this->assertTrue($validator->fails());

@@ -1284,21 +1284,8 @@ function syncDirectTopUpFormFields(formSelector = ".add-to-cart-details-form") {
         return;
     }
 
-    const minQty = parseFloat($section.data("min-quantity")) || 0;
-    const maxQty = parseFloat($section.data("max-quantity")) || 0;
-    let qty = parseInt(
-        String($("#direct-topup-quantity-input").val()).replace(/[^0-9]/g, ""),
-        10
-    );
-
-    if (isNaN(qty) || qty < minQty) {
-        qty = Math.floor(minQty);
-    } else if (qty > maxQty) {
-        qty = Math.floor(maxQty);
-    }
-
-    $("#direct-topup-quantity-input").val(qty);
-    $("#direct-topup-quantity-hidden").val(qty);
+    const qty = parseInt(String($section.data("direct-topup-quantity")), 10) || 1;
+    $(formSelector).find("#direct-topup-quantity-hidden").val(qty);
 }
 
 function getDirectTopUpModalConfig() {
@@ -1445,13 +1432,14 @@ function initDirectTopUpModalBehavior($root) {
         return;
     }
 
-    const minQty = parseFloat($section.data("min-quantity")) || 1;
-    const perUnit = parseFloat($section.data("price-per-unit")) || 0;
+    const currencyConfig = getDirectTopUpModalConfig();
+    const quantity = parseInt(String($section.data("direct-topup-quantity")), 10)
+        || parseInt(String(currencyConfig.direct_topup_quantity), 10)
+        || 1;
+    const perUnit = parseFloat(currencyConfig.unit_price) || 0;
 
     const $hiddenQty = $root.find("#direct-topup-quantity-hidden");
     const $modalTotal = $root.find("#direct-topup-modal-total");
-
-    const currencyConfig = getDirectTopUpModalConfig();
 
     const currencySymbol = currencyConfig.currency_symbol || "";
     const symbolPosition = currencyConfig.symbol_position || "left";
@@ -1462,7 +1450,6 @@ function initDirectTopUpModalBehavior($root) {
         return symbolPosition === "left" ? currencySymbol + num : num + currencySymbol;
     }
 
-    const quantity = Math.floor(minQty);
     const total = Math.round(quantity * perUnit * 100) / 100;
 
     $hiddenQty.val(quantity);
@@ -2770,10 +2757,8 @@ function updateProductDetailsTopSection(formSelector, response) {
     const isDirectTopUp = response?.is_direct_topup || isDirectTopUpDetailsPage();
 
     if (isDirectTopUp) {
-        const topUpQty = Math.floor(parseFloat(response?.direct_topup_quantity ?? response?.in_cart_quantity ?? 0));
+        const topUpQty = Math.floor(parseFloat(response?.direct_topup_quantity ?? response?.in_cart_quantity ?? 1));
         $('#direct-topup-quantity-hidden').val(topUpQty);
-        $('#direct-topup-quantity-input').val(topUpQty);
-        $('#direct-topup-qty-from-price').text(topUpQty);
         $(formSelector).find(".product-quantity").hide();
         $(formSelector).find(".product-add-to-cart-button").hide();
         $(formSelector).find(".product-add-and-buy-section").show().addClass("d-flex");

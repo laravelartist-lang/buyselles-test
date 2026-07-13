@@ -61,9 +61,6 @@ class DirectTopUpServiceTest extends TestCase
             $table->boolean('is_active')->default(true);
             $table->boolean('is_direct_topup')->default(false);
             $table->string('direct_topup_account_label', 255)->nullable();
-            $table->decimal('direct_topup_min_quantity', 20, 4)->nullable();
-            $table->decimal('direct_topup_max_quantity', 20, 4)->nullable();
-            $table->decimal('direct_topup_price_per_unit', 24, 8)->nullable();
             $table->timestamps();
         });
 
@@ -83,32 +80,22 @@ class DirectTopUpServiceTest extends TestCase
         $this->service = app(DirectTopUpService::class);
     }
 
-    public function test_calculate_total_price_from_quantity(): void
+    public function test_calculate_total_price_uses_product_effective_sell_price(): void
     {
         $product = $this->makeDirectTopUpProduct();
 
-        $total = $this->service->calculateTotalPrice($product, 1000);
+        $total = $this->service->calculateTotalPrice($product, 2);
 
-        $this->assertSame(10.0, $total);
+        $this->assertSame(2.0, $total);
     }
 
-    public function test_calculate_quantity_from_price_floors_and_clamps(): void
-    {
-        $product = $this->makeDirectTopUpProduct();
-
-        $this->assertSame(100.0, $this->service->calculateQuantityFromPrice($product, 0.50));
-        $this->assertSame(100.0, $this->service->calculateQuantityFromPrice($product, 0.01));
-        $this->assertSame(10000.0, $this->service->calculateQuantityFromPrice($product, 99999));
-    }
-
-    public function test_validate_configuration_rejects_invalid_min_max(): void
+    public function test_validate_configuration_requires_account_label(): void
     {
         $product = $this->makeDirectTopUpProduct();
         $this->app['db']->table('supplier_product_mappings')
             ->where('product_id', $product->id)
             ->update([
-                'direct_topup_min_quantity' => 500,
-                'direct_topup_max_quantity' => 100,
+                'direct_topup_account_label' => '',
             ]);
 
         $this->expectException(InvalidArgumentException::class);
@@ -116,7 +103,7 @@ class DirectTopUpServiceTest extends TestCase
         $this->service->validateConfiguration($product);
     }
 
-    public function test_build_api_payload_returns_configuration(): void
+    public function test_build_api_payload_returns_player_id_configuration_only(): void
     {
         $product = $this->makeDirectTopUpProduct();
 
@@ -125,9 +112,10 @@ class DirectTopUpServiceTest extends TestCase
         $this->assertNotNull($payload);
         $this->assertTrue($payload['enabled']);
         $this->assertSame('Player ID', $payload['account_label']);
-        $this->assertSame(100.0, $payload['min_quantity']);
-        $this->assertSame(10000.0, $payload['max_quantity']);
-        $this->assertSame(0.01, $payload['price_per_unit']);
+        $this->assertFalse($payload['requires_account_verification']);
+        $this->assertArrayNotHasKey('min_quantity', $payload);
+        $this->assertArrayNotHasKey('max_quantity', $payload);
+        $this->assertArrayNotHasKey('price_per_unit', $payload);
     }
 
     public function test_is_direct_topup_product_when_mapping_has_label_without_supplier_support_flag(): void
@@ -162,9 +150,6 @@ class DirectTopUpServiceTest extends TestCase
             'is_active' => true,
             'is_direct_topup' => true,
             'direct_topup_account_label' => 'Mobile Number',
-            'direct_topup_min_quantity' => 1,
-            'direct_topup_max_quantity' => 100,
-            'direct_topup_price_per_unit' => 1.72,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -287,7 +272,7 @@ class DirectTopUpServiceTest extends TestCase
             ], 422),
         ]);
 
-        $errors = $this->service->validatePurchase($product, 'bad-id', 500);
+        $errors = $this->service->validatePurchase($product, 'bad-id', 1);
 
         $this->assertArrayHasKey('direct_topup_account_id', $errors);
         $this->assertSame('Player ID is invalid', $errors['direct_topup_account_id']);
@@ -319,15 +304,12 @@ class DirectTopUpServiceTest extends TestCase
             'product_id' => $product->id,
             'supplier_api_id' => $supplierId,
             'supplier_product_id' => 'TEST-001',
-            'cost_price' => 0.01,
+            'cost_price' => 1,
             'markup_type' => 'percent',
             'markup_value' => 0,
             'is_active' => true,
             'is_direct_topup' => true,
             'direct_topup_account_label' => 'Player ID',
-            'direct_topup_min_quantity' => 100,
-            'direct_topup_max_quantity' => 10000,
-            'direct_topup_price_per_unit' => 0.01,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -364,15 +346,12 @@ class DirectTopUpServiceTest extends TestCase
             'product_id' => $product->id,
             'supplier_api_id' => $supplierId,
             'supplier_product_id' => '195',
-            'cost_price' => 0.01,
+            'cost_price' => 1,
             'markup_type' => 'percent',
             'markup_value' => 0,
             'is_active' => true,
             'is_direct_topup' => true,
             'direct_topup_account_label' => 'Player ID',
-            'direct_topup_min_quantity' => 100,
-            'direct_topup_max_quantity' => 10000,
-            'direct_topup_price_per_unit' => 0.01,
             'created_at' => now(),
             'updated_at' => now(),
         ]);

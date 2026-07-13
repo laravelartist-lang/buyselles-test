@@ -80,17 +80,6 @@ class DirectTopUpService
         if (empty(trim((string) $mapping->direct_topup_account_label))) {
             throw new InvalidArgumentException(translate('direct_topup_account_label_is_required'));
         }
-
-        $min = (float) $mapping->direct_topup_min_quantity;
-        $max = (float) $mapping->direct_topup_max_quantity;
-
-        if ($min <= 0 || $max <= 0) {
-            throw new InvalidArgumentException(translate('direct_topup_configuration_invalid'));
-        }
-
-        if ($min > $max) {
-            throw new InvalidArgumentException(translate('direct_topup_min_must_be_less_than_max'));
-        }
     }
 
     /**
@@ -126,14 +115,8 @@ class DirectTopUpService
             $errors['direct_topup_account_id'] = translate('direct_topup_account_id_invalid_format');
         }
 
-        $mapping = $this->getMapping($product);
-        $min = $mapping ? (float) $mapping->direct_topup_min_quantity : 0;
-        $max = $mapping ? (float) $mapping->direct_topup_max_quantity : 0;
-
         if ($quantity <= 0) {
             $errors['direct_topup_quantity'] = translate('direct_topup_quantity_must_be_positive');
-        } elseif ($quantity < $min || $quantity > $max) {
-            $errors['direct_topup_quantity'] = translate('direct_topup_quantity_out_of_range').' '.$min.' - '.$max;
         }
 
         if ($errors === [] && $this->requiresAccountVerification($product)) {
@@ -354,18 +337,8 @@ class DirectTopUpService
         return null;
     }
 
-    /**
-     * Get the per-unit sell price using the centralized effective price logic.
-     * Falls back to direct_topup_price_per_unit from the mapping.
-     */
     public function getPricePerUnit(Product $product): float
     {
-        $mapping = $this->getMapping($product);
-
-        if ($mapping && (float) $mapping->direct_topup_price_per_unit > 0) {
-            return (float) $mapping->direct_topup_price_per_unit;
-        }
-
         return $product->getEffectiveSellPrice();
     }
 
@@ -374,32 +347,6 @@ class DirectTopUpService
         $this->validateConfiguration($product);
 
         return round($quantity * $this->getPricePerUnit($product), 2);
-    }
-
-    public function calculateQuantityFromPrice(Product $product, float $price): float
-    {
-        $this->validateConfiguration($product);
-
-        $mapping = $this->getMapping($product);
-        $pricePerUnit = $this->getPricePerUnit($product);
-        $min = $mapping ? (float) $mapping->direct_topup_min_quantity : 0;
-        $max = $mapping ? (float) $mapping->direct_topup_max_quantity : 0;
-
-        if ($pricePerUnit <= 0) {
-            return $min;
-        }
-
-        $quantity = floor($price / $pricePerUnit);
-
-        if ($quantity < $min) {
-            return $min;
-        }
-
-        if ($quantity > $max) {
-            return $max;
-        }
-
-        return (float) $quantity;
     }
 
     /**
@@ -417,26 +364,11 @@ class DirectTopUpService
             return null;
         }
 
-        $minQuantity = (float) ($mapping->direct_topup_min_quantity ?? 0);
-        $maxQuantity = (float) ($mapping->direct_topup_max_quantity ?? 0);
-
-        if ($minQuantity <= 0) {
-            $minQuantity = 1;
-        }
-
-        if ($maxQuantity <= 0 || $maxQuantity < $minQuantity) {
-            $maxQuantity = max($minQuantity, 100);
-        }
-
         return [
             'enabled' => true,
             'account_label' => trim((string) ($mapping->direct_topup_account_label ?? '')) !== ''
                 ? (string) $mapping->direct_topup_account_label
                 : (translate('account_id') ?: 'Account ID'),
-            'min_quantity' => $minQuantity,
-            'max_quantity' => $maxQuantity,
-            'price_per_unit' => $this->getPricePerUnit($product),
-            'currency' => getWebConfig(name: 'currency_code') ?? 'USD',
             'requires_account_verification' => $this->requiresAccountVerification($product),
         ];
     }

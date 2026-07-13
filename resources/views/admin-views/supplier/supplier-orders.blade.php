@@ -75,7 +75,7 @@
                                             #{{ $order->order_id }}
                                         </a>
                                     @else
-                                        <span class="text-muted">{{ translate('restock') }}</span>
+                                        <span class="text-muted">{{ translate('pool_order') ?: 'Pool order' }}</span>
                                     @endif
                                 </td>
                                 <td>{{ $order->quantity }}</td>

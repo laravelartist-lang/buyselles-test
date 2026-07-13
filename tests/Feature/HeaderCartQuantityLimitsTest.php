@@ -60,8 +60,6 @@ class HeaderCartQuantityLimitsTest extends TestCase
             $table->decimal('markup_value', 10, 2)->default(0);
             $table->boolean('is_active')->default(true);
             $table->boolean('is_direct_topup')->default(false);
-            $table->decimal('direct_topup_min_quantity', 24, 4)->nullable();
-            $table->decimal('direct_topup_max_quantity', 24, 4)->nullable();
             $table->timestamps();
         });
 

@@ -15,6 +15,7 @@
                     @include('admin-views.supplier.partials._mapping-product-picker', [
                         'categories' => $categories,
                         'selectedProduct' => $mapping->product,
+                        'exceptMappingId' => $mapping->id,
                     ])
 
                     <div class="col-lg-6">

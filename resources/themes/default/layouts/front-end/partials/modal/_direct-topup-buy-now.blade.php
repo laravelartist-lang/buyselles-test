@@ -1,18 +1,16 @@
 @if (! empty($isDirectTopUpProduct) && ! empty($directTopUpConfig))
     @php
-        $minQty = (float) $directTopUpConfig['min_quantity'];
-        $maxQty = (float) $directTopUpConfig['max_quantity'];
-        $perUnit = (float) $directTopUpConfig['price_per_unit'];
         $accountLabel = (string) $directTopUpConfig['account_label'];
         $requiresAccountVerification = (bool) ($directTopUpConfig['requires_account_verification'] ?? false);
         $showVerifyButton = false;
+        $directTopUpQuantity = max(1, (int) ($product->minimum_order_qty ?? 1));
+        $lineTotal = (float) $product->getEffectiveSellPrice() * $directTopUpQuantity;
         $directTopUpModalConfig = [
             'product_id' => $product->id,
             'account_label' => $accountLabel,
-            'min_quantity' => $minQty,
-            'max_quantity' => $maxQty,
-            'price_per_unit' => $perUnit,
-            'currency' => $directTopUpConfig['currency'] ?? (getWebConfig(name: 'currency_code') ?? 'USD'),
+            'direct_topup_quantity' => $directTopUpQuantity,
+            'unit_price' => (float) $product->getEffectiveSellPrice(),
+            'currency' => getWebConfig(name: 'currency_code') ?? 'USD',
             'currency_symbol' => getCurrencySymbol(),
             'symbol_position' => getWebConfig('currency_symbol_position'),
             'decimal_points' => (int) (getWebConfig('decimal_point_settings') ?? 2),
@@ -44,10 +42,7 @@
             <div class="modal-body pt-2">
                 <div class="direct-topup-purchase-section mb-3"
                     id="direct-topup-purchase-section"
-                    data-min-quantity="{{ $minQty }}"
-                    data-max-quantity="{{ $maxQty }}"
-                    data-price-per-unit="{{ $perUnit }}"
-                    data-currency="{{ $directTopUpConfig['currency'] ?? (getWebConfig(name: 'currency_code') ?? 'USD') }}"
+                    data-direct-topup-quantity="{{ $directTopUpQuantity }}"
                     data-requires-account-verification="{{ $requiresAccountVerification ? '1' : '0' }}">
 
                     <div class="d-flex align-items-start gap-3 mb-2 flex-wrap">
@@ -78,7 +73,7 @@
                     </div>
 
                     <input type="hidden" name="direct_topup_quantity" id="direct-topup-quantity-hidden"
-                        value="{{ floor($minQty) }}">
+                        value="{{ $directTopUpQuantity }}">
                     <input type="hidden" name="quantity" value="1">
                     <input type="hidden" name="id" value="{{ $product->id }}">
                 </div>
@@ -86,7 +81,7 @@
                 <div class="d-flex justify-content-between align-items-center border-top pt-3 mt-2">
                     <span class="text-muted fs-14">{{ translate('total_price') }}</span>
                     <strong class="fs-18 text-base" id="direct-topup-modal-total">
-                        {{ webCurrencyConverter(amount: round($minQty * $perUnit, 2)) }}
+                        {{ webCurrencyConverter(amount: $lineTotal) }}
                     </strong>
                 </div>
             </div>

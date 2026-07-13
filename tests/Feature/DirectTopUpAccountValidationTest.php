@@ -59,9 +59,6 @@ class DirectTopUpAccountValidationTest extends TestCase
             $table->boolean('is_active')->default(true);
             $table->boolean('is_direct_topup')->default(false);
             $table->string('direct_topup_account_label', 255)->nullable();
-            $table->decimal('direct_topup_min_quantity', 20, 4)->nullable();
-            $table->decimal('direct_topup_max_quantity', 20, 4)->nullable();
-            $table->decimal('direct_topup_price_per_unit', 24, 8)->nullable();
             $table->timestamps();
         });
 
@@ -226,9 +223,6 @@ class DirectTopUpAccountValidationTest extends TestCase
             'is_active' => true,
             'is_direct_topup' => true,
             'direct_topup_account_label' => 'Player ID',
-            'direct_topup_min_quantity' => 100,
-            'direct_topup_max_quantity' => 10000,
-            'direct_topup_price_per_unit' => 0.01,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -375,9 +369,6 @@ class DirectTopUpAccountValidationTest extends TestCase
             'is_active' => true,
             'is_direct_topup' => true,
             'direct_topup_account_label' => 'Player ID',
-            'direct_topup_min_quantity' => 100,
-            'direct_topup_max_quantity' => 10000,
-            'direct_topup_price_per_unit' => 0.01,
             'created_at' => now(),
             'updated_at' => now(),
         ]);

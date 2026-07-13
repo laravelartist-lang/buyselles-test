@@ -94,9 +94,6 @@ class SupplierCodeFetchJobTest extends TestCase
             $table->boolean('is_active')->default(true);
             $table->boolean('is_direct_topup')->default(false);
             $table->string('direct_topup_account_label')->nullable();
-            $table->decimal('direct_topup_min_quantity', 24, 4)->nullable();
-            $table->decimal('direct_topup_max_quantity', 24, 4)->nullable();
-            $table->decimal('direct_topup_price_per_unit', 24, 8)->nullable();
             $table->timestamps();
         });
 
@@ -364,18 +361,12 @@ class SupplierCodeFetchJobTest extends TestCase
             'supplier_api_id' => 2,
             'is_direct_topup' => 1,
             'direct_topup_account_label' => 'Player ID',
-            'direct_topup_min_quantity' => 1,
-            'direct_topup_max_quantity' => 100,
-            'direct_topup_price_per_unit' => 1.5,
         ]);
 
         $attributes = $method->invoke($controller, $request);
 
         $this->assertFalse($attributes['is_direct_topup']);
         $this->assertNull($attributes['direct_topup_account_label']);
-        $this->assertNull($attributes['direct_topup_min_quantity']);
-        $this->assertNull($attributes['direct_topup_max_quantity']);
-        $this->assertNull($attributes['direct_topup_price_per_unit']);
     }
 
     private function seedSupplierMapping(int $productId, bool $supportsDirectTopUp, bool $isDirectTopup): void

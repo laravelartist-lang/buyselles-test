@@ -57,12 +57,9 @@ class CartController extends Controller
 
         $directTopUpService = app(DirectTopUpService::class);
         if ($directTopUpService->canAddToCart($product)) {
-            $directTopUpConfig = $directTopUpService->buildApiPayload($product);
-            $minQuantity = (float) ($directTopUpConfig['min_quantity'] ?? 1);
-            $maxQuantity = (float) ($directTopUpConfig['max_quantity'] ?? 1);
-            $pricePerUnit = (float) ($directTopUpConfig['price_per_unit'] ?? 0);
-            $directTopUpQuantity = (int) floor($minQuantity);
-            $lineTotal = $directTopUpService->calculateTotalPrice($product, $directTopUpQuantity);
+            $pricePerUnit = $directTopUpService->getPricePerUnit($product);
+            $directTopUpQuantity = max(1, (int) ($product->minimum_order_qty ?? 1));
+            $lineTotal = $directTopUpService->calculateTotalPrice($product, (float) $directTopUpQuantity);
             $discount = getProductPriceByType(product: $product, type: 'discounted_amount', result: 'value', price: $lineTotal);
             $discountType = getProductPriceByType(product: $product, type: 'discount_type', result: 'string');
 
@@ -71,14 +68,11 @@ class CartController extends Controller
                 'discount' => $discountType == 'flat' ? webCurrencyConverter($discount) : getProductPriceByType(product: $product, type: 'discount', result: 'value').'%',
                 'discount_type' => $discountType,
                 'discount_amount' => $discount,
-                'quantity' => (int) floor($maxQuantity),
+                'quantity' => $directTopUpQuantity,
                 'show_out_of_stock' => false,
                 'is_supplier_mapped' => true,
                 'is_direct_topup' => true,
                 'direct_topup_quantity' => $directTopUpQuantity,
-                'direct_topup_min_quantity' => $minQuantity,
-                'direct_topup_max_quantity' => $maxQuantity,
-                'price_per_unit' => $pricePerUnit,
                 'delivery_cost' => 0,
                 'unit_price' => webCurrencyConverter($pricePerUnit),
                 'total_unit_price' => webCurrencyConverter($pricePerUnit),

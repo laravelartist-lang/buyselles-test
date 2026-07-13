@@ -588,18 +588,6 @@ class SupplierManager
             $this->codeService->applyApiPriceIfManualDepleted($mapping->product_id);
 
             $mapping->update(['last_synced_at' => now()]);
-
-            // Auto-restock if below threshold
-            if ($mapping->auto_restock) {
-                $localStock = DigitalProductCode::where('product_id', $mapping->product_id)
-                    ->available()
-                    ->count();
-
-                if ($localStock < $mapping->min_stock_threshold && $stockResult->available > 0) {
-                    $qty = min($mapping->max_restock_qty, $stockResult->available);
-                    $this->placeSupplierOrder($supplier, $mapping, $qty);
-                }
-            }
         } catch (\Throwable $e) {
             $this->logger->logError(
                 logId: $logId,

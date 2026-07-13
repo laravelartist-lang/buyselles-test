@@ -14,10 +14,9 @@ use Illuminate\Support\Facades\Log;
 /**
  * Periodic stock sync job — runs every 15 minutes via scheduler.
  *
- * For each active supplier-product mapping with auto_restock enabled:
+ * For each active supplier-product mapping:
  * 1. Checks remote stock availability via supplier API
  * 2. Updates cost price if it has changed
- * 3. Auto-restocks if local pool is below min_stock_threshold
  */
 class SupplierStockSyncJob implements ShouldQueue
 {

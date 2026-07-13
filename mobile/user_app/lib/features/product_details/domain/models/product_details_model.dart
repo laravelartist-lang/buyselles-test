@@ -944,10 +944,6 @@ class DirectTopUpConfig {
   DirectTopUpConfig.fromJson(Map<String, dynamic> json) {
     enabled = _parseDirectTopUpFlag(json['enabled']);
     accountLabel = json['account_label']?.toString();
-    minQuantity = double.tryParse('${json['min_quantity']}');
-    maxQuantity = double.tryParse('${json['max_quantity']}');
-    pricePerUnit = double.tryParse('${json['price_per_unit']}');
-    currency = json['currency']?.toString();
     requiresAccountVerification = _parseDirectTopUpFlag(json['requires_account_verification']);
 
     if (enabled != true && accountLabel?.trim().isNotEmpty == true) {

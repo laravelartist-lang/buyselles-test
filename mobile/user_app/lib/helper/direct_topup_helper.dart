@@ -53,10 +53,9 @@ class DirectTopUpHelper {
       accountLabel: existing.accountLabel?.trim().isNotEmpty == true
           ? existing.accountLabel
           : 'Player ID',
-      minQuantity: existing.minQuantity ?? product?.minimumOrderQty?.toDouble() ?? 1,
-      maxQuantity: existing.maxQuantity ?? existing.minQuantity ?? 100,
-      pricePerUnit: existing.pricePerUnit ?? product?.unitPrice,
-      currency: existing.currency,
+      minQuantity: product?.minimumOrderQty?.toDouble() ?? 1,
+      maxQuantity: product?.minimumOrderQty?.toDouble() ?? 1,
+      pricePerUnit: product?.unitPrice,
       requiresAccountVerification: existing.requiresAccountVerification ?? false,
     );
   }

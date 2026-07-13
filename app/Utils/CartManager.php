@@ -1045,19 +1045,11 @@ class CartManager
         $displayQuantity = (int) floor($cart->getDisplayQuantity());
 
         if ($cart->isDirectTopUp()) {
-            $mapping = self::resolveSupplierMapping($product);
-
-            if ($mapping !== null) {
-                return [
-                    'min' => (int) floor((float) $mapping->direct_topup_min_quantity),
-                    'max' => (int) floor((float) $mapping->direct_topup_max_quantity),
-                    'display_quantity' => $displayQuantity,
-                ];
-            }
+            $min = max(1, (int) ($product->minimum_order_qty ?? 1));
 
             return [
-                'min' => max(1, $min),
-                'max' => max(1, $displayQuantity),
+                'min' => $min,
+                'max' => $min,
                 'display_quantity' => $displayQuantity,
             ];
         }
@@ -1141,15 +1133,10 @@ class CartManager
         $directTopUpService = app(DirectTopUpService::class);
 
         if ($directTopUpService->isDirectTopUpProduct($product)) {
-            $mapping = self::resolveSupplierMapping($product);
-            $maxQuantity = $mapping ? (int) floor((float) ($mapping->direct_topup_max_quantity ?: 100)) : 100;
-
-            if ($maxQuantity <= 0) {
-                $maxQuantity = 100;
-            }
+            $availableQuantity = max(1, (int) ($product->minimum_order_qty ?? 1));
 
             return [
-                'available_quantity' => max(1, $maxQuantity),
+                'available_quantity' => $availableQuantity,
                 'show_out_of_stock' => false,
                 'is_supplier_mapped' => true,
                 'is_direct_topup' => true,

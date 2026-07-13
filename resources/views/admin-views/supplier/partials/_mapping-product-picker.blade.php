@@ -1,6 +1,7 @@
 @php
     $selectedProduct = $selectedProduct ?? null;
     $selectedProductId = old('product_id', $selectedProduct?->id ?? '');
+    $exceptMappingId = $exceptMappingId ?? null;
 @endphp
 
 <div class="col-12">
@@ -68,6 +69,7 @@
 
     var productsUrl = @json(route('admin.supplier.mapping.in-house-products'));
     var categoriesUrl = @json(route('admin.products.get-categories'));
+    var exceptMappingId = @json($exceptMappingId);
     var selectCategoryText = @json(translate('select_category_to_load_products') ?: 'Select a category to load products');
     var noProductsText = @json(translate('no_products_found'));
     var selectPlaceholderText = @json(translate('select'));
@@ -83,9 +85,14 @@
         var $subSubCategorySelect = $('#mapping-sub-sub-category-select');
         var $productSelect = $('#mapping-product_id');
         var $countEl = $('#mapping-product-count');
+        var $supplierSelect = $('#supplier_api_id, #supplier-api-select');
 
         if (!$productSelect.length || !$categorySelect.length) {
             return;
+        }
+
+        function selectedSupplierId() {
+            return $supplierSelect.length ? ($supplierSelect.val() || '') : '';
         }
 
         function selectedProductId() {
@@ -188,6 +195,8 @@
                     category_id: categoryId,
                     sub_category_id: subCategoryId,
                     sub_sub_category_id: subSubCategoryId,
+                    supplier_api_id: selectedSupplierId(),
+                    except_mapping_id: exceptMappingId || '',
                 },
             }).done(function (data) {
                 var products = data.products || [];
@@ -243,6 +252,14 @@
         $subSubCategorySelect.off('change.mappingPicker').on('change.mappingPicker', function () {
             $productSelect.attr('data-selected-id', '');
             loadInHouseProducts();
+        });
+
+        $supplierSelect.off('change.mappingPicker').on('change.mappingPicker', function () {
+            $productSelect.attr('data-selected-id', '');
+
+            if ($categorySelect.val()) {
+                loadInHouseProducts();
+            }
         });
 
         var categoryId = $categorySelect.val();

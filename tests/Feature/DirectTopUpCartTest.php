@@ -56,9 +56,6 @@ class DirectTopUpCartTest extends TestCase
             $table->boolean('is_active')->default(true);
             $table->boolean('is_direct_topup')->default(false);
             $table->string('direct_topup_account_label', 255)->nullable();
-            $table->decimal('direct_topup_min_quantity', 20, 4)->nullable();
-            $table->decimal('direct_topup_max_quantity', 20, 4)->nullable();
-            $table->decimal('direct_topup_price_per_unit', 24, 8)->nullable();
             $table->timestamps();
         });
 
@@ -154,12 +151,8 @@ class DirectTopUpCartTest extends TestCase
             $table->string('code')->nullable();
             $table->string('product_type')->nullable();
             $table->string('digital_product_type')->nullable();
-            $table->boolean('is_direct_topup')->default(false);
-            $table->string('direct_topup_account_label')->nullable();
-            $table->decimal('direct_topup_min_quantity', 24, 4)->nullable();
-            $table->decimal('direct_topup_max_quantity', 24, 4)->nullable();
-            $table->decimal('direct_topup_price_per_unit', 24, 4)->nullable();
             $table->decimal('unit_price', 24, 2)->default(0);
+            $table->integer('minimum_order_qty')->default(1);
             $table->integer('current_stock')->default(0);
             $table->text('variation')->nullable();
             $table->decimal('discount', 24, 2)->default(0);
@@ -199,9 +192,6 @@ class DirectTopUpCartTest extends TestCase
             'is_active' => true,
             'is_direct_topup' => true,
             'direct_topup_account_label' => 'Player ID',
-            'direct_topup_min_quantity' => 100,
-            'direct_topup_max_quantity' => 10000,
-            'direct_topup_price_per_unit' => 0.01,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -225,7 +215,7 @@ class DirectTopUpCartTest extends TestCase
         $this->assertNotSame(translate('out_of_stock!'), $response['message']);
     }
 
-    public function test_direct_topup_rejects_quantity_below_minimum(): void
+    public function test_direct_topup_rejects_non_positive_quantity(): void
     {
         $productId = 502;
 
@@ -239,9 +229,6 @@ class DirectTopUpCartTest extends TestCase
             'is_active' => true,
             'is_direct_topup' => true,
             'direct_topup_account_label' => 'Player ID',
-            'direct_topup_min_quantity' => 100,
-            'direct_topup_max_quantity' => 10000,
-            'direct_topup_price_per_unit' => 0.01,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -251,7 +238,7 @@ class DirectTopUpCartTest extends TestCase
         $request = Request::create('/api/v1/cart/add', 'POST', [
             'quantity' => 1,
             'direct_topup_account_id' => 'player123',
-            'direct_topup_quantity' => 50,
+            'direct_topup_quantity' => 0,
         ]);
 
         $response = CartManager::addToCartDigitalProduct(
@@ -262,7 +249,6 @@ class DirectTopUpCartTest extends TestCase
         );
 
         $this->assertSame(0, $response['status']);
-        $this->assertStringContainsString('100', $response['message']);
     }
 
     public function test_direct_topup_bypasses_digital_code_stock_gate(): void
@@ -302,9 +288,6 @@ class DirectTopUpCartTest extends TestCase
             'is_active' => true,
             'is_direct_topup' => true,
             'direct_topup_account_label' => 'Player ID',
-            'direct_topup_min_quantity' => 100,
-            'direct_topup_max_quantity' => 10000,
-            'direct_topup_price_per_unit' => 0.01,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -432,9 +415,6 @@ class DirectTopUpCartTest extends TestCase
             'is_active' => true,
             'is_direct_topup' => true,
             'direct_topup_account_label' => 'Player ID',
-            'direct_topup_min_quantity' => 100,
-            'direct_topup_max_quantity' => 10000,
-            'direct_topup_price_per_unit' => 0.01,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -457,12 +437,8 @@ class DirectTopUpCartTest extends TestCase
             'code' => $product->code,
             'product_type' => $product->product_type,
             'digital_product_type' => $product->digital_product_type,
-            'is_direct_topup' => $product->is_direct_topup,
-            'direct_topup_account_label' => $product->direct_topup_account_label,
-            'direct_topup_min_quantity' => $product->direct_topup_min_quantity,
-            'direct_topup_max_quantity' => $product->direct_topup_max_quantity,
-            'direct_topup_price_per_unit' => $product->direct_topup_price_per_unit,
             'unit_price' => $product->unit_price,
+            'minimum_order_qty' => $product->minimum_order_qty ?? 1,
             'current_stock' => 0,
             'variation' => json_encode([]),
             'discount' => 0,
@@ -483,6 +459,7 @@ class DirectTopUpCartTest extends TestCase
             'product_type' => 'digital',
             'digital_product_type' => 'ready_product',
             'unit_price' => 1,
+            'minimum_order_qty' => 100,
             'variation' => '[]',
             'status' => 1,
         ]);

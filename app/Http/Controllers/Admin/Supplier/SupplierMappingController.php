@@ -75,11 +75,20 @@ class SupplierMappingController extends BaseController
             ]);
         }
 
+        $supplierApiId = (int) $request->get('supplier_api_id');
+        $exceptMappingId = (int) $request->get('except_mapping_id');
+
         $query = $this->applyCategoryFilters(
             query: $this->inHouseDigitalProductQuery(),
             categoryId: $categoryId,
             subCategoryId: $subCategoryId,
             subSubCategoryId: $subSubCategoryId,
+        );
+
+        $query = $this->excludeProductsMappedToSupplier(
+            query: $query,
+            supplierApiId: $supplierApiId,
+            exceptMappingId: $exceptMappingId,
         );
 
         $products = $query->orderBy('name')->get(['id', 'name']);
@@ -108,9 +117,6 @@ class SupplierMappingController extends BaseController
             'is_customizable' => 'nullable|boolean',
             'is_direct_topup' => 'nullable|boolean',
             'direct_topup_account_label' => 'nullable|string|max:255',
-            'direct_topup_min_quantity' => 'nullable|numeric|min:0',
-            'direct_topup_max_quantity' => 'nullable|numeric|min:0',
-            'direct_topup_price_per_unit' => 'nullable|numeric|min:0',
             'min_amount' => 'nullable|numeric|min:0',
             'max_amount' => 'nullable|numeric|min:0|gte:min_amount',
         ]);
@@ -129,12 +135,11 @@ class SupplierMappingController extends BaseController
 
         $directTopupAttributes = $this->resolveDirectTopupAttributesFromRequest($request);
 
-        // A product can only be mapped to one supplier
-        $exists = SupplierProductMapping::where('product_id', $request->input('product_id'))
-            ->exists();
-
-        if ($exists) {
-            Toastr::error(translate('this_product_is_already_mapped_to_a_supplier') ?: 'This product is already mapped to a supplier. Each product can only have one supplier mapping.');
+        if ($this->productAlreadyMappedToSupplier(
+            productId: (int) $request->input('product_id'),
+            supplierApiId: (int) $request->input('supplier_api_id'),
+        )) {
+            Toastr::error(translate('this_product_is_already_mapped_to_this_supplier') ?: 'This product is already mapped to this supplier.');
 
             return redirect()->back()->withInput();
         }
@@ -149,9 +154,6 @@ class SupplierMappingController extends BaseController
             'markup_type' => $request->input('markup_type'),
             'markup_value' => $request->input('markup_value', 0),
             'priority' => $request->input('priority', 0),
-            'auto_restock' => true,
-            'min_stock_threshold' => 5,
-            'max_restock_qty' => 50,
             'is_active' => true,
             'is_customizable' => (bool) $request->input('is_customizable', false),
             ...$directTopupAttributes,
@@ -196,9 +198,6 @@ class SupplierMappingController extends BaseController
             'is_customizable' => 'nullable|boolean',
             'is_direct_topup' => 'nullable|boolean',
             'direct_topup_account_label' => 'nullable|string|max:255',
-            'direct_topup_min_quantity' => 'nullable|numeric|min:0',
-            'direct_topup_max_quantity' => 'nullable|numeric|min:0',
-            'direct_topup_price_per_unit' => 'nullable|numeric|min:0',
             'min_amount' => 'nullable|numeric|min:0',
             'max_amount' => 'nullable|numeric|min:0|gte:min_amount',
         ]);
@@ -221,13 +220,13 @@ class SupplierMappingController extends BaseController
         $productChanged = (int) $mapping->product_id !== (int) $request->input('product_id');
         $directTopupAttributes = $this->resolveDirectTopupAttributesFromRequest($request);
 
-        if ($productChanged) {
-            $exists = SupplierProductMapping::where('product_id', $request->input('product_id'))
-                ->where('id', '!=', $id)
-                ->exists();
-
-            if ($exists) {
-                Toastr::error(translate('this_product_is_already_mapped_to_a_supplier') ?: 'This product is already mapped to a supplier.');
+        if ($productChanged || $supplierChanged) {
+            if ($this->productAlreadyMappedToSupplier(
+                productId: (int) $request->input('product_id'),
+                supplierApiId: (int) $request->input('supplier_api_id'),
+                exceptMappingId: $id,
+            )) {
+                Toastr::error(translate('this_product_is_already_mapped_to_this_supplier') ?: 'This product is already mapped to this supplier.');
 
                 return redirect()->back()->withInput();
             }
@@ -381,10 +380,7 @@ class SupplierMappingController extends BaseController
     /**
      * @return array{
      *     is_direct_topup: bool,
-     *     direct_topup_account_label: ?string,
-     *     direct_topup_min_quantity: mixed,
-     *     direct_topup_max_quantity: mixed,
-     *     direct_topup_price_per_unit: mixed
+     *     direct_topup_account_label: ?string
      * }
      */
     private function resolveDirectTopupAttributesFromRequest(Request $request): array
@@ -395,9 +391,6 @@ class SupplierMappingController extends BaseController
             return [
                 'is_direct_topup' => false,
                 'direct_topup_account_label' => null,
-                'direct_topup_min_quantity' => null,
-                'direct_topup_max_quantity' => null,
-                'direct_topup_price_per_unit' => null,
             ];
         }
 
@@ -414,10 +407,40 @@ class SupplierMappingController extends BaseController
         return [
             'is_direct_topup' => $isDirectTopup,
             'direct_topup_account_label' => $accountLabel,
-            'direct_topup_min_quantity' => $isDirectTopup ? 1 : null,
-            'direct_topup_max_quantity' => $isDirectTopup ? 1 : null,
-            'direct_topup_price_per_unit' => null,
         ];
+    }
+
+    private function excludeProductsMappedToSupplier(
+        Builder $query,
+        int $supplierApiId,
+        int $exceptMappingId = 0,
+    ): Builder {
+        if ($supplierApiId <= 0) {
+            return $query;
+        }
+
+        $mappedProductIds = SupplierProductMapping::query()
+            ->where('supplier_api_id', $supplierApiId)
+            ->when($exceptMappingId > 0, fn (Builder $mappingQuery) => $mappingQuery->where('id', '!=', $exceptMappingId))
+            ->pluck('product_id');
+
+        if ($mappedProductIds->isEmpty()) {
+            return $query;
+        }
+
+        return $query->whereNotIn('id', $mappedProductIds);
+    }
+
+    private function productAlreadyMappedToSupplier(
+        int $productId,
+        int $supplierApiId,
+        ?int $exceptMappingId = null,
+    ): bool {
+        return SupplierProductMapping::query()
+            ->where('product_id', $productId)
+            ->where('supplier_api_id', $supplierApiId)
+            ->when($exceptMappingId, fn (Builder $query) => $query->where('id', '!=', $exceptMappingId))
+            ->exists();
     }
 
     /**

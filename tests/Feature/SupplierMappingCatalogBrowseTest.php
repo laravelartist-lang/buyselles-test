@@ -109,12 +109,10 @@ class SupplierMappingCatalogBrowseTest extends TestCase
             $table->string('markup_type')->default('percent');
             $table->decimal('markup_value', 24, 4)->default(0);
             $table->integer('priority')->default(0);
-            $table->integer('min_stock_threshold')->default(0);
-            $table->integer('max_restock_qty')->default(1);
-            $table->boolean('auto_restock')->default(true);
             $table->boolean('is_active')->default(true);
             $table->boolean('is_customizable')->default(false);
             $table->boolean('is_direct_topup')->default(false);
+            $table->string('direct_topup_account_label', 255)->nullable();
             $table->timestamps();
         });
 
@@ -172,8 +170,6 @@ class SupplierMappingCatalogBrowseTest extends TestCase
             'markup_type' => 'percent',
             'markup_value' => 10,
             'priority' => 0,
-            'min_stock_threshold' => 5,
-            'max_restock_qty' => 50,
             'is_active' => true,
             'created_at' => now(),
             'updated_at' => now(),
@@ -223,8 +219,6 @@ class SupplierMappingCatalogBrowseTest extends TestCase
             'markup_type' => 'percent',
             'markup_value' => 10,
             'priority' => 0,
-            'min_stock_threshold' => 5,
-            'max_restock_qty' => 50,
             'is_active' => true,
             'created_at' => now(),
             'updated_at' => now(),
@@ -286,8 +280,6 @@ class SupplierMappingCatalogBrowseTest extends TestCase
             'markup_type' => 'percent',
             'markup_value' => 0,
             'priority' => 0,
-            'min_stock_threshold' => 0,
-            'max_restock_qty' => 1,
             'is_active' => true,
             'created_at' => now(),
             'updated_at' => now(),
@@ -333,8 +325,6 @@ class SupplierMappingCatalogBrowseTest extends TestCase
             'markup_type' => 'percent',
             'markup_value' => 10,
             'priority' => 0,
-            'min_stock_threshold' => 5,
-            'max_restock_qty' => 50,
             'is_active' => true,
             'created_at' => now(),
             'updated_at' => now(),
