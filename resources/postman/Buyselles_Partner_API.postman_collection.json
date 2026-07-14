@@ -1,0 +1,945 @@
+{
+    "info": {
+        "name": "Buyselles Partner API v1",
+        "_postman_id": "buyselles-partner-api-v1",
+        "description": "Complete Partner/Reseller API for Buyselles.com marketplace.\n\n**Authentication:** Every request requires two headers:\n- `X-API-KEY` — your API key\n- `X-API-SECRET` — your API secret\n\n**Base URL variable:** Set `{{base_url}}` in the environment (e.g. `http://localhost:8000`).\n\n**Catalog:** In-house products by default. Pass `include_vendor=1` to include vendor products. Supplier-mapped products (Bamboo, Golf API) appear as in-house SKUs with `fulfillment_type: supplier_codes`.\n\n**Permissions required per endpoint:**\n- List/view products → `products.list`\n- Create order → `orders.create`\n- View order → `orders.view`\n- Balance → `balance.view`\n\n**Escrow:** Every order holds funds in the vendor's `pending_balance` for 48 hours before auto-releasing to `available_balance`.\n\n**Idempotency:** Send `X-Idempotency-Key` on POST /orders to prevent double-charging on retries.",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "variable": [
+        {
+            "key": "base_url",
+            "value": "http://localhost:8000",
+            "type": "string",
+            "description": "Change to your server URL"
+        },
+        {
+            "key": "api_key",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "api_secret",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "last_order_id",
+            "value": "",
+            "type": "string",
+            "description": "Auto-populated after a successful order creation"
+        },
+        {
+            "key": "last_product_id",
+            "value": "",
+            "type": "string",
+            "description": "Set manually with a product ID found from the products list"
+        }
+    ],
+    "auth": {
+        "type": "apikey",
+        "apikey": [
+            {
+                "key": "key",
+                "value": "X-API-KEY",
+                "type": "string"
+            },
+            {
+                "key": "value",
+                "value": "{{api_key}}",
+                "type": "string"
+            },
+            {
+                "key": "in",
+                "value": "header",
+                "type": "string"
+            }
+        ]
+    },
+    "item": [
+        {
+            "name": "1. Health Check",
+            "item": [
+                {
+                    "name": "Balance (quick auth test)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "X-API-KEY",
+                                "value": "{{api_key}}"
+                            },
+                            {
+                                "key": "X-API-SECRET",
+                                "value": "{{api_secret}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/partner/balance",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "partner",
+                                "balance"
+                            ]
+                        },
+                        "description": "Quick auth verification. Returns wallet balance. If this returns 200, credentials are valid."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                                    "pm.test('Has balance field', () => {",
+                                    "    const j = pm.response.json();",
+                                    "    pm.expect(j.data).to.have.property('balance');",
+                                    "    pm.expect(j.data.balance).to.be.a('number');",
+                                    "    console.log('Wallet balance: $' + j.data.balance);",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "response": [
+                        {
+                            "name": "200 OK — Balance returned",
+                            "status": "OK",
+                            "code": 200,
+                            "body": "{\n  \"data\": {\n    \"balance\": 80.00,\n    \"currency\": \"USD\",\n    \"key_id\": 1,\n    \"key_name\": \"My Integration Key\"\n  }\n}"
+                        },
+                        {
+                            "name": "401 — Missing credentials",
+                            "status": "Unauthorized",
+                            "code": 401,
+                            "body": "{\n  \"error\": \"Missing API credentials. Provide X-API-KEY and X-API-SECRET headers.\"\n}"
+                        },
+                        {
+                            "name": "403 — Key not yet active (pending approval)",
+                            "status": "Forbidden",
+                            "code": 403,
+                            "body": "{\n  \"error\": \"API key is awaiting admin approval.\"\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "Balance — Wrong credentials (expect 401)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "X-API-KEY",
+                                "value": "rslr_WRONG_KEY_HERE"
+                            },
+                            {
+                                "key": "X-API-SECRET",
+                                "value": "wrong_secret"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/partner/balance",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "partner",
+                                "balance"
+                            ]
+                        },
+                        "description": "Should return 401 Invalid API key."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Expect 401', () => pm.response.to.have.status(401));"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "Balance — Missing headers (expect 401)",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/partner/balance",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "partner",
+                                "balance"
+                            ]
+                        },
+                        "description": "No headers at all — should return 401 with missing credentials message."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Expect 401', () => pm.response.to.have.status(401));",
+                                    "pm.test('Has error message', () => {",
+                                    "    pm.expect(pm.response.json().error).to.include('Missing API credentials');",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "2. Products",
+            "item": [
+                {
+                    "name": "List Products",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "X-API-KEY",
+                                "value": "{{api_key}}"
+                            },
+                            {
+                                "key": "X-API-SECRET",
+                                "value": "{{api_secret}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/partner/products",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "partner",
+                                "products"
+                            ],
+                            "query": [
+                                {
+                                    "key": "page",
+                                    "value": "1",
+                                    "description": "Page number (default: 1)"
+                                },
+                                {
+                                    "key": "per_page",
+                                    "value": "20",
+                                    "description": "Items per page (max: 100, default: 20)"
+                                },
+                                {
+                                    "key": "search",
+                                    "value": "",
+                                    "description": "Optional product name search",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "category_id",
+                                    "value": "",
+                                    "description": "Optional filter by category ID",
+                                    "disabled": true
+                                }
+                            ]
+                        },
+                        "description": "Returns all admin-approved digital (ready_product type) products with real-time available stock counts.\n\nOnly products with `partner_approved=1` are returned. Admin must approve each product individually.\n\n**Required permission:** `products.list`"
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                                    "pm.test('Has data array', () => {",
+                                    "    const j = pm.response.json();",
+                                    "    pm.expect(j).to.have.property('data');",
+                                    "    pm.expect(j.data).to.be.an('array');",
+                                    "    pm.expect(j).to.have.property('meta');",
+                                    "    console.log('Total products available: ' + j.meta.total);",
+                                    "});",
+                                    "// Auto-save first product ID for later requests",
+                                    "const j = pm.response.json();",
+                                    "if (j.data && j.data.length > 0) {",
+                                    "    pm.collectionVariables.set('last_product_id', j.data[0].id);",
+                                    "    console.log('Saved product ID: ' + j.data[0].id);",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "response": [
+                        {
+                            "name": "200 OK — Products list",
+                            "status": "OK",
+                            "code": 200,
+                            "body": "{\n  \"data\": [\n    {\n      \"id\": 1,\n      \"name\": \"Steam Gift Card $10\",\n      \"slug\": \"steam-gift-card-10\",\n      \"category_id\": 5,\n      \"unit_price\": 10.00,\n      \"purchase_price\": 8.50,\n      \"available_stock\": 47,\n      \"thumbnail\": \"https://example.com/storage/product/steam.jpg\"\n    }\n  ],\n  \"meta\": {\n    \"current_page\": 1,\n    \"last_page\": 1,\n    \"per_page\": 20,\n    \"total\": 1\n  }\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "List Products — Search by name",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "X-API-KEY",
+                                "value": "{{api_key}}"
+                            },
+                            {
+                                "key": "X-API-SECRET",
+                                "value": "{{api_secret}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/partner/products?search=steam",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "partner",
+                                "products"
+                            ],
+                            "query": [
+                                {
+                                    "key": "search",
+                                    "value": "steam"
+                                }
+                            ]
+                        },
+                        "description": "Filter products by name keyword."
+                    }
+                },
+                {
+                    "name": "Get Product Detail",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "X-API-KEY",
+                                "value": "{{api_key}}"
+                            },
+                            {
+                                "key": "X-API-SECRET",
+                                "value": "{{api_secret}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/partner/products/{{last_product_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "partner",
+                                "products",
+                                "{{last_product_id}}"
+                            ]
+                        },
+                        "description": "Get full details of a single product including real-time stock count, description, and pricing.\n\n`{{last_product_id}}` is auto-set from the List Products test script. Or replace with a numeric product ID."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                                    "pm.test('Has product data', () => {",
+                                    "    const j = pm.response.json();",
+                                    "    pm.expect(j.data).to.have.property('id');",
+                                    "    pm.expect(j.data).to.have.property('available_stock');",
+                                    "    console.log('Stock available: ' + j.data.available_stock);",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "response": [
+                        {
+                            "name": "200 OK — Product detail",
+                            "status": "OK",
+                            "code": 200,
+                            "body": "{\n  \"data\": {\n    \"id\": 1,\n    \"name\": \"Steam Gift Card $10\",\n    \"slug\": \"steam-gift-card-10\",\n    \"category_id\": 5,\n    \"sub_category_id\": null,\n    \"brand_id\": null,\n    \"unit_price\": 10.00,\n    \"purchase_price\": 8.50,\n    \"available_stock\": 47,\n    \"thumbnail\": \"https://example.com/storage/product/steam.jpg\",\n    \"description\": \"<p>Official Steam gift card...</p>\"\n  }\n}"
+                        },
+                        {
+                            "name": "404 — Product not found or not partner-approved",
+                            "status": "Not Found",
+                            "code": 404,
+                            "body": "{\n  \"error\": \"Product not found.\"\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "Get Product Detail — Not found (expect 404)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "X-API-KEY",
+                                "value": "{{api_key}}"
+                            },
+                            {
+                                "key": "X-API-SECRET",
+                                "value": "{{api_secret}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/partner/products/999999",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "partner",
+                                "products",
+                                "999999"
+                            ]
+                        },
+                        "description": "Non-existent product ID — should return 404."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Expect 404', () => pm.response.to.have.status(404));"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "3. Orders",
+            "item": [
+                {
+                    "name": "Create Order",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "X-API-KEY",
+                                "value": "{{api_key}}"
+                            },
+                            {
+                                "key": "X-API-SECRET",
+                                "value": "{{api_secret}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Idempotency-Key",
+                                "value": "order-{{$guid}}",
+                                "description": "Optional but recommended — prevents double-charging on retry. Use a unique value per order attempt."
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"product_id\": {{last_product_id}},\n  \"quantity\": 1,\n  \"reference\": \"my-internal-ref-001\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/partner/orders",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "partner",
+                                "orders"
+                            ]
+                        },
+                        "description": "Place a digital product order. On success:\n- Wallet is debited immediately\n- Digital codes are assigned and returned in the response\n- Vendor receives funds in `pending_balance` (48-hour escrow)\n- After 48h, auto-released to `available_balance`\n\n**Idempotency:** Send any unique string in `X-Idempotency-Key`. If you retry with the same key, you get the original response — no double charge.\n\n**Required permission:** `orders.create`\n\n**Body fields:**\n- `product_id` *(required)* — ID from the products list\n- `quantity` *(required)* — 1 to 100\n- `reference` *(optional)* — your own order reference"
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status 201 (created)', () => pm.response.to.have.status(201));",
+                                    "const j = pm.response.json();",
+                                    "pm.test('Has codes returned', () => {",
+                                    "    pm.expect(j.data).to.have.property('codes');",
+                                    "    pm.expect(j.data.codes).to.be.an('array');",
+                                    "    pm.expect(j.data.codes.length).to.be.greaterThan(0);",
+                                    "    console.log('Codes received: ', JSON.stringify(j.data.codes));",
+                                    "});",
+                                    "pm.test('Status is fulfilled', () => {",
+                                    "    pm.expect(j.data.status).to.equal('fulfilled');",
+                                    "});",
+                                    "// Save order ID for subsequent requests",
+                                    "if (j.data && j.data.order_id) {",
+                                    "    pm.collectionVariables.set('last_order_id', j.data.order_id);",
+                                    "    console.log('Saved order_id: ' + j.data.order_id);",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "response": [
+                        {
+                            "name": "201 Created — Order fulfilled",
+                            "status": "Created",
+                            "code": 201,
+                            "body": "{\n  \"data\": {\n    \"order_id\": 42,\n    \"product_id\": 1,\n    \"product_name\": \"Steam Gift Card $10\",\n    \"quantity_requested\": 1,\n    \"quantity_fulfilled\": 1,\n    \"total_cost\": 10.00,\n    \"status\": \"fulfilled\",\n    \"reference\": \"my-internal-ref-001\",\n    \"codes\": [\n      {\n        \"code\": \"STEAM-XXXX-YYYY-ZZZZ\",\n        \"serial\": \"SN-001\",\n        \"expiry\": \"2026-12-31\"\n      }\n    ]\n  }\n}"
+                        },
+                        {
+                            "name": "402 — Insufficient balance",
+                            "status": "Payment Required",
+                            "code": 402,
+                            "body": "{\n  \"error\": \"Insufficient wallet balance.\",\n  \"balance\": 5.00,\n  \"required\": 10.00,\n  \"status\": 402\n}"
+                        },
+                        {
+                            "name": "409 — Insufficient stock",
+                            "status": "Conflict",
+                            "code": 409,
+                            "body": "{\n  \"error\": \"Insufficient stock.\",\n  \"available\": 0,\n  \"requested\": 1,\n  \"status\": 409\n}"
+                        },
+                        {
+                            "name": "422 — Validation error",
+                            "status": "Unprocessable Entity",
+                            "code": 422,
+                            "body": "{\n  \"errors\": {\n    \"product_id\": [\"The product id field is required.\"],\n    \"quantity\": [\"The quantity field is required.\"]\n  }\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "Create Order — Idempotency Replay Test",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "X-API-KEY",
+                                "value": "{{api_key}}"
+                            },
+                            {
+                                "key": "X-API-SECRET",
+                                "value": "{{api_secret}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Idempotency-Key",
+                                "value": "idempotency-test-fixed-key-abc123",
+                                "description": "Fixed key — send twice to verify idempotency (no double charge)"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"product_id\": {{last_product_id}},\n  \"quantity\": 1,\n  \"reference\": \"idempotency-test\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/partner/orders",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "partner",
+                                "orders"
+                            ]
+                        },
+                        "description": "Send this request TWICE with the same `X-Idempotency-Key`. The second response should include `\"idempotent_replay\": true` and return the same order ID with no additional charge."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "const j = pm.response.json();",
+                                    "if (pm.response.code === 201) {",
+                                    "    if (j.idempotent_replay) {",
+                                    "        pm.test('Idempotency replay confirmed (no double charge)', () => {",
+                                    "            pm.expect(j.idempotent_replay).to.be.true;",
+                                    "        });",
+                                    "        console.log('REPLAY: same order returned, balance not debited again');",
+                                    "    } else {",
+                                    "        pm.test('First call — created successfully', () => {",
+                                    "            pm.expect(j.data.order_id).to.be.a('number');",
+                                    "        });",
+                                    "        console.log('First call. Run again to test idempotency.');",
+                                    "    }",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "Create Order — Invalid product (expect 422)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "X-API-KEY",
+                                "value": "{{api_key}}"
+                            },
+                            {
+                                "key": "X-API-SECRET",
+                                "value": "{{api_secret}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"product_id\": 999999,\n  \"quantity\": 1\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/partner/orders",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "partner",
+                                "orders"
+                            ]
+                        },
+                        "description": "Send a non-existent product_id — should return 422 validation error (fails the `exists:products,id` rule)."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Expect 422', () => pm.response.to.have.status(422));"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "Create Order — Quantity = 0 (expect 422)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "X-API-KEY",
+                                "value": "{{api_key}}"
+                            },
+                            {
+                                "key": "X-API-SECRET",
+                                "value": "{{api_secret}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"product_id\": {{last_product_id}},\n  \"quantity\": 0\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/partner/orders",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "partner",
+                                "orders"
+                            ]
+                        }
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Expect 422 for quantity 0', () => pm.response.to.have.status(422));"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "Get Order Detail",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "X-API-KEY",
+                                "value": "{{api_key}}"
+                            },
+                            {
+                                "key": "X-API-SECRET",
+                                "value": "{{api_secret}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/partner/orders/{{last_order_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "partner",
+                                "orders",
+                                "{{last_order_id}}"
+                            ]
+                        },
+                        "description": "Retrieve a specific order with its full code list. `{{last_order_id}}` is auto-set by the Create Order test script.\n\nCodes are returned decrypted in this response.\n\n**Required permission:** `orders.view`"
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                                    "pm.test('Has codes', () => {",
+                                    "    const j = pm.response.json();",
+                                    "    pm.expect(j.data).to.have.property('codes');",
+                                    "    pm.expect(j.data.codes).to.be.an('array');",
+                                    "    console.log('Codes in order: ', JSON.stringify(j.data.codes));",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "response": [
+                        {
+                            "name": "200 OK — Order with codes",
+                            "status": "OK",
+                            "code": 200,
+                            "body": "{\n  \"data\": {\n    \"order_id\": 42,\n    \"status\": \"delivered\",\n    \"payment_status\": \"paid\",\n    \"total\": 10.00,\n    \"created_at\": \"2026-04-09T12:34:56+00:00\",\n    \"items\": [\n      {\n        \"product_id\": 1,\n        \"quantity\": 1,\n        \"price\": 10.00\n      }\n    ],\n    \"codes\": [\n      {\n        \"code\": \"STEAM-XXXX-YYYY-ZZZZ\",\n        \"serial\": \"SN-001\",\n        \"product_id\": 1,\n        \"expiry\": \"2026-12-31\"\n      }\n    ]\n  }\n}"
+                        },
+                        {
+                            "name": "404 — Order not found or not yours",
+                            "status": "Not Found",
+                            "code": 404,
+                            "body": "{\n  \"error\": \"Order not found.\"\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "Get Order Detail — Not mine (expect 404)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "X-API-KEY",
+                                "value": "{{api_key}}"
+                            },
+                            {
+                                "key": "X-API-SECRET",
+                                "value": "{{api_secret}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/partner/orders/1",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "partner",
+                                "orders",
+                                "1"
+                            ]
+                        },
+                        "description": "Attempt to access a low-numbered order that likely belongs to another seller — should return 404 (orders are scoped to the key's seller_id)."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Expect 404 — not accessible', () => pm.response.to.have.status(404));"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "4. Rate Limiting",
+            "item": [
+                {
+                    "name": "Rate Limit — Rapid fire (60 req/min limit)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "X-API-KEY",
+                                "value": "{{api_key}}"
+                            },
+                            {
+                                "key": "X-API-SECRET",
+                                "value": "{{api_secret}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/partner/balance",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "partner",
+                                "balance"
+                            ]
+                        },
+                        "description": "Use Postman Runner with 65+ iterations to trigger the 60 req/min rate limit. Expect 429 responses after the 60th request within a minute."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "if (pm.response.code === 429) {",
+                                    "    pm.test('Rate limit properly enforced (429)', () => pm.response.to.have.status(429));",
+                                    "    console.log('Rate limit hit! Retry-After: ' + pm.response.headers.get('Retry-After') + 's');",
+                                    "} else {",
+                                    "    pm.test('Under rate limit, got 200', () => pm.response.to.have.status(200));",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "response": [
+                        {
+                            "name": "429 — Rate limit exceeded",
+                            "status": "Too Many Requests",
+                            "code": 429,
+                            "body": "{\n  \"error\": \"Rate limit exceeded.\",\n  \"retry_after_seconds\": 34\n}"
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "5. Security Tests",
+            "item": [
+                {
+                    "name": "IP Whitelist — How it works",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "X-API-KEY",
+                                "value": "{{api_key}}"
+                            },
+                            {
+                                "key": "X-API-SECRET",
+                                "value": "{{api_secret}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/partner/balance",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "partner",
+                                "balance"
+                            ]
+                        },
+                        "description": "**IP Whitelist Behavior:**\n\n- If `allowed_ips` is **empty** → ALL IPs are allowed (open mode, useful for development)\n- If `allowed_ips` has entries → ONLY those IPs are allowed; all others get 403\n\nThis is why 127.0.0.1 works even without explicit whitelisting — the list is empty.\n\nTo restrict access: add specific IPs in the Vendor Developer > IP Whitelist section."
+                    }
+                },
+                {
+                    "name": "Correct Key + Wrong Secret (expect 401)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "X-API-KEY",
+                                "value": "{{api_key}}"
+                            },
+                            {
+                                "key": "X-API-SECRET",
+                                "value": "totally_wrong_secret"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/partner/balance",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "partner",
+                                "balance"
+                            ]
+                        }
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Correct key + wrong secret → 401', () => pm.response.to.have.status(401));"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}
