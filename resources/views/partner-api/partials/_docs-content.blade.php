@@ -1,4 +1,10 @@
             {{-- Table of contents --}}
+@php
+    $apiExamples ??= app(\App\Services\Partner\PartnerApiDocumentationExamplesService::class)->build();
+    $apiExampleFormatter ??= app(\App\Services\Partner\PartnerApiDocumentationExamplesService::class);
+    $sampleProductId = $apiExamples['sample_product_id'] ?? 1;
+    $sampleOrderId = $apiExamples['sample_order_id'] ?? 100001;
+@endphp
             <div class="info-box mb-4">
                 <div class="fw-semibold mb-2"><i class="fi fi-rr-list me-1 text-primary"></i> Contents</div>
                 <div class="d-flex flex-wrap gap-3">
@@ -74,7 +80,7 @@ Accept: application/json</pre>
             {{-- ── Product Catalog ─────────────────────────────────────── --}}
             <div class="docs-section" id="product-catalog">
                 <h5 class="fw-bold mb-3">Product Catalog</h5>
-                <p>By default, the Partner API returns <strong>in-house</strong> digital products only (<code>added_by = admin</code>) that are <code>partner_approved</code> and use <code>ready_product</code> or <code>ready_after_sell</code> fulfillment. Direct top-up products are excluded in v1.</p>
+                <p>By default, the Partner API returns <strong>in-house</strong> digital products only (<code>added_by = admin</code>) that use <code>ready_product</code> or <code>ready_after_sell</code> fulfillment. Vendor products require <code>partner_approved</code> before they appear. Direct top-up products are excluded in v1.</p>
                 <div class="info-box mb-3">
                     <strong>Upstream suppliers (Bamboo, Golf API):</strong> Supplier catalog SKUs are not exposed directly. Admin maps a supplier product to an in-house digital SKU; partners order that in-house product ID. Fulfillment uses the mapped supplier when local codes are unavailable.
                 </div>
@@ -88,17 +94,8 @@ Accept: application/json</pre>
                         <tr><td><code>seller_type</code></td><td><code>in_house</code> | <code>vendor</code></td><td>Filter by product owner type</td></tr>
                     </tbody>
                 </table>
-                <div class="fw-semibold mb-2">Product response fields</div>
-<pre class="code-block">{
-  "id": 14,
-  "name": "PUBG UC 200",
-  "unit_price": 20.00,
-  "available_stock": 379,
-  "seller_type": "in_house",
-  "fulfillment_type": "supplier_codes",
-  "supplier": "bamboo",
-  "requires_account_id": false
-}</pre>
+                <div class="fw-semibold mb-2">Product response fields <span class="text-muted small">(sanitized example — structure matches live API)</span></div>
+<pre class="code-block">{!! e($apiExampleFormatter->formatJson($apiExamples['catalog_field_sample'])) !!}</pre>
                 <p class="text-muted small mt-2">Direct top-up products (<code>requires_account_id: true</code>) will be supported in a future API version.</p>
             </div>
 
@@ -149,31 +146,8 @@ Accept: application/json</pre>
                                 <tr><td><code>seller_type</code></td><td>string</td><td>No</td><td><code>in_house</code> or <code>vendor</code></td></tr>
                             </tbody>
                         </table>
-                        <div class="fw-semibold mb-2">{{ translate('response_example') }} <span class="badge bg-success text-white">200</span></div>
-<pre class="code-block">{
-  "data": [
-    {
-      "id": 14,
-      "name": "PUBG UC 200",
-      "slug": "pubg-uc-200",
-      "category_id": 1,
-      "unit_price": 20.00,
-      "purchase_price": 0,
-      "available_stock": 379,
-      "thumbnail": "https://{{ parse_url(config('app.url'), PHP_URL_HOST) }}/storage/product/thumbnail/example.webp",
-      "seller_type": "in_house",
-      "fulfillment_type": "local_codes",
-      "supplier": null,
-      "requires_account_id": false
-    }
-  ],
-  "meta": {
-    "current_page": 1,
-    "last_page": 5,
-    "per_page": 20,
-    "total": 98
-  }
-}</pre>
+                        <div class="fw-semibold mb-2">{{ translate('response_example') }} <span class="badge bg-success text-white">200</span> <span class="text-muted small">— sanitized example response</span></div>
+<pre class="code-block">{!! e($apiExampleFormatter->formatJson($apiExamples['products_list'])) !!}</pre>
                     </div>
                 </div>
 
@@ -186,26 +160,8 @@ Accept: application/json</pre>
                     </div>
                     <div class="endpoint-body">
                         <p class="text-muted mb-3">{{ translate('product_detail_endpoint_description') }}</p>
-                        <div class="fw-semibold mb-2">{{ translate('response_example') }} <span class="badge bg-success text-white">200</span></div>
-<pre class="code-block">{
-  "data": {
-    "id": 14,
-    "name": "PUBG UC 200",
-    "slug": "pubg-uc-200",
-    "category_id": 1,
-    "sub_category_id": 2,
-    "brand_id": null,
-    "unit_price": 20.00,
-    "purchase_price": 0,
-    "available_stock": 379,
-    "thumbnail": "https://{{ parse_url(config('app.url'), PHP_URL_HOST) }}/storage/product/thumbnail/example.webp",
-    "description": "&lt;p&gt;200 PUBG Mobile UC delivered instantly.&lt;/p&gt;",
-    "seller_type": "in_house",
-    "fulfillment_type": "supplier_codes",
-    "supplier": "golf_api",
-    "requires_account_id": false
-  }
-}</pre>
+                        <div class="fw-semibold mb-2">{{ translate('response_example') }} <span class="badge bg-success text-white">200</span> <span class="text-muted small">— sanitized example for GET /api/v1/partner/products/{{ $sampleProductId }}</span></div>
+<pre class="code-block">{!! e($apiExampleFormatter->formatJson($apiExamples['product_detail'])) !!}</pre>
                         <div class="fw-semibold mb-2 mt-3">{{ translate('error_example') }} <span class="badge bg-danger text-white">404</span></div>
 <pre class="code-block">{ "error": "Product not found." }</pre>
                     </div>
@@ -258,46 +214,41 @@ X-Idempotency-Key: 550e8400-e29b-41d4-a716-446655440000
 Content-Type: application/json
 
 {
-  "product_id": 14,
+  "product_id": {{ $sampleProductId }},
   "quantity": 1,
   "reference": "your-internal-ref-001"
 }</pre>
-                        <div class="fw-semibold mb-2 mt-3">{{ translate('response_example') }} <span class="badge bg-primary text-white">201</span></div>
+                        <div class="fw-semibold mb-2 mt-3">{{ translate('response_example') }} <span class="badge bg-primary text-white">201</span> <span class="text-muted small">— sanitized fulfilled order example</span></div>
+<pre class="code-block">{!! e($apiExampleFormatter->formatJson($apiExamples['create_order_fulfilled'])) !!}</pre>
+@if($apiExamples['create_order_pending'])
+                        <div class="fw-semibold mb-2 mt-3">{{ translate('response_example') }} <span class="badge bg-warning text-dark">201</span> <span class="text-muted small">— supplier-backed order awaiting async fulfillment</span></div>
+<pre class="code-block">{!! e($apiExampleFormatter->formatJson($apiExamples['create_order_pending'])) !!}</pre>
+@else
+                        <div class="fw-semibold mb-2 mt-3">{{ translate('response_example') }} <span class="badge bg-warning text-dark">201</span> <span class="text-muted small">— supplier-backed order awaiting async fulfillment</span></div>
 <pre class="code-block">{
   "data": {
-    "order_id": 100053,
-    "product_id": 14,
-    "product_name": "PUBG UC 200",
-    "quantity_requested": 1,
-    "quantity_fulfilled": 1,
-    "total_cost": 20.00,
-    "status": "fulfilled",
-    "reference": "your-internal-ref-001",
-    "codes": [
-      {
-        "code": "TEWB-3440-DXGQ-6688",
-        "serial": "SN-0021",
-        "expiry": "2026-12-31"
-      }
-    ]
-  }
-}
-
-// Supplier-backed — codes may arrive asynchronously:
-{
-  "data": {
     "order_id": 100054,
-    "status": "pending_fulfillment",
+    "product_id": {{ $sampleProductId }},
+    "product_name": "Supplier-backed product",
+    "quantity_requested": 1,
     "quantity_fulfilled": 0,
+    "total_cost": 43.34,
+    "status": "pending_fulfillment",
+    "reference": "your-internal-ref-002",
     "codes": []
   }
-}
-
-// If X-Idempotency-Key was already used — same response returned, no charge:
-{
+}</pre>
+@endif
+@if($apiExamples['create_order_idempotent_replay'])
+                        <div class="fw-semibold mb-2 mt-3">Idempotent replay <span class="badge bg-secondary text-white">201</span> <span class="text-muted small">— same key returns cached response, no new charge</span></div>
+<pre class="code-block">{!! e($apiExampleFormatter->formatJson($apiExamples['create_order_idempotent_replay'])) !!}</pre>
+@else
+                        <div class="fw-semibold mb-2 mt-3">Idempotent replay <span class="badge bg-secondary text-white">201</span></div>
+<pre class="code-block">{
   "data": { ... },
   "idempotent_replay": true
 }</pre>
+@endif
                         <div class="fw-semibold mb-2 mt-3">{{ translate('error_examples') }}</div>
 <pre class="code-block">// 402 — Insufficient wallet balance
 { "error": "Insufficient wallet balance.", "balance": 5.00, "required": 20.00, "status": 402 }
@@ -325,34 +276,8 @@ Content-Type: application/json
                     </div>
                     <div class="endpoint-body">
                         <p class="text-muted mb-3">{{ translate('order_status_endpoint_description') }}</p>
-                        <div class="fw-semibold mb-2">{{ translate('response_example') }} <span class="badge bg-success text-white">200</span></div>
-<pre class="code-block">{
-  "data": {
-    "order_id": 100053,
-    "status": "delivered",
-    "payment_status": "paid",
-    "fulfillment_status": "fulfilled",
-    "quantity_requested": 1,
-    "quantity_fulfilled": 1,
-    "total": 20.00,
-    "created_at": "2026-04-09T12:34:56+00:00",
-    "items": [
-      {
-        "product_id": 14,
-        "quantity": 1,
-        "price": 20.00
-      }
-    ],
-    "codes": [
-      {
-        "code": "TEWB-3440-DXGQ-6688",
-        "serial": "SN-0021",
-        "product_id": 14,
-        "expiry": "2026-12-31"
-      }
-    ]
-  }
-}</pre>
+                        <div class="fw-semibold mb-2">{{ translate('response_example') }} <span class="badge bg-success text-white">200</span> <span class="text-muted small">— sanitized example for GET /api/v1/partner/orders/{{ $sampleOrderId }}</span></div>
+<pre class="code-block">{!! e($apiExampleFormatter->formatJson($apiExamples['order_detail'])) !!}</pre>
                         <div class="fw-semibold mb-2 mt-3">{{ translate('error_example') }} <span class="badge bg-danger text-white">404</span></div>
 <pre class="code-block">{ "error": "Order not found." }</pre>
                     </div>
@@ -367,15 +292,8 @@ Content-Type: application/json
                     </div>
                     <div class="endpoint-body">
                         <p class="text-muted mb-3">{{ translate('balance_endpoint_description') }}</p>
-                        <div class="fw-semibold mb-2">{{ translate('response_example') }} <span class="badge bg-success text-white">200</span></div>
-<pre class="code-block">{
-  "data": {
-    "balance": 80.00,
-    "currency": "USD",
-    "key_id": 1,
-    "key_name": "My Integration Key"
-  }
-}</pre>
+                        <div class="fw-semibold mb-2">{{ translate('response_example') }} <span class="badge bg-success text-white">200</span> <span class="text-muted small">— sanitized wallet example</span></div>
+<pre class="code-block">{!! e($apiExampleFormatter->formatJson($apiExamples['balance'])) !!}</pre>
                     </div>
                 </div>
             </div>
@@ -391,12 +309,14 @@ Content-Type: application/json
 <pre class="code-block">// First call — order created, balance deducted
 POST /api/v1/partner/orders
 X-Idempotency-Key: 550e8400-e29b-41d4-a716-446655440000
-→ 201 Created  { "data": { "order_id": 100053, ... } }
+→ 201 Created
+{!! e($apiExampleFormatter->formatJson($apiExamples['create_order_fulfilled'])) !!}
 
 // Retry with same key — no new order, no charge
 POST /api/v1/partner/orders
 X-Idempotency-Key: 550e8400-e29b-41d4-a716-446655440000
-→ 201 Created  { "data": { "order_id": 100053, ... }, "idempotent_replay": true }</pre>
+→ 201 Created
+{!! e($apiExampleFormatter->formatJson($apiExamples['create_order_idempotent_replay'] ?? array_merge($apiExamples['create_order_fulfilled'] ?? [], ['idempotent_replay' => true]))) !!}</pre>
             </div>
 
             {{-- ── Escrow ──────────────────────────────────────────────── --}}

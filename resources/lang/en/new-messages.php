@@ -11686,4 +11686,13 @@ return [
 	"username_is_field_is_required" => "Username is field is required",
 	"player_id_input_label" => "Player id input label",
 	"direct_topup_mapping_hint_simple" => "Direct topup mapping hint simple",
+	"request_body" => "Request body",
+	"client_error" => "Client error",
+	"all_methods" => "All methods",
+	"This_code_or_serial_number_already_exists" => "This code or serial number already exists",
+	"create_order" => "Create order",
+	"parameter" => "Parameter",
+	"download_postman_collection" => "Download postman collection",
+	"endpoints" => "Endpoints",
+	"query_parameters" => "Query parameters",
 ];

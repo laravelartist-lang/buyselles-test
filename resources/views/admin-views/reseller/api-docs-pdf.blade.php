@@ -88,10 +88,9 @@
         {{ translate('generated_on') ?: 'Generated on' }}: {{ $generatedAt }}
     </div>
 
-    @include('admin-views.reseller.partials._api-docs-content', [
-        'forPdf' => true,
-        'partnerApiBaseUrl' => $partnerApiBaseUrl,
-        'partnerApiHost' => $partnerApiHost,
+    @include('partner-api.partials._docs-content', [
+        'apiExamples' => app(\App\Services\Partner\PartnerApiDocumentationExamplesService::class)->build(),
+        'apiExampleFormatter' => app(\App\Services\Partner\PartnerApiDocumentationExamplesService::class),
     ])
 </body>
 </html>

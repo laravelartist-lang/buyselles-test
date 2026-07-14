@@ -42,6 +42,27 @@ class PartnerApiSupplierStockTest extends TestCase
         $response->assertJsonPath('data.0.fulfillment_type', 'supplier_codes');
     }
 
+    public function test_supplier_mapped_product_includes_local_code_pool_in_stock(): void
+    {
+        $this->seedProduct(id: 12, name: 'Hybrid Stock');
+        $this->seedSupplierMapping(productId: 12, driver: 'bamboo');
+        $this->seedDigitalCode(productId: 12, plainCode: 'HYBRID-LOCAL-1');
+        $this->seedDigitalCode(productId: 12, plainCode: 'HYBRID-LOCAL-2');
+
+        $manager = Mockery::mock(SupplierManager::class);
+        $manager->shouldReceive('getAvailableStockForMapping')
+            ->once()
+            ->with(Mockery::type(SupplierProductMapping::class))
+            ->andReturn(5);
+
+        $this->app->instance(SupplierManager::class, $manager);
+
+        $response = $this->getJson('/api/v1/partner/products', $this->partnerApiHeaders());
+
+        $response->assertOk();
+        $response->assertJsonPath('data.0.available_stock', 7);
+    }
+
     public function test_local_product_uses_local_code_pool_stock(): void
     {
         $this->seedProduct(id: 11, name: 'Local Codes');

@@ -99,6 +99,29 @@ class PartnerApiProductCatalogTest extends TestCase
         $response->assertJsonPath('data.0.id', 8);
     }
 
+    public function test_in_house_products_are_listed_without_partner_approval(): void
+    {
+        $this->seedProduct(id: 9, addedBy: 'admin', partnerApproved: false, name: 'Unapproved In House');
+
+        $response = $this->getJson('/api/v1/partner/products', $this->partnerApiHeaders());
+
+        $response->assertOk();
+        $response->assertJsonCount(1, 'data');
+        $response->assertJsonPath('data.0.id', 9);
+    }
+
+    public function test_unapproved_vendor_products_are_excluded_from_catalog(): void
+    {
+        $this->seedProduct(id: 10, addedBy: 'admin', partnerApproved: false, name: 'In House Visible');
+        $this->seedProduct(id: 11, addedBy: 'seller', partnerApproved: false, name: 'Vendor Hidden');
+
+        $response = $this->getJson('/api/v1/partner/products?include_vendor=1', $this->partnerApiHeaders());
+
+        $response->assertOk();
+        $response->assertJsonCount(1, 'data');
+        $response->assertJsonPath('data.0.id', 10);
+    }
+
     private function seedProduct(int $id, string $addedBy, bool $partnerApproved, string $name, string $digitalProductType = 'ready_product'): void
     {
         $this->app['db']->table('products')->insert([

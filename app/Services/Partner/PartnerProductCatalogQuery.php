@@ -67,7 +67,6 @@ class PartnerProductCatalogQuery
             ->whereIn('digital_product_type', $this->eligibleDigitalProductTypes())
             ->where('status', 1)
             ->where('request_status', 1)
-            ->where('partner_approved', 1)
             ->whereNotExists(function ($subQuery): void {
                 $subQuery->selectRaw('1')
                     ->from('supplier_product_mappings')
@@ -86,8 +85,10 @@ class PartnerProductCatalogQuery
             $query->where('added_by', 'admin');
         } elseif ($sellerType === 'vendor') {
             $query->where('added_by', 'seller');
+            $query->where('partner_approved', 1);
         } elseif ($includeVendor) {
             $query->whereIn('added_by', ['admin', 'seller']);
+            $this->applyVendorPartnerApprovalConstraint($query);
         } else {
             $query->where('added_by', 'admin');
         }
@@ -136,15 +137,29 @@ class PartnerProductCatalogQuery
 
     public function findOrderProduct(int $id): ?Product
     {
-        return Product::query()
+        $query = Product::query()
             ->where('product_type', 'digital')
             ->whereIn('digital_product_type', $this->eligibleDigitalProductTypes())
             ->where('status', 1)
             ->where('request_status', 1)
-            ->where('partner_approved', 1)
-            ->whereIn('added_by', ['admin', 'seller'])
+            ->whereIn('added_by', ['admin', 'seller']);
+
+        $this->applyVendorPartnerApprovalConstraint($query);
+
+        return $query
             ->with(['supplierMapping.supplierApi'])
             ->find($id);
+    }
+
+    private function applyVendorPartnerApprovalConstraint(Builder $query): void
+    {
+        $query->where(function (Builder $builder): void {
+            $builder->where('added_by', 'admin')
+                ->orWhere(function (Builder $vendorQuery): void {
+                    $vendorQuery->where('added_by', 'seller')
+                        ->where('partner_approved', 1);
+                });
+        });
     }
 
     public function hasActiveDirectTopupMapping(int $productId): bool
