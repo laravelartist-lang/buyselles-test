@@ -43,6 +43,7 @@ class SupplierManager
         private readonly SupplierApiLogger $logger,
         private readonly SupplierRateLimiter $rateLimiter,
         private readonly SupplierOrderEligibilityService $orderEligibilityService,
+        private readonly SupplierCurrencyConverter $currencyConverter,
     ) {}
 
     /**
@@ -576,11 +577,19 @@ class SupplierManager
                 responseTimeMs: (int) ((microtime(true) - $startTime) * 1000),
             );
 
-            // Update cost price from supplier if needed
-            if ($stockResult->price > 0 && $stockResult->price != $mapping->cost_price) {
+            // Update cost price from supplier if needed (always store USD for admin/storefront)
+            $resolvedCost = $this->currencyConverter->resolveMappingCost(
+                (float) $stockResult->price,
+                (string) $stockResult->currency,
+                $supplier->settings,
+            );
+
+            if ($resolvedCost['cost_price'] > 0
+                && ($resolvedCost['cost_price'] != $mapping->cost_price
+                    || $resolvedCost['cost_currency'] !== $mapping->cost_currency)) {
                 $mapping->update([
-                    'cost_price' => $stockResult->price,
-                    'cost_currency' => $stockResult->currency,
+                    'cost_price' => $resolvedCost['cost_price'],
+                    'cost_currency' => $resolvedCost['cost_currency'],
                 ]);
             }
 

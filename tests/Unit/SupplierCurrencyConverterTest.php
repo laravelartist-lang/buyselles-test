@@ -89,4 +89,28 @@ class SupplierCurrencyConverterTest extends TestCase
 
         $this->assertEqualsWithDelta(1.62, $backToJod, 0.02);
     }
+
+    public function test_resolve_mapping_cost_converts_jod_supplier_price_to_usd(): void
+    {
+        $result = $this->converter->resolveMappingCost(1.62, 'JOD', ['source_currency' => 'JOD']);
+
+        $this->assertSame('USD', $result['cost_currency']);
+        $this->assertEqualsWithDelta(2.28, $result['cost_price'], 0.01);
+    }
+
+    public function test_resolve_mapping_cost_keeps_usd_supplier_price(): void
+    {
+        $result = $this->converter->resolveMappingCost(9.99, 'USD', ['source_currency' => 'USD']);
+
+        $this->assertSame('USD', $result['cost_currency']);
+        $this->assertSame(9.99, $result['cost_price']);
+    }
+
+    public function test_resolve_mapping_cost_uses_supplier_settings_over_stock_currency(): void
+    {
+        $result = $this->converter->resolveMappingCost(1.709, 'USD', ['source_currency' => 'JOD']);
+
+        $this->assertSame('USD', $result['cost_currency']);
+        $this->assertEqualsWithDelta(2.41, $result['cost_price'], 0.01);
+    }
 }
