@@ -53,24 +53,21 @@ class SyncSupplierMappingPricesJob implements ShouldQueue
 
                 $driver = $manager->driver($supplier);
                 $stockResult = $driver->fetchStock($mapping->supplier_product_id);
-                $sourceCurrency = strtoupper(trim((string) ($supplier->settings['source_currency'] ?? $stockResult->currency)));
-                $rawPrice = (float) $stockResult->price;
+                $resolvedCost = $converter->resolveMappingCost(
+                    (float) $stockResult->price,
+                    (string) $stockResult->currency,
+                    $supplier->settings,
+                );
 
-                if ($sourceCurrency !== '' && $sourceCurrency !== 'USD') {
-                    $costPrice = $converter->toUsd($rawPrice, $sourceCurrency);
-                    $costCurrency = 'USD';
-                } else {
-                    $costPrice = $rawPrice;
-                    $costCurrency = strtoupper(trim($stockResult->currency)) ?: 'USD';
-                }
-
-                if ($costPrice <= 0 || ($costPrice == $mapping->cost_price && $costCurrency === $mapping->cost_currency)) {
+                if ($resolvedCost['cost_price'] <= 0
+                    || ($resolvedCost['cost_price'] == $mapping->cost_price
+                        && $resolvedCost['cost_currency'] === $mapping->cost_currency)) {
                     continue;
                 }
 
                 $mapping->update([
-                    'cost_price' => $costPrice,
-                    'cost_currency' => $costCurrency,
+                    'cost_price' => $resolvedCost['cost_price'],
+                    'cost_currency' => $resolvedCost['cost_currency'],
                 ]);
 
                 $codeService->applyApiPriceIfManualDepleted($mapping->product_id);
