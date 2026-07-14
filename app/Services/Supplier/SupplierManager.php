@@ -591,6 +591,8 @@ class SupplierManager
                     'cost_price' => $resolvedCost['cost_price'],
                     'cost_currency' => $resolvedCost['cost_currency'],
                 ]);
+            } elseif ($this->normalizeLegacyMappingCost($mapping, $supplier)) {
+                $mapping->refresh();
             }
 
             // Always sync the product's selling price when manual stock is depleted
@@ -604,6 +606,37 @@ class SupplierManager
                 responseTimeMs: (int) ((microtime(true) - $startTime) * 1000),
             );
         }
+    }
+
+    /**
+     * Convert mappings that were stored in supplier currency (e.g. JOD) into USD.
+     */
+    public function normalizeLegacyMappingCost(SupplierProductMapping $mapping, SupplierApi $supplier): bool
+    {
+        $storedCurrency = strtoupper(trim((string) $mapping->cost_currency));
+
+        if ($storedCurrency === '' || $storedCurrency === 'USD' || (float) $mapping->cost_price <= 0) {
+            return false;
+        }
+
+        $resolvedCost = $this->currencyConverter->resolveMappingCost(
+            (float) $mapping->cost_price,
+            $storedCurrency,
+            $supplier->settings,
+        );
+
+        if ($resolvedCost['cost_price'] <= 0
+            || ($resolvedCost['cost_price'] == $mapping->cost_price
+                && $resolvedCost['cost_currency'] === $mapping->cost_currency)) {
+            return false;
+        }
+
+        $mapping->update([
+            'cost_price' => $resolvedCost['cost_price'],
+            'cost_currency' => $resolvedCost['cost_currency'],
+        ]);
+
+        return true;
     }
 
     /**
