@@ -16,6 +16,14 @@
         'routes' => [
             'testTopup' => isset($supplierId) ? route('admin.supplier.test-topup', $supplierId) : null,
             'pollTopup' => isset($supplierId) ? route('admin.supplier.poll-topup', $supplierId) : null,
+            'repairSecretOrcaSettings' => isset($supplierId) && ($isSecretOrcaSupplier ?? false)
+                ? route('admin.supplier.repair-secretorca-settings', $supplierId)
+                : null,
+        ],
+        'testTopUp' => [
+            'mappings' => $testTopUpMappings ?? [],
+            'isSandbox' => (bool) ($isSandboxSupplier ?? false),
+            'isSecretOrca' => (bool) ($isSecretOrcaSupplier ?? false),
         ],
         'settingsValues' => old('settings', isset($supplier) ? ($supplier->settings ?? []) : []),
         'credentialStatus' => $credentialStatus ?? [],

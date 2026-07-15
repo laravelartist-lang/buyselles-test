@@ -416,7 +416,14 @@
     function initTestTopUpPanel(config) {
         const placeBtn = document.getElementById('test-topup-place-btn');
         const pollBtn = document.getElementById('test-topup-poll-btn');
+        const repairBtn = document.getElementById('test-topup-repair-btn');
         const resultNode = document.getElementById('test-topup-result');
+        const mappingSelect = document.getElementById('test-topup-mapping-select');
+        const productIdInput = document.getElementById('test-topup-product-id');
+        const quantityInput = document.getElementById('test-topup-quantity');
+        const regionInput = document.getElementById('test-topup-region');
+        const accountLabel = document.getElementById('test-topup-account-label');
+        const autoPollToggle = document.getElementById('test-topup-auto-poll');
 
         if (!placeBtn || !config.routes?.testTopup) {
             return;
@@ -430,8 +437,119 @@
             }
         };
 
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+        const applyMappingSelection = () => {
+            const option = mappingSelect?.selectedOptions?.[0];
+
+            if (!option || !option.value) {
+                return;
+            }
+
+            if (productIdInput) {
+                productIdInput.value = option.dataset.productId || '';
+            }
+
+            if (quantityInput && option.dataset.quantity) {
+                quantityInput.value = option.dataset.quantity;
+            }
+
+            if (regionInput && option.dataset.region) {
+                regionInput.value = String(option.dataset.region).toUpperCase();
+            }
+
+            if (accountLabel) {
+                const label = option.dataset.accountLabel?.trim();
+                accountLabel.textContent = label || 'Target Account';
+            }
+        };
+
+        const buildPayload = () => ({
+            mapping_id: mappingSelect?.value || null,
+            product_id: productIdInput?.value || '',
+            target_account: document.getElementById('test-topup-target-account')?.value || '',
+            quantity: quantityInput?.value || '',
+            region: regionInput?.value || '',
+        });
+
+        const pollOnce = async (orderNumber) => {
+            const response = await fetch(config.routes.pollTopup, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
+                    'Accept': 'application/json',
+                },
+                body: JSON.stringify({ order_number: orderNumber }),
+            });
+
+            return response.json();
+        };
+
+        const pollUntilDone = async (orderNumber) => {
+            const maxAttempts = 15;
+
+            for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+                await sleep(Math.min(2000 * attempt, 10000));
+
+                const data = await pollOnce(orderNumber);
+                renderResult({ ...data, attempt });
+
+                if (!data.success) {
+                    return data;
+                }
+
+                if (data.status === 'fulfilled' || data.status === 'failed') {
+                    return data;
+                }
+            }
+
+            return {
+                success: true,
+                order_number: orderNumber,
+                status: 'processing',
+                message: 'Still pending after maximum poll attempts.',
+            };
+        };
+
+        mappingSelect?.addEventListener('change', applyMappingSelection);
+
+        if (mappingSelect && mappingSelect.options.length === 2) {
+            mappingSelect.selectedIndex = 1;
+            applyMappingSelection();
+        }
+
+        repairBtn?.addEventListener('click', async () => {
+            if (!config.routes?.repairSecretOrcaSettings) {
+                return;
+            }
+
+            repairBtn.disabled = true;
+
+            try {
+                const response = await fetch(config.routes.repairSecretOrcaSettings, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
+                        'Accept': 'application/json',
+                    },
+                    body: JSON.stringify({}),
+                });
+
+                renderResult(await response.json());
+            } catch (error) {
+                renderResult({ success: false, message: error.message });
+            } finally {
+                repairBtn.disabled = false;
+            }
+        });
+
         placeBtn.addEventListener('click', async () => {
             placeBtn.disabled = true;
+            if (pollBtn) {
+                pollBtn.disabled = true;
+            }
 
             try {
                 const response = await fetch(config.routes.testTopup, {
@@ -441,12 +559,7 @@
                         'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
                         'Accept': 'application/json',
                     },
-                    body: JSON.stringify({
-                        product_id: document.getElementById('test-topup-product-id')?.value || '',
-                        target_account: document.getElementById('test-topup-target-account')?.value || '',
-                        quantity: document.getElementById('test-topup-quantity')?.value || '',
-                        region: document.getElementById('test-topup-region')?.value || '',
-                    }),
+                    body: JSON.stringify(buildPayload()),
                 });
 
                 const data = await response.json();
@@ -456,6 +569,11 @@
                     lastOrderNumber = data.order_number;
                     if (pollBtn) {
                         pollBtn.disabled = false;
+                    }
+
+                    if (autoPollToggle?.checked && ['processing', 'pending'].includes(String(data.status))) {
+                        const pollResult = await pollUntilDone(lastOrderNumber);
+                        renderResult(pollResult);
                     }
                 }
             } catch (error) {
@@ -473,17 +591,7 @@
             pollBtn.disabled = true;
 
             try {
-                const response = await fetch(config.routes.pollTopup, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
-                        'Accept': 'application/json',
-                    },
-                    body: JSON.stringify({ order_number: lastOrderNumber }),
-                });
-
-                renderResult(await response.json());
+                renderResult(await pollOnce(lastOrderNumber));
             } catch (error) {
                 renderResult({ success: false, message: error.message });
             } finally {

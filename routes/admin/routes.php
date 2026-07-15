@@ -1331,6 +1331,7 @@ Route::group(['prefix' => 'admin', 'as' => 'admin.', 'middleware' => ['admin', '
             Route::get('test-connection/{id}', 'testConnection')->name('test-connection');
             Route::post('{id}/test-topup', 'testTopUpOrder')->name('test-topup');
             Route::post('{id}/poll-topup', 'pollTopUpOrder')->name('poll-topup');
+            Route::post('{id}/repair-secretorca-settings', 'repairSecretOrcaSettings')->name('repair-secretorca-settings');
             Route::get('{id}/catalog', 'browseCatalog')->name('catalog');
             Route::post('{id}/catalog/sync', 'dispatchCatalogSync')->name('catalog.sync');
             Route::post('{id}/catalog/pause', 'pauseCatalogSync')->name('catalog.pause');

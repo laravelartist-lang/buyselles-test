@@ -150,34 +150,87 @@
 
                 @if($supplier->supports_direct_top_up)
                 <hr class="my-4">
-                <h5 class="mb-3"><i class="fi fi-rr-test"></i> {{ translate('test_direct_topup') ?: 'Test Direct Top-Up' }}</h5>
-                <p class="text-muted">{{ translate('test_direct_topup_hint') ?: 'Place a sandbox test order without affecting customer orders.' }}</p>
+                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+                    <div>
+                        <h5 class="mb-1"><i class="fi fi-rr-test"></i> {{ translate('test_direct_topup') ?: 'Test Direct Top-Up' }}</h5>
+                        <p class="text-muted mb-0">{{ translate('test_direct_topup_hint') ?: 'Place a sandbox test order without affecting customer orders. Uses the same API payload as the Secret Orca CLI test commands.' }}</p>
+                    </div>
+                    <div class="d-flex flex-wrap gap-2">
+                        @if($supplier->is_sandbox)
+                            <span class="badge bg-info text-dark">{{ translate('sandbox_mode') }}</span>
+                        @else
+                            <span class="badge bg-warning text-dark">{{ translate('live_mode') ?: 'Live Mode' }}</span>
+                        @endif
+                        @if($isSecretOrcaSupplier ?? false)
+                            <button type="button" class="btn btn-sm btn-outline-secondary" id="test-topup-repair-btn">
+                                {{ translate('repair_secret_orca_settings') ?: 'Repair Secret Orca Settings' }}
+                            </button>
+                        @endif
+                    </div>
+                </div>
                 <div class="row gy-3" id="test-topup-panel">
                     <div class="col-lg-6">
                         <div class="form-group">
-                            <label class="form-label">{{ translate('supplier_product_id_SKU') }}</label>
-                            <input type="text" class="form-control" id="test-topup-product-id" placeholder="Product UUID">
+                            <label class="form-label">{{ translate('mapped_product') ?: 'Mapped Product' }}</label>
+                            <select class="form-control" id="test-topup-mapping-select">
+                                <option value="">{{ translate('select_mapped_product') ?: 'Select a direct top-up mapping' }}</option>
+                                @foreach($testTopUpMappings ?? [] as $mapping)
+                                    <option value="{{ $mapping['id'] }}"
+                                            data-product-id="{{ $mapping['supplier_product_id'] }}"
+                                            data-region="{{ $mapping['region'] }}"
+                                            data-quantity="{{ $mapping['default_quantity'] }}"
+                                            data-account-label="{{ $mapping['account_label'] }}">
+                                        #{{ $mapping['id'] }}
+                                        @if(!empty($mapping['product_name']))
+                                            — {{ $mapping['product_name'] }}
+                                        @endif
+                                        @if(!empty($mapping['supplier_product_name']))
+                                            ({{ $mapping['supplier_product_name'] }})
+                                        @endif
+                                    </option>
+                                @endforeach
+                            </select>
+                            @if(empty($testTopUpMappings))
+                                <small class="text-warning d-block mt-1">
+                                    {{ translate('no_direct_topup_mappings_found') ?: 'No active direct top-up mappings found. Create one under Supplier Mappings first.' }}
+                                </small>
+                            @endif
                         </div>
                     </div>
                     <div class="col-lg-6">
                         <div class="form-group">
-                            <label class="form-label">{{ translate('target_account') ?: 'Target Account' }}</label>
+                            <label class="form-label">{{ translate('supplier_product_id_SKU') }}</label>
+                            <input type="text" class="form-control" id="test-topup-product-id" placeholder="Product UUID" readonly>
+                            <small class="text-muted">{{ translate('auto_filled_from_mapping') ?: 'Auto-filled from the selected mapping.' }}</small>
+                        </div>
+                    </div>
+                    <div class="col-lg-6">
+                        <div class="form-group">
+                            <label class="form-label" id="test-topup-account-label">{{ translate('target_account') ?: 'Target Account' }}</label>
                             <input type="text" class="form-control" id="test-topup-target-account" placeholder="Player ID">
                         </div>
                     </div>
-                    <div class="col-lg-4">
+                    <div class="col-lg-3">
                         <div class="form-group">
                             <label class="form-label">{{ translate('quantity') }}</label>
-                            <input type="number" class="form-control" id="test-topup-quantity" min="1" step="1" value="1000">
+                            <input type="number" class="form-control" id="test-topup-quantity" min="1" step="1" value="900">
                         </div>
                     </div>
-                    <div class="col-lg-4">
+                    <div class="col-lg-3">
                         <div class="form-group">
                             <label class="form-label">{{ translate('direct_topup_region') ?: 'Region' }}</label>
                             <input type="text" class="form-control text-uppercase" id="test-topup-region" maxlength="2" placeholder="EG">
                         </div>
                     </div>
-                    <div class="col-lg-4 d-flex align-items-end gap-2">
+                    <div class="col-12">
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" id="test-topup-auto-poll" checked>
+                            <label class="form-check-label" for="test-topup-auto-poll">
+                                {{ translate('auto_poll_order_status') ?: 'Auto-poll order status until completed or failed (same as CLI --poll)' }}
+                            </label>
+                        </div>
+                    </div>
+                    <div class="col-12 d-flex flex-wrap gap-2">
                         <button type="button" class="btn btn-outline-primary" id="test-topup-place-btn">
                             {{ translate('place_test_order') ?: 'Place Test Order' }}
                         </button>
@@ -209,6 +262,9 @@
     'defaultDriver' => old('driver', $supplier->driver),
     'supplierId' => $supplier->id,
     'connectorPresets' => $connectorPresets ?? [],
+    'testTopUpMappings' => $testTopUpMappings ?? [],
+    'isSecretOrcaSupplier' => $isSecretOrcaSupplier ?? false,
+    'isSandboxSupplier' => (bool) $supplier->is_sandbox,
 ])
 @endsection
 

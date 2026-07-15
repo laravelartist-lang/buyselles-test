@@ -4,6 +4,9 @@ namespace App\Http\Controllers\Admin\Supplier;
 
 use App\Http\Controllers\BaseController;
 use App\Models\SupplierApi;
+use App\Models\SupplierProductMapping;
+use App\Services\Supplier\Drivers\GenericRestDriver;
+use App\Services\Supplier\Presets\SecretOrcaPreset;
 use App\Services\Supplier\SupplierHealthMonitor;
 use App\Services\Supplier\SupplierManager;
 use Devrabiul\ToastMagic\Facades\ToastMagic;
@@ -164,6 +167,9 @@ class SupplierController extends BaseController
             ->map(fn ($value) => filled($value))
             ->all();
 
+        $testTopUpMappings = $this->buildTestTopUpMappings($supplier);
+        $isSecretOrcaSupplier = $this->isSecretOrcaSupplier($supplier);
+
         return view('admin-views.supplier.edit', compact(
             'supplier',
             'drivers',
@@ -172,6 +178,8 @@ class SupplierController extends BaseController
             'connectorPresets',
             'decryptedCredentials',
             'credentialStatus',
+            'testTopUpMappings',
+            'isSecretOrcaSupplier',
         ));
     }
 
@@ -460,6 +468,28 @@ class SupplierController extends BaseController
     }
 
     /**
+     * Re-apply Secret Orca preset driver settings (AJAX).
+     */
+    public function repairSecretOrcaSettings(int $id): JsonResponse
+    {
+        $supplier = SupplierApi::findOrFail($id);
+
+        if (! $this->isSecretOrcaSupplier($supplier)) {
+            return response()->json([
+                'success' => false,
+                'message' => translate('supplier_is_not_secret_orca') ?: 'This action is only available for Secret Orca suppliers.',
+            ], 422);
+        }
+
+        $this->ensureSecretOrcaSettingsForTest($supplier, persist: true);
+
+        return response()->json([
+            'success' => true,
+            'message' => translate('secret_orca_settings_repaired') ?: 'Secret Orca preset settings were applied.',
+        ]);
+    }
+
+    /**
      * Place a sandbox direct top-up test order (AJAX).
      */
     public function testTopUpOrder(int $id, Request $request): JsonResponse
@@ -467,7 +497,8 @@ class SupplierController extends BaseController
         $supplier = SupplierApi::findOrFail($id);
 
         $validator = Validator::make($request->all(), [
-            'product_id' => 'required|string|max:255',
+            'mapping_id' => 'nullable|integer|exists:supplier_product_mappings,id',
+            'product_id' => 'nullable|string|max:255|required_without:mapping_id',
             'target_account' => 'required|string|max:255',
             'quantity' => 'required|numeric|min:0.01',
             'region' => 'nullable|string|size:2|alpha',
@@ -487,24 +518,34 @@ class SupplierController extends BaseController
             ], 422);
         }
 
+        $resolved = $this->resolveTestTopUpOrderParams($supplier, $request);
+        if ($resolved['error'] !== null) {
+            return response()->json([
+                'success' => false,
+                'message' => $resolved['error'],
+            ], 422);
+        }
+
         try {
+            $this->ensureSecretOrcaSettingsForTest($supplier);
+
             $driver = $this->supplierManager->driver($supplier);
 
-            if ($driver instanceof \App\Services\Supplier\Drivers\GenericRestDriver) {
+            if ($driver instanceof GenericRestDriver) {
                 $driver->setTopUpPayloadExtras(array_filter([
-                    'region' => $request->filled('region') ? strtoupper((string) $request->input('region')) : null,
+                    'region' => $resolved['region'],
                     'idempotency_key' => 'admin-test-'.uniqid('', true),
-                    'client_order_id' => 'admin-test',
+                    'client_order_id' => 'admin-test-'.time(),
                 ]));
             }
 
             $result = $driver->placeTopUpOrder(
-                supplierProductId: (string) $request->input('product_id'),
-                quantity: (float) $request->input('quantity'),
-                accountId: (string) $request->input('target_account'),
+                supplierProductId: $resolved['product_id'],
+                quantity: $resolved['quantity'],
+                accountId: $resolved['target_account'],
             );
 
-            if ($driver instanceof \App\Services\Supplier\Drivers\GenericRestDriver) {
+            if ($driver instanceof GenericRestDriver) {
                 $driver->clearTopUpPayloadExtras();
             }
 
@@ -512,6 +553,9 @@ class SupplierController extends BaseController
                 'success' => true,
                 'order_number' => $result->supplierOrderId,
                 'status' => $result->status,
+                'total_cost' => data_get($result->rawResponse, 'total_cost'),
+                'sandbox' => (bool) $supplier->is_sandbox,
+                'mapping_id' => $resolved['mapping_id'],
                 'response' => $this->maskTopUpTestResponse($result->rawResponse),
             ]);
         } catch (\Throwable $e) {
@@ -541,6 +585,8 @@ class SupplierController extends BaseController
         }
 
         try {
+            $this->ensureSecretOrcaSettingsForTest($supplier);
+
             $driver = $this->supplierManager->driver($supplier);
             $result = $driver->getOrderStatus((string) $request->input('order_number'));
 
@@ -548,6 +594,8 @@ class SupplierController extends BaseController
                 'success' => true,
                 'order_number' => $result->supplierOrderId,
                 'status' => $result->status,
+                'total_cost' => data_get($result->rawResponse, 'total_cost'),
+                'sandbox' => (bool) $supplier->is_sandbox,
                 'response' => $this->maskTopUpTestResponse($result->rawResponse),
             ]);
         } catch (\Throwable $e) {
@@ -556,6 +604,129 @@ class SupplierController extends BaseController
                 'message' => $e->getMessage(),
             ], 500);
         }
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function buildTestTopUpMappings(SupplierApi $supplier): array
+    {
+        if (! $supplier->supports_direct_top_up) {
+            return [];
+        }
+
+        return SupplierProductMapping::query()
+            ->where('supplier_api_id', $supplier->id)
+            ->where('is_active', true)
+            ->where('is_direct_topup', true)
+            ->with(['product:id,name,minimum_order_qty'])
+            ->orderBy('id')
+            ->get()
+            ->map(fn (SupplierProductMapping $mapping): array => [
+                'id' => $mapping->id,
+                'supplier_product_id' => $mapping->supplier_product_id,
+                'supplier_product_name' => $mapping->supplier_product_name,
+                'product_id' => $mapping->product_id,
+                'product_name' => $mapping->product?->name,
+                'region' => $mapping->direct_topup_region,
+                'account_label' => $mapping->direct_topup_account_label,
+                'default_quantity' => max(1, (float) ($mapping->product?->minimum_order_qty ?? 1)),
+            ])
+            ->values()
+            ->all();
+    }
+
+    private function isSecretOrcaSupplier(SupplierApi $supplier): bool
+    {
+        return $supplier->name === SecretOrcaPreset::SUPPLIER_NAME
+            && $supplier->driver === 'generic_rest';
+    }
+
+    private function ensureSecretOrcaSettingsForTest(SupplierApi $supplier, bool $persist = false): void
+    {
+        if (! $this->isSecretOrcaSupplier($supplier)) {
+            return;
+        }
+
+        $supplier->settings = array_merge($supplier->settings ?? [], SecretOrcaPreset::settings());
+        $supplier->supports_direct_top_up = true;
+
+        if ($persist) {
+            $supplier->save();
+        }
+    }
+
+    /**
+     * @return array{
+     *     error: ?string,
+     *     mapping_id: ?int,
+     *     product_id: string,
+     *     target_account: string,
+     *     quantity: float,
+     *     region: ?string
+     * }
+     */
+    private function resolveTestTopUpOrderParams(SupplierApi $supplier, Request $request): array
+    {
+        $mapping = null;
+
+        if ($request->filled('mapping_id')) {
+            $mapping = SupplierProductMapping::query()
+                ->where('id', $request->integer('mapping_id'))
+                ->where('supplier_api_id', $supplier->id)
+                ->where('is_active', true)
+                ->where('is_direct_topup', true)
+                ->with('product')
+                ->first();
+
+            if ($mapping === null) {
+                return [
+                    'error' => translate('direct_topup_mapping_not_found') ?: 'Direct top-up mapping not found for this supplier.',
+                    'mapping_id' => null,
+                    'product_id' => '',
+                    'target_account' => '',
+                    'quantity' => 0,
+                    'region' => null,
+                ];
+            }
+        }
+
+        $productId = trim((string) ($request->input('product_id') ?: $mapping?->supplier_product_id ?: ''));
+
+        if ($productId === '') {
+            return [
+                'error' => translate('supplier_product_id_is_required') ?: 'Supplier product ID is required.',
+                'mapping_id' => null,
+                'product_id' => '',
+                'target_account' => '',
+                'quantity' => 0,
+                'region' => null,
+            ];
+        }
+
+        $region = strtoupper(trim((string) ($request->input('region') ?: $mapping?->direct_topup_region ?: '')));
+        $region = $region !== '' ? $region : null;
+
+        if ($this->isSecretOrcaSupplier($supplier) && $region === null) {
+            return [
+                'error' => translate('direct_topup_region_is_required_for_secret_orca')
+                    ?: 'Region is required for Secret Orca test orders. Set it on the mapping or enter a 2-letter code.',
+                'mapping_id' => $mapping?->id,
+                'product_id' => $productId,
+                'target_account' => '',
+                'quantity' => 0,
+                'region' => null,
+            ];
+        }
+
+        return [
+            'error' => null,
+            'mapping_id' => $mapping?->id,
+            'product_id' => $productId,
+            'target_account' => trim((string) $request->input('target_account')),
+            'quantity' => (float) $request->input('quantity'),
+            'region' => $region,
+        ];
     }
 
     /**
