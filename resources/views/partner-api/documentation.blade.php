@@ -14,7 +14,10 @@
         <div class="card shadow-sm border-0">
             <div class="card-body p-4 p-md-5">
                 @include('partner-api.partials._docs-header', ['showAdminBack' => false])
-                @include('partner-api.partials._docs-content')
+                @include('partner-api.partials._docs-content', [
+                    'apiExamples' => $apiExamples,
+                    'apiExampleFormatter' => $apiExampleFormatter,
+                ])
             </div>
         </div>
     </div>

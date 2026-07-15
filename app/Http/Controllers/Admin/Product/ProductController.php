@@ -588,6 +588,14 @@ class ProductController extends BaseController
     public function togglePartnerApproved(Request $request): JsonResponse
     {
         $product = $this->productRepo->getFirstWhere(params: ['id' => $request['id']]);
+
+        if ($product['added_by'] !== 'seller') {
+            return response()->json([
+                'status' => false,
+                'message' => translate('Partner_API_approval_applies_to_vendor_products_only'),
+            ], 422);
+        }
+
         $newValue = $product['partner_approved'] ? 0 : 1;
         $this->productRepo->update(id: $request['id'], data: ['partner_approved' => $newValue]);
 

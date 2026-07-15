@@ -52,6 +52,29 @@ class SupplierCurrencyConverter
     }
 
     /**
+     * Normalize a supplier stock/API price into mapping storage format (USD for admin).
+     *
+     * @param  array<string, mixed>|null  $supplierSettings
+     * @return array{cost_price: float, cost_currency: string}
+     */
+    public function resolveMappingCost(float $rawPrice, string $stockCurrency, ?array $supplierSettings = null): array
+    {
+        $sourceCurrency = strtoupper(trim((string) ($supplierSettings['source_currency'] ?? $stockCurrency)));
+
+        if ($sourceCurrency !== '' && $sourceCurrency !== 'USD') {
+            return [
+                'cost_price' => $this->toUsd($rawPrice, $sourceCurrency),
+                'cost_currency' => 'USD',
+            ];
+        }
+
+        return [
+            'cost_price' => $this->round($rawPrice),
+            'cost_currency' => strtoupper(trim($stockCurrency)) ?: 'USD',
+        ];
+    }
+
+    /**
      * Normalize a supplier API price to USD when a source currency is configured.
      *
      * @return array{price: float, currency: string}

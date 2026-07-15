@@ -16,13 +16,14 @@ class PartnerProductStockResolver
 
     public function resolve(Product $product): int
     {
+        $localStock = $this->localAvailableCount((int) $product->id);
         $mapping = $this->resolveActiveCodeMapping($product);
 
-        if ($mapping !== null) {
-            return max(0, $this->supplierManager->getAvailableStockForMapping($mapping));
+        if ($mapping === null) {
+            return $localStock;
         }
 
-        return $this->localAvailableCount((int) $product->id);
+        return $localStock + max(0, $this->supplierManager->getAvailableStockForMapping($mapping));
     }
 
     public function localAvailableCount(int $productId): int

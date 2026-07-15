@@ -76,6 +76,29 @@ class PartnerApiSupplierOrderTest extends TestCase
         Bus::assertNotDispatched(SupplierCodeFetchJob::class);
     }
 
+    public function test_create_order_on_supplier_mapped_product_uses_local_codes_when_supplier_stock_is_zero(): void
+    {
+        $this->seedProduct(id: 23, name: 'Hybrid Fulfillment');
+        $this->seedSupplierMapping(productId: 23, driver: 'bamboo');
+        $this->seedDigitalCode(productId: 23, plainCode: 'LOCAL-FIRST-CODE');
+
+        $manager = Mockery::mock(SupplierManager::class);
+        $manager->shouldReceive('getAvailableStockForMapping')->andReturn(0);
+        $this->app->instance(SupplierManager::class, $manager);
+
+        $response = $this->postJson('/api/v1/partner/orders', [
+            'product_id' => 23,
+            'quantity' => 1,
+        ], $this->partnerApiHeaders());
+
+        $response->assertCreated();
+        $response->assertJsonPath('data.status', 'fulfilled');
+        $response->assertJsonPath('data.quantity_fulfilled', 1);
+        $response->assertJsonCount(1, 'data.codes');
+
+        Bus::assertNotDispatched(SupplierCodeFetchJob::class);
+    }
+
     public function test_create_order_rejects_direct_topup_product(): void
     {
         $this->seedProduct(id: 22, name: 'Jawaker Topup');
