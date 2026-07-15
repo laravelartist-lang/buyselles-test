@@ -32,6 +32,7 @@
                             {{ getProductPriceByType(product: $product, type: 'discounted_unit_price', result: 'string') }}
                         </span>
                     </h4>
+                    @include('web-views.partials._direct-topup-listing-price-meta', ['product' => $product])
                     @if($overallRating[0] != 0 )
                         <div class="flash-product-review mt-1">
                             @for($inc=1;$inc<=5;$inc++)

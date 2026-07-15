@@ -5,6 +5,7 @@ namespace App\Observers;
 use App\Jobs\DirectTopUpFulfillmentJob;
 use App\Jobs\SupplierCodeFetchJob;
 use App\Models\Order;
+use App\Models\SupplierOrder;
 use App\Models\SupplierProductMapping;
 use App\Services\DigitalProductCodeService;
 use App\Services\Supplier\SupplierOrderEligibilityService;
@@ -90,6 +91,13 @@ class OrderObserver
     {
         try {
             if (\App\Services\DirectTopUp\DirectTopUpWalletCheckoutService::isDirectTopUpAlreadyFulfilled($order)) {
+                return;
+            }
+
+            if (SupplierOrder::query()
+                ->where('order_id', $order->id)
+                ->whereIn('status', ['pending', 'processing', 'partial'])
+                ->exists()) {
                 return;
             }
 

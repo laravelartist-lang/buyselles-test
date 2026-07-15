@@ -57,6 +57,9 @@ class DirectTopUpWalletCheckoutService
      */
     public function completeWalletPaymentAfterFulfillment(array $orderIds, int $userId, float $paymentAmount): array
     {
+        $hasPending = false;
+        $failureMessage = null;
+
         foreach ($orderIds as $orderId) {
             $order = $this->findOrderWithDirectTopUpDetails($orderId);
 
@@ -66,19 +69,28 @@ class DirectTopUpWalletCheckoutService
 
             $result = $this->supplierManager->fulfillDirectTopUpOrder($order);
 
-            if (! $result['fulfilled']) {
-                $message = $this->formatFulfillmentError($result['error']);
+            if ($result['fulfilled']) {
+                $this->markDirectTopUpOrderDelivered($order, $userId);
 
-                $this->cancelUnpaidCheckoutOrders($orderIds, $message, $userId);
-
-                return [
-                    'success' => false,
-                    'error' => $message,
-                    'order_ids' => $orderIds,
-                ];
+                continue;
             }
 
-            $this->markDirectTopUpOrderDelivered($order, $userId);
+            if (($result['pending'] ?? false) && ($result['placed'] ?? false) && empty($result['error'])) {
+                $hasPending = true;
+                $this->markDirectTopUpOrderProcessing($order, $userId);
+
+                continue;
+            }
+
+            $failureMessage = $this->formatFulfillmentError($result['error']);
+            $this->cancelUnpaidCheckoutOrders($orderIds, $failureMessage, $userId);
+
+            return [
+                'success' => false,
+                'error' => $failureMessage,
+                'order_ids' => $orderIds,
+                'pending' => false,
+            ];
         }
 
         CustomerManager::create_wallet_transaction(
@@ -100,6 +112,10 @@ class DirectTopUpWalletCheckoutService
             $order->payment_status = 'paid';
             $order->save();
 
+            OrderDetail::where('order_id', $orderId)->update([
+                'payment_status' => 'paid',
+            ]);
+
             OrderManager::getWalletManageOnOrderStatusChange($order->fresh(), 'admin');
         }
 
@@ -109,6 +125,7 @@ class DirectTopUpWalletCheckoutService
             'success' => true,
             'error' => null,
             'order_ids' => $orderIds,
+            'pending' => $hasPending,
         ];
     }
 
@@ -164,6 +181,20 @@ class DirectTopUpWalletCheckoutService
         ]);
 
         OrderManager::add_order_status_history($order->id, $customerId, 'delivered', 'admin');
+    }
+
+    public function markDirectTopUpOrderProcessing(Order $order, int $customerId): void
+    {
+        Order::where('id', $order->id)->update([
+            'order_status' => 'processing',
+        ]);
+
+        OrderDetail::where('order_id', $order->id)->update([
+            'delivery_status' => 'processing',
+            'payment_status' => 'unpaid',
+        ]);
+
+        OrderManager::add_order_status_history($order->id, $customerId, 'processing', 'admin');
     }
 
     public function markDirectTopUpOrderFailed(Order $order, string $error, int $customerId): void

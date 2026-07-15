@@ -13,11 +13,13 @@ use App\Models\SupplierOrder;
 use App\Models\SupplierProductDenomination;
 use App\Models\SupplierProductMapping;
 use App\Services\DigitalProductCodeService;
+use App\Services\DirectTopUp\DirectTopUpWalletCheckoutService;
 use App\Services\Supplier\Drivers\BambooDriver;
 use App\Services\Supplier\Drivers\GenericRestDriver;
 use App\Services\Supplier\Drivers\GolfApiDriver;
 use App\Services\Supplier\Drivers\KinguinDriver;
 use App\Services\Supplier\Drivers\ReloadlyDriver;
+use App\Services\Supplier\Presets\SecretOrcaPreset;
 use App\Utils\OrderManager;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -80,6 +82,18 @@ class SupplierManager
     public function getAdminUiDriverKeys(): array
     {
         return ['generic_rest', 'bamboo'];
+    }
+
+    /**
+     * Connector presets for the Generic REST driver (Secret Orca, etc.).
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    public function getConnectorPresets(): array
+    {
+        return [
+            'secret_orca' => SecretOrcaPreset::adminConnectorPreset(),
+        ];
     }
 
     /**
@@ -326,13 +340,15 @@ class SupplierManager
     /**
      * Fulfill a direct top-up order by calling the supplier's placeTopUpOrder.
      *
-     * @return bool True if the top-up was successfully placed
+     * @return array{fulfilled: bool, placed: bool, pending: bool, error: ?string}
      */
     public function fulfillDirectTopUpOrder(Order $order): array
     {
-        $order->loadMissing('orderDetails');
+        $order->loadMissing(['orderDetails' => fn ($query) => $query->without('storage')]);
 
         $anyFulfilled = false;
+        $anyPlaced = false;
+        $anyPending = false;
         $errors = [];
 
         foreach ($order->orderDetails as $detail) {
@@ -345,6 +361,19 @@ class SupplierManager
                 ->where('status', 'fulfilled')
                 ->exists()) {
                 $anyFulfilled = true;
+
+                continue;
+            }
+
+            $existingPending = SupplierOrder::query()
+                ->where('order_detail_id', $detail->id)
+                ->whereIn('status', ['pending', 'processing', 'partial'])
+                ->whereNotNull('supplier_order_id')
+                ->first();
+
+            if ($existingPending) {
+                $anyPlaced = true;
+                $anyPending = true;
 
                 continue;
             }
@@ -397,6 +426,9 @@ class SupplierManager
                 continue;
             }
 
+            $accountId = OrderManager::resolveDirectTopUpAccountId($detail) ?? '';
+            $topUpExtras = $this->buildDirectTopUpPayloadExtras($order, $detail, $mapping);
+
             $logId = $this->logger->logRequest(
                 supplierApiId: $supplier->id,
                 action: 'place_topup_order',
@@ -405,7 +437,8 @@ class SupplierManager
                 requestPayload: [
                     'supplier_product_id' => $mapping->supplier_product_id,
                     'quantity' => (float) $detail->direct_topup_quantity,
-                    'account_id' => $detail->direct_topup_account_id,
+                    'account_id' => $accountId,
+                    ...$topUpExtras,
                 ],
             );
 
@@ -415,7 +448,9 @@ class SupplierManager
                 $driver = $this->driver($supplier);
                 $unitPrice = (float) $detail->custom_amount;
 
-                $accountId = OrderManager::resolveDirectTopUpAccountId($detail) ?? '';
+                if ($driver instanceof GenericRestDriver) {
+                    $driver->setTopUpPayloadExtras($topUpExtras);
+                }
 
                 $result = $driver->placeTopUpOrder(
                     supplierProductId: $mapping->supplier_product_id,
@@ -424,9 +459,17 @@ class SupplierManager
                     unitPrice: $unitPrice > 0 ? $unitPrice : null,
                 );
 
+                if ($driver instanceof GenericRestDriver) {
+                    $driver->clearTopUpPayloadExtras();
+                }
+
                 $httpStatus = 200;
                 $envelopeStatus = strtolower((string) data_get($result->rawResponse, 'status', ''));
-                if ($result->status !== 'fulfilled' || $envelopeStatus === 'error' || $result->supplierOrderId === '') {
+                $isImmediateFulfilled = $result->status === 'fulfilled';
+                $isAsyncPlaced = $result->supplierOrderId !== ''
+                    && in_array($result->status, ['processing', 'pending'], true);
+
+                if (! $isImmediateFulfilled && ! $isAsyncPlaced) {
                     $httpStatus = 422;
                     $this->logger->logResponse(
                         logId: $logId,
@@ -440,6 +483,9 @@ class SupplierManager
                     );
 
                     $apiMessage = (string) data_get($result->rawResponse, 'message', 'Supplier top-up failed.');
+                    if ($envelopeStatus === 'error') {
+                        $apiMessage = (string) data_get($result->rawResponse, 'error.detail', $apiMessage);
+                    }
                     $errors[] = "Product '{$product->name}': {$apiMessage}";
 
                     continue;
@@ -468,19 +514,31 @@ class SupplierManager
                     'cost_per_unit' => $costPerUnit,
                     'total_cost' => $costPerUnit * (float) $detail->direct_topup_quantity,
                     'cost_currency' => $mapping->cost_currency,
-                    'status' => $result->status,
+                    'status' => $isImmediateFulfilled ? 'fulfilled' : 'processing',
+                    'fulfilled_at' => $isImmediateFulfilled ? now() : null,
                 ]);
 
                 Log::info('SupplierManager: direct top-up order placed', [
                     'supplier_order_id' => $supplierOrder->id,
                     'order_id' => $order->id,
                     'supplier_id' => $supplier->id,
-                    'status' => $result->status,
+                    'status' => $supplierOrder->status,
                 ]);
 
-                $anyFulfilled = true;
+                $anyPlaced = true;
+
+                if ($isImmediateFulfilled) {
+                    $anyFulfilled = true;
+                } else {
+                    $anyPending = true;
+                    SupplierOrderPollJob::dispatch($supplierOrder->id);
+                }
 
             } catch (\Throwable $e) {
+                if (isset($driver) && $driver instanceof GenericRestDriver) {
+                    $driver->clearTopUpPayloadExtras();
+                }
+
                 $this->logger->logError(
                     logId: $logId,
                     errorMessage: $e->getMessage(),
@@ -499,8 +557,78 @@ class SupplierManager
 
         return [
             'fulfilled' => $anyFulfilled,
+            'placed' => $anyPlaced,
+            'pending' => $anyPending,
             'error' => $errors ? implode(' ', $errors) : null,
         ];
+    }
+
+    /**
+     * @return array{region?: string, idempotency_key?: string, client_order_id?: string}
+     */
+    private function buildDirectTopUpPayloadExtras(Order $order, \App\Models\OrderDetail $detail, SupplierProductMapping $mapping): array
+    {
+        $extras = [
+            'idempotency_key' => sprintf('buyselles-order-%d-detail-%d', $order->id, $detail->id),
+            'client_order_id' => (string) $order->id,
+        ];
+
+        if (filled($mapping->direct_topup_region)) {
+            $extras['region'] = strtoupper((string) $mapping->direct_topup_region);
+        }
+
+        return $extras;
+    }
+
+    public function completeDirectTopUpSupplierOrder(SupplierOrder $supplierOrder, string $status, array $rawResponse = []): void
+    {
+        if (in_array($supplierOrder->status, ['fulfilled', 'failed', 'refunded'], true)) {
+            return;
+        }
+
+        if ($status === 'failed') {
+            $failureReason = (string) data_get($rawResponse, 'failure_reason', 'Supplier reported order failed');
+            $supplierOrder->update([
+                'status' => 'failed',
+                'failed_reason' => $failureReason,
+            ]);
+
+            if ($supplierOrder->order_id) {
+                $order = Order::find($supplierOrder->order_id);
+                if ($order) {
+                    app(DirectTopUpWalletCheckoutService::class)->markDirectTopUpOrderFailed(
+                        $order,
+                        $failureReason,
+                        (int) $order->customer_id,
+                    );
+                }
+            }
+
+            return;
+        }
+
+        if ($status !== 'fulfilled') {
+            $supplierOrder->update(['status' => $status === 'processing' ? 'processing' : 'pending']);
+
+            return;
+        }
+
+        $supplierOrder->update([
+            'status' => 'fulfilled',
+            'fulfilled_at' => now(),
+        ]);
+
+        if (! $supplierOrder->order_id) {
+            return;
+        }
+
+        $order = Order::find($supplierOrder->order_id);
+        if ($order && $order->payment_status === 'paid' && $order->order_status !== 'delivered') {
+            app(DirectTopUpWalletCheckoutService::class)->markDirectTopUpOrderDelivered(
+                $order,
+                (int) $order->customer_id,
+            );
+        }
     }
 
     /**
@@ -629,21 +757,28 @@ class SupplierManager
                 responseTimeMs: (int) ((microtime(true) - $startTime) * 1000),
             );
 
-            // Process codes from webhook
+            // Process webhook result
             if ($result->supplierOrderId) {
                 $supplierOrder = SupplierOrder::where('supplier_api_id', $supplier->id)
                     ->where('supplier_order_id', $result->supplierOrderId)
                     ->first();
 
                 if ($supplierOrder) {
-                    if ($result->hasCodes()) {
+                    $mapping = $supplierOrder->productMapping;
+
+                    if ($mapping?->is_direct_topup) {
+                        $this->completeDirectTopUpSupplierOrder(
+                            supplierOrder: $supplierOrder,
+                            status: $result->status,
+                            rawResponse: $result->rawPayload['data'] ?? $result->rawPayload,
+                        );
+                    } elseif ($result->hasCodes()) {
                         $this->processReceivedCodes(
                             supplierOrder: $supplierOrder,
-                            mapping: $supplierOrder->productMapping,
+                            mapping: $mapping,
                             codes: $result->codes,
                         );
 
-                        // If this supplier order is linked to a platform order, assign codes to customer
                         if ($supplierOrder->order_id) {
                             $order = Order::find($supplierOrder->order_id);
                             if ($order) {

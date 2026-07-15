@@ -54,6 +54,7 @@
                         {{ getProductPriceByType(product: $product, type: 'discounted_unit_price', result: 'string') }}
                     </ins>
                 </div>
+                @include('theme-views.partials._direct-topup-listing-price-meta', ['product' => $product])
             </a>
             @if($overallRating[0] != 0)
             <div class="d-flex gap-2 align-items-center">

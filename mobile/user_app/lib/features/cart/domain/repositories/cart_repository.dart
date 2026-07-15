@@ -130,14 +130,25 @@ class CartRepository extends DataSyncService implements CartRepositoryInterface 
 
 
   @override
-  Future<ApiResponseModel> updateQuantity(int? key,int quantity) async {
+  Future<ApiResponseModel> updateQuantity(
+    int? key,
+    int quantity, {
+    bool isDirectTopup = false,
+    double? directTopupQuantity,
+  }) async {
     try {
-      final response = await dioClient.post(AppConstants.updateCartQuantityUri,
-        data: {'_method': 'put',
-          'key': key,
-          'quantity': quantity,
-          'guest_id' : Provider.of<AuthController>(Get.context!, listen: false).getGuestToken(),
-        });
+      final Map<String, dynamic> data = {
+        '_method': 'put',
+        'key': key,
+        'quantity': isDirectTopup ? 1 : quantity,
+        'guest_id': Provider.of<AuthController>(Get.context!, listen: false).getGuestToken(),
+      };
+
+      if (isDirectTopup && directTopupQuantity != null) {
+        data['direct_topup_quantity'] = directTopupQuantity;
+      }
+
+      final response = await dioClient.post(AppConstants.updateCartQuantityUri, data: data);
       return ApiResponseModel.withSuccess(response);
     } catch (e) {
       return ApiResponseModel.withError(ApiErrorHandler.getMessage(e));

@@ -1102,6 +1102,10 @@ class WebController extends Controller
 
                     return redirect()->route('shop-cart');
                 }
+
+                if ($checkoutResult['pending'] ?? false) {
+                    Toastr::success(translate('direct_topup_order_processing'));
+                }
             } elseif ($directTopUpCheckout->requiresFulfillmentBeforePayment($carts)) {
                 Toastr::error(translate('direct_topup_fulfillment_failed'));
 

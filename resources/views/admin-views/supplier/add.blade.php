@@ -45,6 +45,19 @@
                         </div>
                     </div>
 
+                    <div class="col-lg-6" id="connector-preset-wrapper">
+                        <div class="form-group">
+                            <label class="form-label">{{ translate('connector_preset') ?: 'Connector Preset' }}</label>
+                            <select class="form-control" id="connector-preset-select">
+                                <option value="">{{ translate('custom_configuration') ?: 'Custom configuration' }}</option>
+                                @foreach(($connectorPresets ?? []) as $presetKey => $connectorPreset)
+                                    <option value="{{ $presetKey }}">{{ $connectorPreset['label'] ?? $presetKey }}</option>
+                                @endforeach
+                            </select>
+                            <small class="text-muted">{{ translate('connector_preset_hint') ?: 'Apply a pre-built API configuration (Secret Orca, etc.).' }}</small>
+                        </div>
+                    </div>
+
                     <div class="col-lg-6">
                         <div class="form-group">
                             <label class="form-label">{{ translate('base_url') }} <span class="text-danger">*</span></label>
@@ -122,7 +135,10 @@
     </div>
 </div>
 
-@include('admin-views.supplier.partials._supplier-driver-script', ['formMode' => 'add'])
+@include('admin-views.supplier.partials._supplier-driver-script', [
+    'formMode' => 'add',
+    'connectorPresets' => $connectorPresets ?? [],
+])
 @endsection
 
 @push('script')

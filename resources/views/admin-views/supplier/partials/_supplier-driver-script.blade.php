@@ -11,6 +11,12 @@
         'currentAuthType' => $resolvedAuthType,
         'schemas' => $driverSchemas ?? [],
         'presets' => $driverPresets ?? [],
+        'connectorPresets' => $connectorPresets ?? [],
+        'supplierId' => $supplierId ?? null,
+        'routes' => [
+            'testTopup' => isset($supplierId) ? route('admin.supplier.test-topup', $supplierId) : null,
+            'pollTopup' => isset($supplierId) ? route('admin.supplier.poll-topup', $supplierId) : null,
+        ],
         'settingsValues' => old('settings', isset($supplier) ? ($supplier->settings ?? []) : []),
         'credentialStatus' => $credentialStatus ?? [],
         'labels' => [

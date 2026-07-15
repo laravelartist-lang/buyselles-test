@@ -26,6 +26,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property bool $is_customizable
  * @property bool $is_direct_topup
  * @property string|null $direct_topup_account_label
+ * @property string|null $direct_topup_region
  * @property float|null $min_amount
  * @property float|null $max_amount
  * @property Carbon|null $last_synced_at
@@ -53,6 +54,7 @@ class SupplierProductMapping extends Model
         'is_customizable',
         'is_direct_topup',
         'direct_topup_account_label',
+        'direct_topup_region',
         'min_amount',
         'max_amount',
         'last_synced_at',
@@ -63,13 +65,14 @@ class SupplierProductMapping extends Model
         return [
             'product_id' => 'integer',
             'supplier_api_id' => 'integer',
-            'cost_price' => 'decimal:2',
+            'cost_price' => 'decimal:10',
             'markup_value' => 'decimal:2',
             'priority' => 'integer',
             'is_active' => 'boolean',
             'is_customizable' => 'boolean',
             'is_direct_topup' => 'boolean',
             'direct_topup_account_label' => 'string',
+            'direct_topup_region' => 'string',
             'min_amount' => 'decimal:2',
             'max_amount' => 'decimal:2',
             'last_synced_at' => 'datetime',
@@ -133,11 +136,27 @@ class SupplierProductMapping extends Model
      */
     public function calculateSellPrice(): float
     {
+        $decimalPlaces = $this->resolveSellPriceDecimalPlaces();
+
         if ($this->markup_type === 'percent') {
-            return round($this->cost_price * (1 + $this->markup_value / 100), 2);
+            return round($this->cost_price * (1 + $this->markup_value / 100), $decimalPlaces);
         }
 
-        return round($this->cost_price + $this->markup_value, 2);
+        return round($this->cost_price + $this->markup_value, $decimalPlaces);
+    }
+
+    public function resolvePriceDecimalPlaces(): int
+    {
+        if ($this->is_direct_topup && (float) $this->cost_price > 0 && (float) $this->cost_price < 0.01) {
+            return 10;
+        }
+
+        return 2;
+    }
+
+    private function resolveSellPriceDecimalPlaces(): int
+    {
+        return $this->resolvePriceDecimalPlaces();
     }
 
     /**

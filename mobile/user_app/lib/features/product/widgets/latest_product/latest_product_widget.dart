@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_sixvalley_ecommerce/common/basewidget/discount_tag_widget.dart';
 import 'package:flutter_sixvalley_ecommerce/features/product/domain/models/product_model.dart';
 import 'package:flutter_sixvalley_ecommerce/features/product_details/widgets/favourite_button_widget.dart';
+import 'package:flutter_sixvalley_ecommerce/helper/direct_topup_helper.dart';
 import 'package:flutter_sixvalley_ecommerce/helper/price_converter.dart';
 import 'package:flutter_sixvalley_ecommerce/helper/responsive_helper.dart';
 import 'package:flutter_sixvalley_ecommerce/helper/route_healper.dart';
@@ -144,14 +145,36 @@ class LatestProductWidget extends StatelessWidget {
                                 children: [
                                   productModel.discount!= null &&
                                       productModel.discount! > 0 || (productModel.clearanceSale?.discountAmount ?? 0) > 0 ?
+                                  (!DirectTopUpHelper.isDirectTopUpListingProduct(productModel) ?
                                   Text(
                                     PriceConverter.convertPrice(context, productModel.unitPrice),
                                     style: textRegular.copyWith(color: Theme.of(context).hintColor,
                                       decoration: TextDecoration.lineThrough, fontSize: Dimensions.fontSizeSmall,),
-                                  ) : const SizedBox.shrink(),
+                                  ) : const SizedBox.shrink()) : const SizedBox.shrink(),
                                   const SizedBox(height: Dimensions.paddingSizeExtraExtraSmall,
                                       width: Dimensions.paddingSizeExtraSmall),
 
+                                  DirectTopUpHelper.isDirectTopUpListingProduct(productModel) ?
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        DirectTopUpHelper.resolveListingPriceText(context, productModel) ?? '',
+                                        style: textBold.copyWith(
+                                          color: Theme.of(context).textTheme.bodyMedium?.color,
+                                          fontSize: Dimensions.fontSizeDefault,
+                                        ),
+                                      ),
+                                      if (DirectTopUpHelper.listingCreditsSubtitle(productModel) != null)
+                                        Text(
+                                          DirectTopUpHelper.listingCreditsSubtitle(productModel)!,
+                                          style: textRegular.copyWith(
+                                            fontSize: Dimensions.fontSizeSmall,
+                                            color: Theme.of(context).hintColor,
+                                          ),
+                                        ),
+                                    ],
+                                  ) :
                                   productModel.unitPrice != null?
                                   Text(PriceConverter.convertPrice(context, productModel.unitPrice,
                                       discountType: (productModel.clearanceSale?.discountAmount ?? 0) > 0

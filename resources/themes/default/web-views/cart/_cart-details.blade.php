@@ -210,9 +210,22 @@ $admin_shipping = \App\Models\ShippingType::where('seller_id', 0)->first();
                                 $minCartQuantity = $quantityLimits['min'];
                                 $maxCartQuantity = $quantityLimits['max'];
                                 $lineTotal = $cartItem->getLineTotal();
+                                $directTopUpService = app(\App\Services\DirectTopUp\DirectTopUpService::class);
                                 $unitDisplayPrice = $isDirectTopUpItem
-                                    ? app(\App\Services\DirectTopUp\DirectTopUpService::class)->getPricePerUnit($product)
+                                    ? $directTopUpService->getPricePerUnit($product)
                                     : ($cartItem['price'] - $cartItem['discount']);
+                                $formattedUnitPrice = $isDirectTopUpItem
+                                    ? $directTopUpService->formatWebPrice($product, $unitDisplayPrice)
+                                    : webCurrencyConverter(amount: $unitDisplayPrice);
+                                $formattedLineTotal = $isDirectTopUpItem
+                                    ? $directTopUpService->formatWebPrice($product, $lineTotal)
+                                    : webCurrencyConverter(amount: $lineTotal);
+                                $maskedTopUpAccount = $isDirectTopUpItem
+                                    ? $directTopUpService->maskAccountIdForDisplay($cartItem->direct_topup_account_id)
+                                    : '';
+                                $topUpQuantityLabel = $isDirectTopUpItem
+                                    ? ($directTopUpService->buildPricingPayload($product)['quantity_label'] ?? translate('direct_topup_credits_quantity'))
+                                    : '';
                                 ?>
 
                                 <?php
@@ -260,6 +273,15 @@ $admin_shipping = \App\Models\ShippingType::where('seller_id', 0)->first();
                                                                     {{ $cartItem['variant'] }}</span>
                                                             </div>
                                                         @endif
+                                                        @if ($isDirectTopUpItem)
+                                                            <div class="fs-12 text-muted">
+                                                                <span>{{ $topUpQuantityLabel }}: {{ number_format($displayQuantity, 0) }}</span>
+                                                                @if ($maskedTopUpAccount !== '')
+                                                                    <span class="mx-1">&middot;</span>
+                                                                    <span>{{ translate('account_id') ?: 'Account' }}: {{ $maskedTopUpAccount }}</span>
+                                                                @endif
+                                                            </div>
+                                                        @endif
                                                     </div>
 
                                                     @if ($product->product_type == 'physical' && $shipping_type != 'order_wise')
@@ -286,7 +308,7 @@ $admin_shipping = \App\Models\ShippingType::where('seller_id', 0)->first();
                                     <td class="{{ $checkProductStatus == 0 ? 'custom-cart-opacity-50' : '' }} __w-15p">
                                         <div class="text-center">
                                             <div class="fw-semibold">
-                                                {{ webCurrencyConverter(amount: $unitDisplayPrice) }}
+                                                {{ $formattedUnitPrice }}
                                             </div>
                                         </div>
                                     </td>
@@ -345,7 +367,7 @@ $admin_shipping = \App\Models\ShippingType::where('seller_id', 0)->first();
                                     <td
                                         class="__w-15p text-end {{ $checkProductStatus == 0 ? 'custom-cart-opacity-50' : '' }}">
                                         <div>
-                                            {{ webCurrencyConverter(amount: $lineTotal) }}
+                                            {{ $formattedLineTotal }}
                                         </div>
                                     </td>
                                 </tr>
@@ -547,9 +569,22 @@ $admin_shipping = \App\Models\ShippingType::where('seller_id', 0)->first();
                     $minCartQuantity = $quantityLimits['min'];
                     $maxCartQuantity = $quantityLimits['max'];
                     $lineTotal = $cartItem->getLineTotal();
+                    $directTopUpService = app(\App\Services\DirectTopUp\DirectTopUpService::class);
                     $unitDisplayPrice = $isDirectTopUpItem
-                        ? app(\App\Services\DirectTopUp\DirectTopUpService::class)->getPricePerUnit($product)
+                        ? $directTopUpService->getPricePerUnit($product)
                         : ($cartItem['price'] - $cartItem['discount']);
+                    $formattedUnitPrice = $isDirectTopUpItem
+                        ? $directTopUpService->formatWebPrice($product, $unitDisplayPrice)
+                        : webCurrencyConverter(amount: $unitDisplayPrice);
+                    $formattedLineTotal = $isDirectTopUpItem
+                        ? $directTopUpService->formatWebPrice($product, $lineTotal)
+                        : webCurrencyConverter(amount: $lineTotal);
+                    $maskedTopUpAccount = $isDirectTopUpItem
+                        ? $directTopUpService->maskAccountIdForDisplay($cartItem->direct_topup_account_id)
+                        : '';
+                    $topUpQuantityLabel = $isDirectTopUpItem
+                        ? ($directTopUpService->buildPricingPayload($product)['quantity_label'] ?? translate('direct_topup_credits_quantity'))
+                        : '';
 
                     $checkProductStatus = $cartItem->allProducts?->status ?? 0;
                     if ($cartItem->seller_is == 'admin' && (checkVendorAbility(type: 'inhouse', status: 'temporary_close') || checkVendorAbility(type: 'inhouse', status: 'vacation_status'))) {
@@ -591,6 +626,16 @@ $admin_shipping = \App\Models\ShippingType::where('seller_id', 0)->first();
                                         </div>
                                     @endif
 
+                                    @if ($isDirectTopUpItem)
+                                        <div class="fs-11 text-muted">
+                                            <span>{{ $topUpQuantityLabel }}: {{ number_format($displayQuantity, 0) }}</span>
+                                            @if ($maskedTopUpAccount !== '')
+                                                <span class="mx-1">&middot;</span>
+                                                <span>{{ translate('account_id') ?: 'Account' }}: {{ $maskedTopUpAccount }}</span>
+                                            @endif
+                                        </div>
+                                    @endif
+
                                     @if ($cartItem->product_type == 'digital')
                                         <div>
                                             <span class="badge fs-11 px-2 py-1"
@@ -606,7 +651,7 @@ $admin_shipping = \App\Models\ShippingType::where('seller_id', 0)->first();
                                         <div class="text-nowrap text-muted">{{ translate('unit_price') }} :</div>
                                         <div class="text-start d-flex gap-1 flex-wrap">
                                             <div class="fw-semibold">
-                                                {{ webCurrencyConverter(amount: $unitDisplayPrice) }}
+                                                {{ $formattedUnitPrice }}
                                             </div>
                                         </div>
                                     </div>
@@ -614,7 +659,7 @@ $admin_shipping = \App\Models\ShippingType::where('seller_id', 0)->first();
                                     <div class="d-flex gap-2">
                                         <div class="text-nowrap text-muted">{{ translate('total') }} :</div>
                                         <div class="font-semi-bold">
-                                            {{ webCurrencyConverter(amount: $lineTotal) }}
+                                            {{ $formattedLineTotal }}
 
                                         </div>
                                     </div>

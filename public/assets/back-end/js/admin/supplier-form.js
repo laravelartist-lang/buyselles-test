@@ -71,9 +71,14 @@
                 'topup_product_id_field',
                 'topup_quantity_field',
                 'topup_account_field',
+                'topup_region_field',
+                'topup_idempotency_key_field',
+                'topup_client_order_id_field',
+                'topup_quantity_as_string',
                 'topup_unit_price_field',
                 'topup_status_response_path',
                 'topup_order_id_response_path',
+                'topup_pending_status_values',
             ],
         },
         {
@@ -82,7 +87,13 @@
             keys: [
                 'webhook_secret',
                 'webhook_signature_header',
+                'webhook_signature_prefix',
                 'webhook_hash_algo',
+                'webhook_type_path',
+                'webhook_order_id_path',
+                'webhook_status_path',
+                'webhook_event_fulfilled_types',
+                'webhook_event_failed_types',
                 'source_currency',
                 'status_map',
             ],
@@ -358,6 +369,129 @@
             .join('')}</div>`;
     }
 
+    function applyConnectorPreset(presetKey, config) {
+        const preset = config.connectorPresets?.[presetKey];
+
+        if (!preset) {
+            return;
+        }
+
+        const driverSelect = document.getElementById('driver-select');
+        const nameInput = document.querySelector('input[name="name"]');
+        const sandboxToggle = document.getElementById('sandbox-toggle');
+        const baseUrlInput = document.getElementById('base-url-input');
+        const rateLimitInput = document.getElementById('rate-limit-input');
+        const topupToggle = document.getElementById('topup-toggle');
+
+        if (driverSelect && preset.driver) {
+            driverSelect.value = preset.driver;
+        }
+
+        if (nameInput && preset.name && !nameInput.value) {
+            nameInput.value = preset.name;
+        }
+
+        if (baseUrlInput && preset.base_url) {
+            baseUrlInput.value = preset.base_url;
+        }
+
+        if (rateLimitInput && preset.rate_limit_per_minute !== undefined) {
+            rateLimitInput.value = preset.rate_limit_per_minute;
+        }
+
+        if (topupToggle && preset.supports_direct_top_up !== undefined) {
+            topupToggle.checked = Boolean(preset.supports_direct_top_up);
+        }
+
+        if (sandboxToggle && preset.is_sandbox !== undefined) {
+            sandboxToggle.checked = Boolean(preset.is_sandbox);
+        }
+
+        config.settingsValues = { ...(preset.settings || {}) };
+        config.currentAuthType = preset.auth_type || config.currentAuthType;
+
+        applyDriverPreset(preset.driver || driverSelect?.value, config, { preserveExisting: false });
+    }
+
+    function initTestTopUpPanel(config) {
+        const placeBtn = document.getElementById('test-topup-place-btn');
+        const pollBtn = document.getElementById('test-topup-poll-btn');
+        const resultNode = document.getElementById('test-topup-result');
+
+        if (!placeBtn || !config.routes?.testTopup) {
+            return;
+        }
+
+        let lastOrderNumber = '';
+
+        const renderResult = (payload) => {
+            if (resultNode) {
+                resultNode.textContent = JSON.stringify(payload, null, 2);
+            }
+        };
+
+        placeBtn.addEventListener('click', async () => {
+            placeBtn.disabled = true;
+
+            try {
+                const response = await fetch(config.routes.testTopup, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
+                        'Accept': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        product_id: document.getElementById('test-topup-product-id')?.value || '',
+                        target_account: document.getElementById('test-topup-target-account')?.value || '',
+                        quantity: document.getElementById('test-topup-quantity')?.value || '',
+                        region: document.getElementById('test-topup-region')?.value || '',
+                    }),
+                });
+
+                const data = await response.json();
+                renderResult(data);
+
+                if (data.success && data.order_number) {
+                    lastOrderNumber = data.order_number;
+                    if (pollBtn) {
+                        pollBtn.disabled = false;
+                    }
+                }
+            } catch (error) {
+                renderResult({ success: false, message: error.message });
+            } finally {
+                placeBtn.disabled = false;
+            }
+        });
+
+        pollBtn?.addEventListener('click', async () => {
+            if (!lastOrderNumber || !config.routes?.pollTopup) {
+                return;
+            }
+
+            pollBtn.disabled = true;
+
+            try {
+                const response = await fetch(config.routes.pollTopup, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
+                        'Accept': 'application/json',
+                    },
+                    body: JSON.stringify({ order_number: lastOrderNumber }),
+                });
+
+                renderResult(await response.json());
+            } catch (error) {
+                renderResult({ success: false, message: error.message });
+            } finally {
+                pollBtn.disabled = false;
+            }
+        });
+    }
+
     function applyDriverPreset(driver, config, options = {}) {
         const preset = config.presets?.[driver] || {};
         const preserveExisting = Boolean(options.preserveExisting);
@@ -423,7 +557,21 @@
             authTypeSelect.addEventListener('change', applyCurrentDriver);
         }
 
+        const connectorPresetSelect = document.getElementById('connector-preset-select');
+        if (connectorPresetSelect) {
+            connectorPresetSelect.addEventListener('change', () => {
+                const presetKey = connectorPresetSelect.value;
+
+                if (!presetKey) {
+                    return;
+                }
+
+                applyConnectorPreset(presetKey, config);
+            });
+        }
+
         applyCurrentDriver(true);
+        initTestTopUpPanel(config);
     }
 
     document.addEventListener('DOMContentLoaded', initSupplierForm);

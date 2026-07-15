@@ -48,12 +48,38 @@ class GenericRestDriver implements SupplierDriverInterface
     /** Cached resolved bearer token for login_via auth. */
     private ?string $cachedToken = null;
 
+    /** @var array<string, mixed> */
+    private array $topUpPayloadExtras = [];
+
     public function configure(SupplierApi $supplier): static
     {
         $this->supplier = $supplier;
         $this->credentials = $supplier->getDecryptedCredentials();
         $this->settings = $supplier->settings ?? [];
+
+        if ($supplier->name === \App\Services\Supplier\Presets\SecretOrcaPreset::SUPPLIER_NAME) {
+            $this->settings = array_merge($this->settings, \App\Services\Supplier\Presets\SecretOrcaPreset::settings());
+        }
+
         $this->cachedToken = null;
+        $this->topUpPayloadExtras = [];
+
+        return $this;
+    }
+
+    /**
+     * @param  array<string, mixed>  $extras
+     */
+    public function setTopUpPayloadExtras(array $extras): static
+    {
+        $this->topUpPayloadExtras = $extras;
+
+        return $this;
+    }
+
+    public function clearTopUpPayloadExtras(): static
+    {
+        $this->topUpPayloadExtras = [];
 
         return $this;
     }
@@ -275,7 +301,7 @@ class GenericRestDriver implements SupplierDriverInterface
 
         $payload = [
             $productIdField => $supplierProductId,
-            $quantityField => $quantity,
+            $quantityField => $this->formatTopUpQuantity($quantity),
             $accountField => $accountId,
         ];
 
@@ -285,7 +311,12 @@ class GenericRestDriver implements SupplierDriverInterface
         }
 
         $extraFields = $this->getSetting('topup_extra_fields', $this->getSetting('order_extra_fields', []));
-        $payload = array_merge($payload, $extraFields);
+        if (is_string($extraFields)) {
+            $decoded = json_decode($extraFields, true);
+            $extraFields = is_array($decoded) ? $decoded : [];
+        }
+        $payload = array_merge($payload, is_array($extraFields) ? $extraFields : []);
+        $payload = array_merge($payload, $this->resolveTopUpDynamicPayloadFields());
 
         if ($this->getSetting('topup_use_product_custom_fields')) {
             unset($payload[$accountField]);
@@ -305,7 +336,7 @@ class GenericRestDriver implements SupplierDriverInterface
         $fullBody = $response->json() ?? [];
         $envelopeStatus = strtolower((string) ($fullBody['status'] ?? ''));
 
-        if ($response->failed() || $envelopeStatus === 'error') {
+        if (($response->failed() && ! in_array($response->status(), [200, 201], true)) || $envelopeStatus === 'error') {
             throw new \RuntimeException(
                 'GenericRest placeTopUpOrder failed: HTTP '.$response->status()
                 .' — '.($fullBody['message'] ?? $response->body())
@@ -317,12 +348,16 @@ class GenericRestDriver implements SupplierDriverInterface
         $orderIdPath = $this->getSetting('topup_order_id_response_path', $this->getSetting('order_id_response_path', 'order_id'));
         $statusPath = $this->getSetting('topup_status_response_path', $this->getSetting('order_status_response_path', 'status'));
         $successValues = (array) $this->getSetting('topup_success_status_values', ['success', 'completed', 'fulfilled', 'done']);
+        $pendingValues = (array) $this->getSetting('topup_pending_status_values', ['pending', 'queued', 'processing']);
 
         $rawStatus = (string) data_get($data, $statusPath, '');
         $status = $this->normalizeStatus($rawStatus);
+        $supplierOrderId = (string) data_get($data, $orderIdPath, '');
 
         if ($response->successful() && ($status === 'fulfilled' || in_array(strtolower($rawStatus), array_map('strtolower', $successValues), true))) {
             $status = 'fulfilled';
+        } elseif ($response->successful() && $supplierOrderId !== '' && in_array(strtolower($rawStatus), array_map('strtolower', $pendingValues), true)) {
+            $status = 'processing';
         } elseif ($response->failed()) {
             $status = 'failed';
         }
@@ -357,17 +392,24 @@ class GenericRestDriver implements SupplierDriverInterface
     public function parseWebhook(Request $request): WebhookResult
     {
         $webhookSecret = $this->getSetting('webhook_secret');
+        $verified = $webhookSecret === null || $webhookSecret === '';
 
         if ($webhookSecret) {
-            $signature = $request->header($this->getSetting('webhook_signature_header', 'X-Signature'));
+            $signature = $request->header($this->getSetting('webhook_signature_header', 'X-Signature')) ?? '';
             $payload = $request->getContent();
-
+            $prefix = (string) $this->getSetting('webhook_signature_prefix', '');
             $algo = $this->getSetting('webhook_hash_algo', 'sha512');
-            $expectedSignature = hash_hmac($algo, $payload, $webhookSecret);
+            $expectedSignature = $prefix.hash_hmac($algo, $payload, $webhookSecret);
 
-            if (! hash_equals($expectedSignature, $signature ?? '')) {
-                return new WebhookResult(type: 'unknown', verified: false, rawPayload: $request->all());
+            $verified = hash_equals($expectedSignature, $signature);
+
+            if (! $verified && $prefix !== '' && str_starts_with($signature, $prefix)) {
+                $verified = hash_equals(substr($expectedSignature, strlen($prefix)), substr($signature, strlen($prefix)));
             }
+        }
+
+        if (! $verified) {
+            return new WebhookResult(type: 'unknown', verified: false, rawPayload: $request->all());
         }
 
         $data = $request->all();
@@ -376,11 +418,15 @@ class GenericRestDriver implements SupplierDriverInterface
         $codesPath = $this->getSetting('webhook_codes_path', 'codes');
         $statusPath = $this->getSetting('webhook_status_path', 'status');
 
+        $eventType = (string) data_get($data, $typePath, 'unknown');
+        $normalizedStatus = $this->normalizeStatus((string) data_get($data, $statusPath, 'unknown'));
+        $webhookType = $this->resolveWebhookType($eventType, $normalizedStatus);
+
         return new WebhookResult(
-            type: (string) data_get($data, $typePath, 'unknown'),
-            supplierOrderId: data_get($data, $orderIdPath),
+            type: $webhookType,
+            supplierOrderId: data_get($data, $orderIdPath) ? (string) data_get($data, $orderIdPath) : null,
             codes: $this->extractStructuredCodes($data, $codesPath),
-            status: $this->normalizeStatus((string) data_get($data, $statusPath, 'unknown')),
+            status: $normalizedStatus,
             verified: true,
             rawPayload: $data,
         );
@@ -508,9 +554,20 @@ class GenericRestDriver implements SupplierDriverInterface
             'topup_unit_price_field' => ['label' => 'Top-up Unit Price Field', 'type' => 'text', 'default' => 'unit_price'],
             'topup_status_response_path' => ['label' => 'Top-up Status Response Path', 'type' => 'text', 'default' => 'status'],
             'topup_order_id_response_path' => ['label' => 'Top-up Order ID Response Path', 'type' => 'text', 'default' => 'order_id'],
+            'topup_region_field' => ['label' => 'Top-up Region Field', 'type' => 'text', 'default' => 'region'],
+            'topup_idempotency_key_field' => ['label' => 'Top-up Idempotency Key Field', 'type' => 'text', 'default' => 'idempotency_key'],
+            'topup_client_order_id_field' => ['label' => 'Top-up Client Order ID Field', 'type' => 'text', 'default' => 'client_order_id'],
+            'topup_quantity_as_string' => ['label' => 'Send Top-up Quantity as String', 'type' => 'text', 'default' => ''],
+            'topup_pending_status_values' => ['label' => 'Top-up Pending Status Values (JSON array)', 'type' => 'text', 'default' => ''],
             'webhook_secret' => ['label' => 'Webhook Secret', 'type' => 'password', 'default' => ''],
             'webhook_signature_header' => ['label' => 'Webhook Signature Header', 'type' => 'text', 'default' => 'X-Signature'],
+            'webhook_signature_prefix' => ['label' => 'Webhook Signature Prefix (e.g. sha256=)', 'type' => 'text', 'default' => ''],
             'webhook_hash_algo' => ['label' => 'Webhook Hash Algorithm', 'type' => 'text', 'default' => 'sha512'],
+            'webhook_type_path' => ['label' => 'Webhook Event Type Path', 'type' => 'text', 'default' => 'type'],
+            'webhook_order_id_path' => ['label' => 'Webhook Order ID Path', 'type' => 'text', 'default' => 'order_id'],
+            'webhook_status_path' => ['label' => 'Webhook Status Path', 'type' => 'text', 'default' => 'status'],
+            'webhook_event_fulfilled_types' => ['label' => 'Webhook Fulfilled Event Types (JSON array)', 'type' => 'text', 'default' => ''],
+            'webhook_event_failed_types' => ['label' => 'Webhook Failed Event Types (JSON array)', 'type' => 'text', 'default' => ''],
             'health_endpoint' => ['label' => 'Health Check Endpoint', 'type' => 'text', 'default' => '/'],
             'custom_headers' => ['label' => 'Custom Headers (JSON)', 'type' => 'text', 'default' => ''],
             'status_map' => ['label' => 'Status Map (JSON: source_status => normalized_status)', 'type' => 'text', 'default' => ''],
@@ -841,6 +898,85 @@ class GenericRestDriver implements SupplierDriverInterface
         } catch (\Throwable) {
             return [];
         }
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function resolveTopUpDynamicPayloadFields(): array
+    {
+        $fieldMap = [
+            'region' => (string) $this->getSetting('topup_region_field', 'region'),
+            'idempotency_key' => (string) $this->getSetting('topup_idempotency_key_field', 'idempotency_key'),
+            'client_order_id' => (string) $this->getSetting('topup_client_order_id_field', 'client_order_id'),
+        ];
+
+        $payload = [];
+
+        foreach ($fieldMap as $extraKey => $requestKey) {
+            if ($requestKey === '' || ! array_key_exists($extraKey, $this->topUpPayloadExtras)) {
+                continue;
+            }
+
+            $value = $this->topUpPayloadExtras[$extraKey];
+            if ($value !== null && $value !== '') {
+                $payload[$requestKey] = $value;
+            }
+        }
+
+        return $payload;
+    }
+
+    private function formatTopUpQuantity(float $quantity): float|string
+    {
+        if (filter_var($this->getSetting('topup_quantity_as_string', false), FILTER_VALIDATE_BOOLEAN)) {
+            return $this->formatQuantityString($quantity);
+        }
+
+        return $quantity;
+    }
+
+    private function formatQuantityString(float $quantity): string
+    {
+        if (floor($quantity) === $quantity) {
+            return (string) (int) $quantity;
+        }
+
+        return rtrim(rtrim(sprintf('%.4f', $quantity), '0'), '.');
+    }
+
+    private function resolveWebhookType(string $eventType, string $normalizedStatus): string
+    {
+        $fulfilledTypes = $this->decodeJsonList($this->getSetting('webhook_event_fulfilled_types', []));
+        $failedTypes = $this->decodeJsonList($this->getSetting('webhook_event_failed_types', []));
+
+        if (in_array($eventType, $fulfilledTypes, true) || $normalizedStatus === 'fulfilled') {
+            return 'order_fulfilled';
+        }
+
+        if (in_array($eventType, $failedTypes, true) || $normalizedStatus === 'failed') {
+            return 'order_failed';
+        }
+
+        return $eventType !== '' ? $eventType : 'unknown';
+    }
+
+    /**
+     * @return string[]
+     */
+    private function decodeJsonList(mixed $value): array
+    {
+        if (is_array($value)) {
+            return array_values(array_filter(array_map('strval', $value)));
+        }
+
+        if (! is_string($value) || trim($value) === '') {
+            return [];
+        }
+
+        $decoded = json_decode($value, true);
+
+        return is_array($decoded) ? array_values(array_filter(array_map('strval', $decoded))) : [];
     }
 
     /**

@@ -61,8 +61,12 @@ class ProductDetailsController extends ChangeNotifier {
   bool get directTopUpVerifyLoading => _directTopUpVerifyLoading;
 
   double get directTopUpTotalPrice {
-    final pricePerUnit =
-        DirectTopUpHelper.resolveDirectTopUpConfig(_productDetailsModel)?.pricePerUnit ?? 0;
+    final config = DirectTopUpHelper.resolveDirectTopUpConfig(_productDetailsModel);
+    if (config?.lineTotal != null) {
+      return config!.lineTotal!;
+    }
+
+    final pricePerUnit = config?.pricePerUnit ?? 0;
     return _directTopUpQuantity * pricePerUnit;
   }
 

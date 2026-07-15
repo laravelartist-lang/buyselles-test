@@ -50,7 +50,7 @@ class DirectTopUpCartTest extends TestCase
             $table->unsignedBigInteger('product_id')->index();
             $table->unsignedBigInteger('supplier_api_id')->nullable();
             $table->string('supplier_product_id')->nullable();
-            $table->decimal('cost_price', 10, 2)->default(0);
+            $table->decimal('cost_price', 24, 10)->default(0);
             $table->string('markup_type')->default('percent');
             $table->decimal('markup_value', 10, 2)->default(0);
             $table->boolean('is_active')->default(true);
@@ -401,6 +401,48 @@ class DirectTopUpCartTest extends TestCase
         $this->assertSame(700.0, (float) $cartRow->direct_topup_quantity);
         $this->assertSame(1, (int) $cartRow->quantity);
         $this->assertSame(7.0, (float) $cartRow->price);
+    }
+
+    public function test_direct_topup_micro_unit_price_preserves_fractional_cart_total(): void
+    {
+        $productId = 506;
+
+        $this->app['db']->table('supplier_product_mappings')->insert([
+            'product_id' => $productId,
+            'supplier_api_id' => 1,
+            'supplier_product_id' => 'SUP-506',
+            'cost_price' => 0.001062834,
+            'markup_type' => 'percent',
+            'markup_value' => 0,
+            'is_active' => true,
+            'is_direct_topup' => true,
+            'direct_topup_account_label' => 'Player ID',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $product = $this->makeDirectTopUpProduct($productId);
+        $product->minimum_order_qty = 900;
+        $this->persistProduct($product);
+
+        session(['guest_id' => 999003]);
+
+        $request = Request::create('/cart/add', 'POST', [
+            'id' => $productId,
+            'quantity' => 1,
+            'direct_topup_account_id' => 'player900',
+            'direct_topup_quantity' => 900,
+        ]);
+
+        $response = CartManager::addToCartDigitalProduct(
+            request: $request,
+            product: $product,
+            shippingType: 'order_wise',
+            sellerShippingList: null,
+        );
+
+        $this->assertSame(1, $response['status']);
+        $this->assertEqualsWithDelta(0.9565506, (float) $response['cart']['price'], 0.0000001);
     }
 
     private function seedDirectTopUpProductMapping(int $productId, string $supplierProductId): void

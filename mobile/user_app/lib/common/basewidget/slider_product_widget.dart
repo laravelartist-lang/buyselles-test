@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_sixvalley_ecommerce/features/product/domain/models/product_model.dart';
+import 'package:flutter_sixvalley_ecommerce/helper/direct_topup_helper.dart';
 import 'package:flutter_sixvalley_ecommerce/helper/price_converter.dart';
 import 'package:flutter_sixvalley_ecommerce/localization/controllers/localization_controller.dart';
 import 'package:flutter_sixvalley_ecommerce/localization/language_constrants.dart';
@@ -173,7 +174,7 @@ class SliderProductWidget extends StatelessWidget {
                     color: Theme.of(context).textTheme.bodyLarge?.color,
                   ), maxLines: 1, overflow: TextOverflow.ellipsis),
 
-                  if(hasDiscount())
+                  if(hasDiscount() && !DirectTopUpHelper.isDirectTopUpListingProduct(product))
                     Text(PriceConverter.convertPrice(context, product.unitPrice), style: titleRegular.copyWith(
                       color: Theme.of(context).hintColor,
                       decoration: TextDecoration.lineThrough,
@@ -181,20 +182,39 @@ class SliderProductWidget extends StatelessWidget {
                       fontSize: Dimensions.fontSizeSmall,
                     )),
 
-                  Text(
-                    PriceConverter.convertPrice(
-                      context, product.unitPrice,
-                      discountType: (product.clearanceSale?.discountAmount ?? 0)  > 0
-                        ? product.clearanceSale?.discountType
-                        : product.discountType,
-                      discount: (product.clearanceSale?.discountAmount ?? 0)  > 0
-                        ? product.clearanceSale?.discountAmount
-                        : product.discount,
+                  if (DirectTopUpHelper.isDirectTopUpListingProduct(product)) ...[
+                    Text(
+                      DirectTopUpHelper.resolveListingPriceText(context, product) ?? '',
+                      style: robotoBold.copyWith(
+                        color: Provider.of<ThemeController>(context).darkTheme
+                            ? Theme.of(context).textTheme.bodyLarge?.color
+                            : Theme.of(context).primaryColor,
+                        fontSize: Dimensions.fontSizeDefault,
+                      ),
                     ),
-                    style: robotoBold.copyWith(color:  Provider.of<ThemeController>(context).darkTheme ?
-                    Theme.of(context).textTheme.bodyLarge?.color :
-                    Theme.of(context).primaryColor,fontSize: Dimensions.fontSizeDefault),
-                  ),
+                    if (DirectTopUpHelper.listingCreditsSubtitle(product) != null)
+                      Text(
+                        DirectTopUpHelper.listingCreditsSubtitle(product)!,
+                        style: textRegular.copyWith(
+                          fontSize: Dimensions.fontSizeSmall,
+                          color: Theme.of(context).hintColor,
+                        ),
+                      ),
+                  ] else
+                    Text(
+                      PriceConverter.convertPrice(
+                        context, product.unitPrice,
+                        discountType: (product.clearanceSale?.discountAmount ?? 0)  > 0
+                          ? product.clearanceSale?.discountType
+                          : product.discountType,
+                        discount: (product.clearanceSale?.discountAmount ?? 0)  > 0
+                          ? product.clearanceSale?.discountAmount
+                          : product.discount,
+                      ),
+                      style: robotoBold.copyWith(color:  Provider.of<ThemeController>(context).darkTheme ?
+                      Theme.of(context).textTheme.bodyLarge?.color :
+                      Theme.of(context).primaryColor,fontSize: Dimensions.fontSizeDefault),
+                    ),
 
                 ]),
               ),

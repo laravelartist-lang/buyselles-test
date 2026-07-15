@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter_sixvalley_ecommerce/data/model/image_full_url.dart';
 import 'package:flutter_sixvalley_ecommerce/features/product_details/domain/models/product_details_model.dart';
+import 'package:flutter_sixvalley_ecommerce/helper/direct_topup_helper.dart';
 
 class ProductModel {
   int? totalSize;
@@ -105,6 +106,10 @@ class Product {
   int? _status;
   List<Reviews>? _reviews;
   String? _reviewsAvgRating;
+  bool? _isDirectTopup;
+  double? _displayPrice;
+  String? _formattedDisplayPrice;
+  DirectTopUpListingInfo? _directTopupListing;
   Product(
       {int? id,
         String? addedBy,
@@ -260,6 +265,10 @@ class Product {
   int? get status => _status;
   List<Reviews>? get reviews => _reviews;
   String? get reviewsAvgRating => _reviewsAvgRating;
+  bool? get isDirectTopup => _isDirectTopup;
+  double? get displayPrice => _displayPrice;
+  String? get formattedDisplayPrice => _formattedDisplayPrice;
+  DirectTopUpListingInfo? get directTopupListing => _directTopupListing;
 
   Product.fromJson(Map<String, dynamic> json) {
     _id = json['id'];
@@ -424,6 +433,16 @@ class Product {
       });
     }
     _reviewsAvgRating = json['reviews_avg_rating'];
+    _isDirectTopup = json['is_direct_topup'] == true || json['is_direct_topup'] == 1;
+    _displayPrice = json['display_price'] != null
+        ? double.tryParse(json['display_price'].toString())
+        : null;
+    _formattedDisplayPrice = json['formatted_display_price']?.toString();
+    if (json['direct_topup'] != null && json['direct_topup'] is Map) {
+      _directTopupListing = DirectTopUpListingInfo.fromJson(
+        Map<String, dynamic>.from(json['direct_topup'] as Map),
+      );
+    }
   }
 
   static int? _nullableInt(dynamic value) {

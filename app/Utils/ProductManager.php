@@ -70,7 +70,7 @@ class ProductManager
                         });
                 });
             })
-            ->with(['rating', 'tags', 'seller.shop', 'flashDealProducts.flashDeal', 'clearanceSale' => function ($query) {
+            ->with(['rating', 'tags', 'seller.shop', 'supplierMapping.supplierApi', 'flashDealProducts.flashDeal', 'clearanceSale' => function ($query) {
                 return $query->active();
             }])
             ->withCount(['reviews', 'wishList' => function ($query) use ($user) {
@@ -135,7 +135,7 @@ class ProductManager
                         });
                 });
             })
-            ->with(['rating', 'tags', 'seller.shop', 'flashDealProducts.flashDeal', 'clearanceSale' => function ($query) {
+            ->with(['rating', 'tags', 'seller.shop', 'supplierMapping.supplierApi', 'flashDealProducts.flashDeal', 'clearanceSale' => function ($query) {
                 return $query->active();
             }])
             ->withCount(['reviews', 'wishList' => function ($query) use ($user) {
@@ -176,7 +176,7 @@ class ProductManager
         $user = Helpers::getCustomerInformation($request);
         $currentDate = date('Y-m-d H:i:s');
         // Change review to ratting
-        $products = Product::with(['seller.shop', 'rating', 'tags', 'flashDealProducts.flashDeal', 'clearanceSale' => function ($query) {
+        $products = Product::with(['seller.shop', 'rating', 'tags', 'supplierMapping.supplierApi', 'flashDealProducts.flashDeal', 'clearanceSale' => function ($query) {
             return $query->active();
         }])->active()
             ->when($request->hasAny(['country_id', 'city_id', 'area_id']), function ($query) use ($request) {
@@ -277,6 +277,7 @@ class ProductManager
                 'category',
                 'reviews',
                 'rating',
+                'supplierMapping.supplierApi',
                 'flashDealProducts.flashDeal',
                 'wishList' => function ($query) use ($user) {
                     return $query->where('customer_id', $user != 'offline' ? $user->id : '0');
@@ -365,6 +366,7 @@ class ProductManager
                 'category',
                 'reviews',
                 'rating',
+                'supplierMapping.supplierApi',
                 'flashDealProducts.flashDeal',
                 'wishList' => function ($query) use ($user) {
                     return $query->where('customer_id', $user != 'offline' ? $user->id : '0');
@@ -449,7 +451,7 @@ class ProductManager
     {
         $user = Helpers::getCustomerInformation($request);
         $product = Product::find($product_id);
-        $products = Product::active()->with(['rating', 'flashDealProducts.flashDeal', 'tags', 'seller.shop', 'clearanceSale' => function ($query) {
+        $products = Product::active()->with(['rating', 'flashDealProducts.flashDeal', 'tags', 'seller.shop', 'supplierMapping.supplierApi', 'clearanceSale' => function ($query) {
             return $query->active();
         }])
             ->withCount(['reviews', 'wishList' => function ($query) use ($user) {
@@ -498,7 +500,7 @@ class ProductManager
         $publishingHouseIds = PublishingHouse::where('name', 'like', "%{$name}%")->pluck('id')->toArray();
         $publishingHouseProductIds = DigitalProductPublishingHouse::whereIn('publishing_house_id', $publishingHouseIds)->pluck('product_id')->toArray();
 
-        $productListData = Product::active()->with(['rating', 'tags', 'clearanceSale' => function ($query) {
+        $productListData = Product::active()->with(['rating', 'tags', 'supplierMapping.supplierApi', 'clearanceSale' => function ($query) {
             return $query->active();
         }])
             ->where(function ($q) use ($key) {
@@ -570,7 +572,7 @@ class ProductManager
         $publishingHouseIds = PublishingHouse::where('name', 'like', "%{$name}%")->pluck('id')->toArray();
         $publishingHouseProductIds = DigitalProductPublishingHouse::whereIn('publishing_house_id', $publishingHouseIds)->pluck('product_id')->toArray();
 
-        $productListData = Product::active()->with(['rating', 'tags'])->where(function ($q) use ($name) {
+        $productListData = Product::active()->with(['rating', 'tags', 'supplierMapping.supplierApi'])->where(function ($q) use ($name) {
             $q->orWhere('name', 'like', "%{$name}%")
                 ->orWhereHas('tags', function ($query) use ($name) {
                     $query->where('tag', 'like', "%{$name}%");
@@ -610,7 +612,7 @@ class ProductManager
         $tagProductIds = ProductTag::whereIn('tag_id', ($tagsId ?? [0]))->pluck('product_id')->toArray() ?? [];
         $productIds = array_merge($productIds, $tagProductIds);
 
-        $productListData = Product::with(['tags', 'clearanceSale' => function ($query) {
+        $productListData = Product::with(['tags', 'supplierMapping.supplierApi', 'clearanceSale' => function ($query) {
             return $query->active();
         }])->whereIn('id', $productIds);
         if ($category != 'all') {
@@ -637,7 +639,7 @@ class ProductManager
             ->where('value', 'like', "%{$name}%")
             ->pluck('translationable_id');
 
-        $productListData = Product::with(['tags', 'translations'])
+        $productListData = Product::with(['tags', 'translations', 'supplierMapping.supplierApi'])
             ->whereIn('id', $translationIds);
 
         if ($category !== 'all') {
@@ -829,7 +831,7 @@ class ProductManager
         $subSubCategoryIds = Category::where(['position' => 2])->whereIn('id', $categories)->pluck('id')->toArray();
 
         $products = Product::active()
-            ->with(['rating', 'flashDealProducts.flashDeal', 'tags', 'digitalProductAuthors.author', 'digitalProductPublishingHouse.publishingHouse', 'clearanceSale' => function ($query) {
+            ->with(['rating', 'flashDealProducts.flashDeal', 'tags', 'digitalProductAuthors.author', 'digitalProductPublishingHouse.publishingHouse', 'supplierMapping.supplierApi', 'clearanceSale' => function ($query) {
                 return $query->active();
             }])
             ->withCount(['reviews', 'wishList' => function ($query) use ($user) {
@@ -959,7 +961,7 @@ class ProductManager
 
     public static function get_seller_all_products($seller_id, $limit = 10, $offset = 1)
     {
-        $paginator = Product::with(['rating', 'tags'])
+        $paginator = Product::with(['rating', 'tags', 'supplierMapping.supplierApi'])
             ->where(['user_id' => $seller_id, 'added_by' => 'seller'])
             ->orderBy('id', 'desc')
             ->paginate($limit, ['*'], 'page', $offset);
@@ -979,7 +981,7 @@ class ProductManager
         $stockClearanceProductIds = StockClearanceProduct::active()->pluck('product_id')->toArray();
 
         // change review to ratting
-        $paginator = Product::with(['rating', 'reviews', 'tags', 'clearanceSale' => function ($query) {
+        $paginator = Product::with(['rating', 'reviews', 'tags', 'supplierMapping.supplierApi', 'clearanceSale' => function ($query) {
             return $query->active();
         }])->active()
             ->withCount(['reviews', 'wishList' => function ($query) use ($user) {
@@ -1505,6 +1507,7 @@ class ProductManager
 
         $query = $query->with([
             'seller.shop',
+            'supplierMapping.supplierApi',
             'flashDealProducts.featureDeal',
             'flashDealProducts.featureDeal' => function ($query) {
                 return $query->whereDate('start_date', '<=', date('Y-m-d'))
@@ -2200,7 +2203,7 @@ class ProductManager
         $productListData = Product::active()
             ->with(['category', 'reviews' => function ($query) {
                 $query->active();
-            }, 'rating', 'seller.shop', 'supplierMapping', 'clearanceSale' => function ($query) {
+            }, 'rating', 'seller.shop', 'supplierMapping.supplierApi', 'clearanceSale' => function ($query) {
                 return $query->active()->with(['setup']);
             }])
             ->withAvg('reviews', 'rating')
@@ -2558,7 +2561,7 @@ class ProductManager
 
     public static function getAllProductsData($request, $productUserID = null, $productAddedBy = null): mixed
     {
-        return Product::active()->with(['rating', 'supplierMapping'])->withCount('reviews')
+        return Product::active()->with(['rating', 'supplierMapping.supplierApi'])->withCount('reviews')
             ->when($productAddedBy == 'admin', function ($query) use ($productAddedBy) {
                 return $query->where(['added_by' => $productAddedBy]);
             })
@@ -2682,6 +2685,19 @@ class ProductManager
 
         foreach ($cartItemsList as $cartItem) {
             $cartItemProduct = $cartItem?->product;
+
+            if ($cartItem->isDirectTopUp() && $cartItemProduct) {
+                $lineTotal = app(\App\Services\DirectTopUp\DirectTopUpService::class)->calculateTotalPrice(
+                    $cartItemProduct,
+                    (float) $cartItem->direct_topup_quantity
+                );
+
+                if ((float) $cartItem->price !== $lineTotal) {
+                    Cart::where(['id' => $cartItem['id']])->update(['price' => $lineTotal]);
+                }
+
+                continue;
+            }
 
             if (empty($cartItem->variant)) {
                 $priceForTax = ! empty($cartItem->custom_amount) ? $cartItem->price : $cartItemProduct->unit_price;

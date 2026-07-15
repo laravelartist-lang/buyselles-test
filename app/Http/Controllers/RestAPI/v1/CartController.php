@@ -141,6 +141,31 @@ class CartController extends Controller
                 $data['discount'] = getProductPriceByType(product: $data['product'], type: 'discounted_amount', result: 'value', price: $data['price']);
                 unset($data['product']['variation']);
 
+                $directTopUpService = app(DirectTopUpService::class);
+
+                if ($data->isDirectTopUp()) {
+                    $directTopUpProduct = Product::query()
+                        ->with('supplierMapping.supplierApi')
+                        ->find($data->product_id);
+
+                    $data['is_direct_topup'] = true;
+                    $data['direct_topup_quantity'] = (float) $data->direct_topup_quantity;
+                    $data['direct_topup_account_id'] = $directTopUpService->maskAccountIdForDisplay($data->direct_topup_account_id);
+
+                    if ($directTopUpProduct) {
+                        $lineTotal = (float) $data->price;
+                        $data['formatted_price'] = $directTopUpService->formatWebPrice($directTopUpProduct, $lineTotal);
+                        $data['direct_topup'] = [
+                            'quantity' => (float) $data->direct_topup_quantity,
+                            'line_total' => $lineTotal,
+                            'formatted_line_total' => $directTopUpService->formatWebPrice($directTopUpProduct, $lineTotal),
+                            'quantity_label' => translate('direct_topup_credits_quantity') ?: 'Credits',
+                        ];
+                    }
+                } else {
+                    $data['is_direct_topup'] = false;
+                }
+
                 return $data;
             });
         }

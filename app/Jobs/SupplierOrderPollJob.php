@@ -35,7 +35,7 @@ class SupplierOrderPollJob implements ShouldQueue
      */
     public function backoff(): array
     {
-        return [30, 60, 120, 180, 300];
+        return [2, 4, 8, 15, 30, 60, 120, 180, 300];
     }
 
     public function __construct(
@@ -90,11 +90,30 @@ class SupplierOrderPollJob implements ShouldQueue
             ]);
 
             if ($result->status === 'failed') {
-                $supplierOrder->update([
-                    'status' => 'failed',
-                    'failed_reason' => 'Supplier reported order failed',
-                    'attempt_count' => $this->attempts(),
-                ]);
+                $manager->completeDirectTopUpSupplierOrder(
+                    supplierOrder: $supplierOrder,
+                    status: 'failed',
+                    rawResponse: $result->rawResponse,
+                );
+
+                return;
+            }
+
+            if ($mapping->is_direct_topup) {
+                if ($result->status === 'fulfilled') {
+                    $manager->completeDirectTopUpSupplierOrder(
+                        supplierOrder: $supplierOrder,
+                        status: 'fulfilled',
+                        rawResponse: $result->rawResponse,
+                    );
+
+                    return;
+                }
+
+                if (in_array($result->status, ['processing', 'pending'], true)) {
+                    $supplierOrder->update(['attempt_count' => $this->attempts()]);
+                    $this->release($this->backoff()[$this->attempts() - 1] ?? 300);
+                }
 
                 return;
             }
@@ -252,9 +271,27 @@ class SupplierOrderPollJob implements ShouldQueue
             'error' => $exception->getMessage(),
         ]);
 
-        SupplierOrder::where('id', $this->supplierOrderId)->update([
+        $supplierOrder = SupplierOrder::with('productMapping')->find($this->supplierOrderId);
+
+        if ($supplierOrder === null) {
+            return;
+        }
+
+        $supplierOrder->update([
             'status' => 'failed',
             'failed_reason' => 'Poll retries exhausted: '.$exception->getMessage(),
         ]);
+
+        if ($supplierOrder->order_id && ($supplierOrder->productMapping?->is_direct_topup ?? false)) {
+            $order = Order::find($supplierOrder->order_id);
+
+            if ($order) {
+                app(\App\Services\DirectTopUp\DirectTopUpWalletCheckoutService::class)->markDirectTopUpOrderFailed(
+                    $order,
+                    $exception->getMessage() ?: translate('direct_topup_fulfillment_failed'),
+                    (int) $order->customer_id,
+                );
+            }
+        }
     }
 }

@@ -48,6 +48,19 @@
                         </div>
                     </div>
 
+                    <div class="col-lg-6" id="connector-preset-wrapper">
+                        <div class="form-group">
+                            <label class="form-label">{{ translate('connector_preset') ?: 'Connector Preset' }}</label>
+                            <select class="form-control" id="connector-preset-select">
+                                <option value="">{{ translate('custom_configuration') ?: 'Custom configuration' }}</option>
+                                @foreach(($connectorPresets ?? []) as $presetKey => $connectorPreset)
+                                    <option value="{{ $presetKey }}">{{ $connectorPreset['label'] ?? $presetKey }}</option>
+                                @endforeach
+                            </select>
+                            <small class="text-muted">{{ translate('connector_preset_hint') ?: 'Apply a pre-built API configuration (Secret Orca, etc.).' }}</small>
+                        </div>
+                    </div>
+
                     <div class="col-lg-6">
                         <div class="form-group">
                             <label class="form-label">{{ translate('base_url') }} <span class="text-danger">*</span></label>
@@ -135,6 +148,49 @@
                 <h5 class="mb-3"><i class="fi fi-rr-settings"></i> {{ translate('driver_settings') }}</h5>
                 <div class="row gy-3" id="settings-section"></div>
 
+                @if($supplier->supports_direct_top_up)
+                <hr class="my-4">
+                <h5 class="mb-3"><i class="fi fi-rr-test"></i> {{ translate('test_direct_topup') ?: 'Test Direct Top-Up' }}</h5>
+                <p class="text-muted">{{ translate('test_direct_topup_hint') ?: 'Place a sandbox test order without affecting customer orders.' }}</p>
+                <div class="row gy-3" id="test-topup-panel">
+                    <div class="col-lg-6">
+                        <div class="form-group">
+                            <label class="form-label">{{ translate('supplier_product_id_SKU') }}</label>
+                            <input type="text" class="form-control" id="test-topup-product-id" placeholder="Product UUID">
+                        </div>
+                    </div>
+                    <div class="col-lg-6">
+                        <div class="form-group">
+                            <label class="form-label">{{ translate('target_account') ?: 'Target Account' }}</label>
+                            <input type="text" class="form-control" id="test-topup-target-account" placeholder="Player ID">
+                        </div>
+                    </div>
+                    <div class="col-lg-4">
+                        <div class="form-group">
+                            <label class="form-label">{{ translate('quantity') }}</label>
+                            <input type="number" class="form-control" id="test-topup-quantity" min="1" step="1" value="1000">
+                        </div>
+                    </div>
+                    <div class="col-lg-4">
+                        <div class="form-group">
+                            <label class="form-label">{{ translate('direct_topup_region') ?: 'Region' }}</label>
+                            <input type="text" class="form-control text-uppercase" id="test-topup-region" maxlength="2" placeholder="EG">
+                        </div>
+                    </div>
+                    <div class="col-lg-4 d-flex align-items-end gap-2">
+                        <button type="button" class="btn btn-outline-primary" id="test-topup-place-btn">
+                            {{ translate('place_test_order') ?: 'Place Test Order' }}
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary" id="test-topup-poll-btn" disabled>
+                            {{ translate('poll_status') ?: 'Poll Status' }}
+                        </button>
+                    </div>
+                    <div class="col-12">
+                        <pre class="bg-light border rounded p-3 mb-0 small" id="test-topup-result">{{ translate('test_order_result_will_appear_here') ?: 'Test order result will appear here.' }}</pre>
+                    </div>
+                </div>
+                @endif
+
                 <div class="d-flex gap-3 mt-4">
                     <button type="submit" class="btn btn-primary">
                         <i class="fi fi-sr-check"></i> {{ translate('update') }}
@@ -151,6 +207,8 @@
 @include('admin-views.supplier.partials._supplier-driver-script', [
     'formMode' => 'edit',
     'defaultDriver' => old('driver', $supplier->driver),
+    'supplierId' => $supplier->id,
+    'connectorPresets' => $connectorPresets ?? [],
 ])
 @endsection
 

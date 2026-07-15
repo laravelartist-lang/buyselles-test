@@ -2803,18 +2803,33 @@ class OrderManager
 
     public static function resolveDirectTopUpAccountId(OrderDetail $detail): ?string
     {
-        $raw = \Illuminate\Support\Facades\DB::table('order_details')
-            ->where('id', $detail->id)
-            ->value('direct_topup_account_id');
+        $freshDetail = OrderDetail::query()
+            ->without('storage')
+            ->find($detail->id);
 
-        if ($raw === null || $raw === '') {
+        if ($freshDetail === null) {
             return null;
         }
 
-        try {
-            return decrypt($raw);
-        } catch (\Throwable) {
-            return (string) $raw;
+        $accountId = $freshDetail->direct_topup_account_id;
+
+        if ($accountId === null || $accountId === '') {
+            return null;
         }
+
+        return self::normalizeDirectTopUpAccountId((string) $accountId);
+    }
+
+    private static function normalizeDirectTopUpAccountId(string $accountId): string
+    {
+        if (preg_match('/^s:\d+:"/u', $accountId)) {
+            $unserialized = @unserialize($accountId);
+
+            if (is_string($unserialized) && $unserialized !== '') {
+                return $unserialized;
+            }
+        }
+
+        return $accountId;
     }
 }

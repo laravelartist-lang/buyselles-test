@@ -1450,10 +1450,19 @@ function initDirectTopUpModalBehavior($root) {
         return symbolPosition === "left" ? currencySymbol + num : num + currencySymbol;
     }
 
-    const total = Math.round(quantity * perUnit * 100) / 100;
+    function roundPrice(value) {
+        const factor = Math.pow(10, decimalPoints);
+        return Math.round(Number(value) * factor) / factor;
+    }
+
+    const total = roundPrice(quantity * perUnit);
 
     $hiddenQty.val(quantity);
-    $modalTotal.text(formatPrice(total));
+    if (currencyConfig.formatted_line_total) {
+        $modalTotal.text(currencyConfig.formatted_line_total);
+    } else {
+        $modalTotal.text(formatPrice(total));
+    }
 
     resetDirectTopUpVerificationState($root);
 }

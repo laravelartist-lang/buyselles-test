@@ -11,7 +11,12 @@ abstract class CartServiceInterface{
 
   Future<dynamic> addToCartListData(CartModelBody cart, List<ChoiceOptions> choiceOptions, List<int>? variationIndexes, int buyNow, int? shippingMethodExist, int? shippingMethodId);
 
-  Future<dynamic> updateQuantity(int? key,int quantity);
+  Future<dynamic> updateQuantity(
+    int? key,
+    int quantity, {
+    bool isDirectTopup = false,
+    double? directTopupQuantity,
+  });
 
   Future<dynamic> addRemoveCartSelectedItem(Map<String, dynamic> data);
 

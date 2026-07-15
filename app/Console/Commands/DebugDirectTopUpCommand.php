@@ -16,11 +16,12 @@ class DebugDirectTopUpCommand extends Command
 {
     protected $signature = 'topup:debug
                             {order? : Order ID (defaults to latest direct top-up order)}
-                            {--retry : Run fulfillment synchronously and print the Golf API response}
+                            {--retry : Run fulfillment synchronously and print the supplier API response}
                             {--force : With --retry, call the supplier API even if already fulfilled}
-                            {--fix-account : Re-encrypt plaintext account IDs on order_details}';
+                            {--fix-account : Re-encrypt plaintext account IDs on order_details}
+                            {--poll : Poll pending supplier orders for this platform order}';
 
-    protected $description = 'Inspect direct top-up order fulfillment and optionally retry the Golf API call';
+    protected $description = 'Inspect direct top-up order fulfillment and optionally retry the supplier API call';
 
     public function handle(SupplierManager $supplierManager): int
     {
@@ -95,10 +96,13 @@ class DebugDirectTopUpCommand extends Command
         $this->section('Supplier orders ('.$supplierOrders->count().')');
 
         if ($supplierOrders->isEmpty()) {
-            $this->warn('No supplier_orders row — Golf API was likely never called.');
+            $this->warn('No supplier_orders row — the supplier place-order API was likely never called or the row was not saved.');
         } else {
             foreach ($supplierOrders as $supplierOrder) {
                 $this->line("  #{$supplierOrder->id} external={$supplierOrder->supplier_order_id} status={$supplierOrder->status}");
+                if ($supplierOrder->failed_reason) {
+                    $this->line('    failed_reason: '.str($supplierOrder->failed_reason)->limit(120));
+                }
             }
         }
 
@@ -130,6 +134,10 @@ class DebugDirectTopUpCommand extends Command
         $this->line('Queue driver: '.config('queue.default'));
         $this->line('Tip: Admin → Supplier → API Logs also shows these entries.');
         $this->newLine();
+
+        if ($this->option('poll')) {
+            return $this->pollSupplierOrders($supplierManager, $order, $supplierOrders);
+        }
 
         if ($this->option('retry')) {
             if ($order->payment_status !== 'paid') {
@@ -185,9 +193,11 @@ class DebugDirectTopUpCommand extends Command
                 return self::FAILURE;
             }
         } else {
-            $this->comment('Run with --retry to call the Golf API now and print the live response.');
+            $this->comment('Run with --retry to call the supplier API now and print the live response.');
+            $this->comment('Run with --poll to refresh status of pending supplier orders.');
             $this->comment('Run with --fix-account first if account ID decryption was broken.');
-            $this->comment('Or dispatch the job: php artisan queue:work --once');
+            $this->comment('Secret Orca direct test: php artisan secretorca:place-order --mapping=28 --account=PLAYER_ID --region=EG --poll');
+            $this->comment('Or dispatch the job: php artisan queue:work redis --queue=fulfillment --once');
         }
 
         return self::SUCCESS;
@@ -234,5 +244,49 @@ class DebugDirectTopUpCommand extends Command
     {
         $this->newLine();
         $this->info($title);
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, SupplierOrder>  $supplierOrders
+     */
+    private function pollSupplierOrders(SupplierManager $supplierManager, Order $order, $supplierOrders): int
+    {
+        if ($supplierOrders->isEmpty()) {
+            $this->warn('No supplier orders to poll.');
+
+            return self::FAILURE;
+        }
+
+        foreach ($supplierOrders as $supplierOrder) {
+            if (! in_array($supplierOrder->status, ['processing', 'pending', 'failed'], true)) {
+                continue;
+            }
+
+            $supplier = $supplierOrder->supplierApi;
+
+            if ($supplier === null) {
+                continue;
+            }
+
+            $this->info('Polling supplier order #'.$supplierOrder->id.' ('.$supplierOrder->supplier_order_id.')…');
+
+            try {
+                $result = $supplierManager->driver($supplier)->getOrderStatus($supplierOrder->supplier_order_id);
+                $this->line('  status: '.$result->status);
+
+                if ($result->status === 'fulfilled') {
+                    $supplierManager->completeDirectTopUpSupplierOrder($supplierOrder, 'fulfilled', $result->rawResponse);
+                    $this->info('  Marked fulfilled.');
+                } elseif ($result->status === 'failed') {
+                    $supplierManager->completeDirectTopUpSupplierOrder($supplierOrder, 'failed', $result->rawResponse);
+                    $this->error('  Marked failed.');
+                }
+            } catch (\Throwable $e) {
+                $this->error('  Poll error: '.$e->getMessage());
+                $this->comment('  Run: php artisan secretorca:connect --repair-settings');
+            }
+        }
+
+        return self::SUCCESS;
     }
 }

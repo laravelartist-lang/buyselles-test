@@ -49,6 +49,7 @@ class SupplierController extends BaseController
         $drivers = $this->supplierManager->getAdminUiDriverKeys();
         $driverSchemas = $this->supplierManager->getAdminUiDriversWithSchemas();
         $driverPresets = $this->supplierManager->getAdminUiDriverPresets();
+        $connectorPresets = $this->supplierManager->getConnectorPresets();
         $defaultDriver = old('driver', $drivers[0] ?? 'generic_rest');
 
         $defaultSchema = $driverSchemas[$defaultDriver] ?? ['credentials' => [], 'settings' => []];
@@ -57,6 +58,7 @@ class SupplierController extends BaseController
             'drivers',
             'driverSchemas',
             'driverPresets',
+            'connectorPresets',
             'defaultDriver',
             'defaultSchema',
         ));
@@ -156,6 +158,7 @@ class SupplierController extends BaseController
         }
 
         $driverPresets = $this->supplierManager->getAdminUiDriverPresets();
+        $connectorPresets = $this->supplierManager->getConnectorPresets();
         $decryptedCredentials = $supplier->getDecryptedCredentials();
         $credentialStatus = collect($decryptedCredentials)
             ->map(fn ($value) => filled($value))
@@ -166,6 +169,7 @@ class SupplierController extends BaseController
             'drivers',
             'driverSchemas',
             'driverPresets',
+            'connectorPresets',
             'decryptedCredentials',
             'credentialStatus',
         ));
@@ -453,6 +457,120 @@ class SupplierController extends BaseController
         $request->merge(['resume' => true]);
 
         return $this->dispatchCatalogSync($id, $request);
+    }
+
+    /**
+     * Place a sandbox direct top-up test order (AJAX).
+     */
+    public function testTopUpOrder(int $id, Request $request): JsonResponse
+    {
+        $supplier = SupplierApi::findOrFail($id);
+
+        $validator = Validator::make($request->all(), [
+            'product_id' => 'required|string|max:255',
+            'target_account' => 'required|string|max:255',
+            'quantity' => 'required|numeric|min:0.01',
+            'region' => 'nullable|string|size:2|alpha',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => $validator->errors()->first(),
+            ], 422);
+        }
+
+        if (! $supplier->supports_direct_top_up) {
+            return response()->json([
+                'success' => false,
+                'message' => translate('supplier_does_not_support_direct_topup') ?: 'This supplier does not support direct top-up.',
+            ], 422);
+        }
+
+        try {
+            $driver = $this->supplierManager->driver($supplier);
+
+            if ($driver instanceof \App\Services\Supplier\Drivers\GenericRestDriver) {
+                $driver->setTopUpPayloadExtras(array_filter([
+                    'region' => $request->filled('region') ? strtoupper((string) $request->input('region')) : null,
+                    'idempotency_key' => 'admin-test-'.uniqid('', true),
+                    'client_order_id' => 'admin-test',
+                ]));
+            }
+
+            $result = $driver->placeTopUpOrder(
+                supplierProductId: (string) $request->input('product_id'),
+                quantity: (float) $request->input('quantity'),
+                accountId: (string) $request->input('target_account'),
+            );
+
+            if ($driver instanceof \App\Services\Supplier\Drivers\GenericRestDriver) {
+                $driver->clearTopUpPayloadExtras();
+            }
+
+            return response()->json([
+                'success' => true,
+                'order_number' => $result->supplierOrderId,
+                'status' => $result->status,
+                'response' => $this->maskTopUpTestResponse($result->rawResponse),
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Poll a test top-up order status (AJAX).
+     */
+    public function pollTopUpOrder(int $id, Request $request): JsonResponse
+    {
+        $supplier = SupplierApi::findOrFail($id);
+
+        $validator = Validator::make($request->all(), [
+            'order_number' => 'required|string|max:255',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => $validator->errors()->first(),
+            ], 422);
+        }
+
+        try {
+            $driver = $this->supplierManager->driver($supplier);
+            $result = $driver->getOrderStatus((string) $request->input('order_number'));
+
+            return response()->json([
+                'success' => true,
+                'order_number' => $result->supplierOrderId,
+                'status' => $result->status,
+                'response' => $this->maskTopUpTestResponse($result->rawResponse),
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $response
+     * @return array<string, mixed>
+     */
+    private function maskTopUpTestResponse(array $response): array
+    {
+        $masked = $response;
+
+        if (isset($masked['target_account'])) {
+            $masked['target_account'] = '***';
+        }
+
+        return $masked;
     }
 
     /**

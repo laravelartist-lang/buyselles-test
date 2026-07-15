@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_sixvalley_ecommerce/common/basewidget/discount_tag_widget.dart';
 import 'package:flutter_sixvalley_ecommerce/features/product/controllers/product_controller.dart';
+import 'package:flutter_sixvalley_ecommerce/helper/direct_topup_helper.dart';
 import 'package:flutter_sixvalley_ecommerce/helper/price_converter.dart';
 import 'package:flutter_sixvalley_ecommerce/helper/responsive_helper.dart';
 import 'package:flutter_sixvalley_ecommerce/helper/route_healper.dart';
@@ -175,14 +176,36 @@ class RecommendedProductWidget extends StatelessWidget {
                                                 children: [
                                                   recommended.recommendedProduct !=null && recommended.recommendedProduct!.discount!= null &&
                                                       recommended.recommendedProduct!.discount! > 0 || (recommended.recommendedProduct?.clearanceSale?.discountAmount ?? 0) > 0 ?
+                                                  (!DirectTopUpHelper.isDirectTopUpListingProduct(recommended.recommendedProduct) ?
                                                   Text(
                                                     PriceConverter.convertPrice(context, recommended.recommendedProduct!.unitPrice),
                                                     style: textRegular.copyWith(color: Theme.of(context).hintColor,
                                                       decoration: TextDecoration.lineThrough, fontSize: Dimensions.fontSizeSmall,),
-                                                  ) : const SizedBox.shrink(),
+                                                  ) : const SizedBox.shrink()) : const SizedBox.shrink(),
                                                   const SizedBox(height: Dimensions.paddingSizeExtraExtraSmall,
                                                       width: Dimensions.paddingSizeExtraSmall),
 
+                                                  DirectTopUpHelper.isDirectTopUpListingProduct(recommended.recommendedProduct) ?
+                                                  Column(
+                                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                                    children: [
+                                                      Text(
+                                                        DirectTopUpHelper.resolveListingPriceText(context, recommended.recommendedProduct) ?? '',
+                                                        style: textBold.copyWith(
+                                                          color: Theme.of(context).textTheme.bodyMedium?.color,
+                                                          fontSize: Dimensions.fontSizeDefault,
+                                                        ),
+                                                      ),
+                                                      if (DirectTopUpHelper.listingCreditsSubtitle(recommended.recommendedProduct) != null)
+                                                        Text(
+                                                          DirectTopUpHelper.listingCreditsSubtitle(recommended.recommendedProduct)!,
+                                                          style: textRegular.copyWith(
+                                                            fontSize: Dimensions.fontSizeSmall,
+                                                            color: Theme.of(context).hintColor,
+                                                          ),
+                                                        ),
+                                                    ],
+                                                  ) :
                                                   recommended.recommendedProduct != null && recommended.recommendedProduct!.unitPrice != null?
                                                   Text(
                                                     PriceConverter.convertPrice(context, recommended.recommendedProduct!.unitPrice,

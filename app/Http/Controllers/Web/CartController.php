@@ -57,15 +57,16 @@ class CartController extends Controller
 
         $directTopUpService = app(DirectTopUpService::class);
         if ($directTopUpService->canAddToCart($product)) {
-            $pricePerUnit = $directTopUpService->getPricePerUnit($product);
-            $directTopUpQuantity = max(1, (int) ($product->minimum_order_qty ?? 1));
-            $lineTotal = $directTopUpService->calculateTotalPrice($product, (float) $directTopUpQuantity);
+            $pricing = $directTopUpService->buildPricingPayload($product);
+            $pricePerUnit = (float) $pricing['unit_price'];
+            $directTopUpQuantity = (float) $pricing['quantity'];
+            $lineTotal = (float) $pricing['line_total'];
             $discount = getProductPriceByType(product: $product, type: 'discounted_amount', result: 'value', price: $lineTotal);
             $discountType = getProductPriceByType(product: $product, type: 'discount_type', result: 'string');
 
             return [
-                'price' => webCurrencyConverter($lineTotal - $discount),
-                'discount' => $discountType == 'flat' ? webCurrencyConverter($discount) : getProductPriceByType(product: $product, type: 'discount', result: 'value').'%',
+                'price' => $directTopUpService->formatWebPrice($product, $lineTotal - $discount),
+                'discount' => $discountType == 'flat' ? $directTopUpService->formatWebPrice($product, $discount) : getProductPriceByType(product: $product, type: 'discount', result: 'value').'%',
                 'discount_type' => $discountType,
                 'discount_amount' => $discount,
                 'quantity' => $directTopUpQuantity,
@@ -74,9 +75,9 @@ class CartController extends Controller
                 'is_direct_topup' => true,
                 'direct_topup_quantity' => $directTopUpQuantity,
                 'delivery_cost' => 0,
-                'unit_price' => webCurrencyConverter($pricePerUnit),
-                'total_unit_price' => webCurrencyConverter($pricePerUnit),
-                'discounted_unit_price' => webCurrencyConverter($pricePerUnit),
+                'unit_price' => $directTopUpService->formatWebPrice($product, $pricePerUnit),
+                'total_unit_price' => $directTopUpService->formatWebPrice($product, $pricePerUnit),
+                'discounted_unit_price' => $directTopUpService->formatWebPrice($product, $pricePerUnit),
                 'color_name' => '',
                 'stock_limit' => getWebConfig(name: 'stock_limit'),
                 'in_cart_status' => 0,

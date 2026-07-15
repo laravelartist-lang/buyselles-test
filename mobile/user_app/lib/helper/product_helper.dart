@@ -1,4 +1,5 @@
 import 'package:flutter_sixvalley_ecommerce/features/product_details/domain/models/product_details_model.dart';
+import 'package:flutter_sixvalley_ecommerce/helper/direct_topup_helper.dart';
 
 class ProductHelper{
 
@@ -15,7 +16,11 @@ class ProductHelper{
       if(priceList[0]! < priceList[priceList.length-1]!) {
         endingPrice = priceList[priceList.length-1];
       }
-    }else {
+    } else if (DirectTopUpHelper.isDirectTopUpProduct(productDetailsModel)) {
+      startingPrice = productDetailsModel?.directTopup?.lineTotal
+          ?? productDetailsModel?.directTopup?.pricePerUnit
+          ?? productDetailsModel?.unitPrice;
+    } else {
       startingPrice = productDetailsModel?.unitPrice;
     }
 

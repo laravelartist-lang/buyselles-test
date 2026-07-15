@@ -782,7 +782,10 @@ class SupplierCatalogSyncService
                 'image' => $product->imageUrl,
             ];
 
-            return array_merge($entry, $this->buildCatalogPriceFields($rawPrice, $sourceCurrency, $supplier));
+            return array_merge($entry, $this->buildCatalogPriceFields($rawPrice, $sourceCurrency, $supplier), array_filter([
+                'min_quantity' => data_get($product->rawData, 'min_quantity'),
+                'max_quantity' => data_get($product->rawData, 'max_quantity'),
+            ], fn ($value) => $value !== null && $value !== ''));
         })->values()->all();
     }
 }

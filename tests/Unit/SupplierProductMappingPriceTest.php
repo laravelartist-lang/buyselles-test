@@ -62,6 +62,21 @@ class SupplierProductMappingPriceTest extends TestCase
         $this->assertSame(22.0, $mapping->getStartingDisplayPrice());
     }
 
+    public function test_direct_topup_micro_unit_cost_preserves_precision_in_sell_price(): void
+    {
+        $mapping = new SupplierProductMapping([
+            'is_customizable' => false,
+            'is_direct_topup' => true,
+            'cost_price' => 0.001062834,
+            'markup_type' => 'percent',
+            'markup_value' => 0,
+        ]);
+
+        $this->assertEqualsWithDelta(0.001062834, $mapping->calculateSellPrice(), 0.0000000001);
+        $this->assertEqualsWithDelta(0.001062834, $mapping->getStartingDisplayPrice(), 0.0000000001);
+        $this->assertSame(10, $mapping->resolvePriceDecimalPlaces());
+    }
+
     public function test_resolve_supplier_face_value_never_uses_wholesale_cost(): void
     {
         $mapping = new SupplierProductMapping([
