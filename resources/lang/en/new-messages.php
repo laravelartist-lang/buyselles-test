@@ -11695,4 +11695,5 @@ return [
 	"download_postman_collection" => "Download postman collection",
 	"endpoints" => "Endpoints",
 	"query_parameters" => "Query parameters",
+	"no_credentials_needed_for_this_driver" => "No credentials needed for this driver",
 ];
