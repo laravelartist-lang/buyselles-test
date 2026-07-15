@@ -235,4 +235,73 @@ class SupplierManagerSyncStockTest extends TestCase
         $this->assertEqualsWithDelta(1.99, (float) $mapping->cost_price, 0.01);
         $this->assertSame('USD', $mapping->cost_currency);
     }
+
+    public function test_sync_stock_normalizes_legacy_jod_mapping_when_api_returns_no_price(): void
+    {
+        SupplierProductMapping::flushEventListeners();
+
+        $supplier = SupplierApi::query()->create([
+            'name' => 'Golf API',
+            'driver' => 'generic_rest',
+            'base_url' => 'https://golf-test.example/api',
+            'health_status' => 'healthy',
+            'is_active' => true,
+            'rate_limit_per_minute' => 60,
+            'settings' => ['source_currency' => 'JOD'],
+        ]);
+
+        $mapping = SupplierProductMapping::query()->create([
+            'product_id' => 12,
+            'supplier_api_id' => $supplier->id,
+            'supplier_product_id' => '41',
+            'cost_price' => 1.62,
+            'cost_currency' => 'JOD',
+            'markup_type' => 'flat',
+            'markup_value' => 0.03,
+            'is_active' => true,
+        ]);
+
+        $driver = Mockery::mock(GenericRestDriver::class);
+        $driver->shouldReceive('fetchStock')
+            ->once()
+            ->with('41')
+            ->andReturn(new StockResult(
+                available: 10,
+                price: 0.0,
+                currency: 'USD',
+                rawData: [],
+            ));
+
+        $logger = Mockery::mock(SupplierApiLogger::class);
+        $logger->shouldReceive('logRequest')->once()->andReturn(1);
+        $logger->shouldReceive('logResponse')->once();
+
+        $rateLimiter = Mockery::mock(SupplierRateLimiter::class);
+        $rateLimiter->shouldReceive('attempt')->once()->andReturn(true);
+
+        $codeService = Mockery::mock(DigitalProductCodeService::class);
+        $codeService->shouldReceive('applyApiPriceIfManualDepleted')
+            ->once()
+            ->with(12);
+
+        $manager = Mockery::mock(
+            SupplierManager::class,
+            [
+                $codeService,
+                $logger,
+                $rateLimiter,
+                Mockery::mock(SupplierOrderEligibilityService::class),
+                app(SupplierCurrencyConverter::class),
+            ]
+        )->makePartial();
+
+        $manager->shouldReceive('driver')->once()->andReturn($driver);
+
+        $manager->syncStock($mapping->load('supplierApi'));
+
+        $mapping->refresh();
+
+        $this->assertEqualsWithDelta(2.28, (float) $mapping->cost_price, 0.01);
+        $this->assertSame('USD', $mapping->cost_currency);
+    }
 }

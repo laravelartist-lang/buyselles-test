@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Services\DirectTopUp\DirectTopUpWalletCheckoutService;
 use App\Services\Supplier\SupplierManager;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Queue;
 use Mockery;
 use Tests\Concerns\ManagesTestDatabaseSchema;
 use Tests\TestCase;
@@ -359,6 +360,83 @@ class DirectTopUpWalletCheckoutTest extends TestCase
         $order->refresh();
         $this->assertSame('paid', $order->payment_status);
         $this->assertSame('delivered', $order->order_status);
+    }
+
+    public function test_wallet_is_charged_when_direct_topup_is_pending_at_supplier(): void
+    {
+        Queue::fake();
+
+        $user = User::create([
+            'f_name' => 'Test',
+            'email' => 'wallet-pending@test.com',
+            'wallet_balance' => 100,
+        ]);
+
+        $product = Product::create([
+            'name' => 'Top Up Product',
+            'product_type' => 'digital',
+        ]);
+
+        $this->app['db']->table('supplier_apis')->insert([
+            'id' => 1,
+            'is_active' => true,
+            'supports_direct_top_up' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->app['db']->table('supplier_product_mappings')->insert([
+            'product_id' => $product->id,
+            'supplier_api_id' => 1,
+            'supplier_product_id' => '75',
+            'is_active' => true,
+            'is_direct_topup' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $order = Order::create([
+            'customer_id' => $user->id,
+            'payment_method' => 'pay_by_wallet',
+            'payment_status' => 'unpaid',
+            'order_status' => 'pending',
+            'order_amount' => 25,
+        ]);
+
+        OrderDetail::create([
+            'order_id' => $order->id,
+            'product_id' => $product->id,
+            'price' => 25,
+            'qty' => 1,
+            'direct_topup_quantity' => 2,
+            'direct_topup_account_id' => encrypt('player123'),
+        ]);
+
+        $supplierManager = Mockery::mock(SupplierManager::class);
+        $supplierManager->shouldReceive('fulfillDirectTopUpOrder')
+            ->once()
+            ->andReturn([
+                'fulfilled' => false,
+                'placed' => true,
+                'pending' => true,
+                'error' => null,
+            ]);
+
+        $this->app->instance(SupplierManager::class, $supplierManager);
+
+        $service = app(DirectTopUpWalletCheckoutService::class);
+        $result = $service->completeWalletPaymentAfterFulfillment([$order->id], $user->id, 25);
+
+        $this->assertTrue($result['success']);
+        $this->assertTrue($result['pending']);
+
+        $user->refresh();
+        $this->assertSame(75.0, (float) $user->wallet_balance);
+        $this->assertSame(1, $this->app['db']->table('wallet_transactions')->where('transaction_type', 'order_place')->count());
+
+        $order->refresh();
+        $this->assertSame('paid', $order->payment_status);
+        $this->assertSame('processing', $order->order_status);
     }
 
     public function test_paid_wallet_is_refunded_when_async_direct_topup_fulfillment_fails(): void

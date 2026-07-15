@@ -928,6 +928,12 @@ class DirectTopUpConfig {
   double? minQuantity;
   double? maxQuantity;
   double? pricePerUnit;
+  double? lineTotal;
+  String? formattedUnitPrice;
+  String? formattedLineTotal;
+  int? decimalPoints;
+  String? region;
+  String? quantityLabel;
   String? currency;
   bool? requiresAccountVerification;
 
@@ -937,6 +943,12 @@ class DirectTopUpConfig {
     this.minQuantity,
     this.maxQuantity,
     this.pricePerUnit,
+    this.lineTotal,
+    this.formattedUnitPrice,
+    this.formattedLineTotal,
+    this.decimalPoints,
+    this.region,
+    this.quantityLabel,
     this.currency,
     this.requiresAccountVerification,
   });
@@ -945,11 +957,33 @@ class DirectTopUpConfig {
     enabled = _parseDirectTopUpFlag(json['enabled']);
     accountLabel = json['account_label']?.toString();
     requiresAccountVerification = _parseDirectTopUpFlag(json['requires_account_verification']);
+    minQuantity = _parseDouble(json['quantity']);
+    maxQuantity = _parseDouble(json['quantity']);
+    pricePerUnit = _parseDouble(json['unit_price']);
+    lineTotal = _parseDouble(json['line_total']);
+    formattedUnitPrice = json['formatted_unit_price']?.toString();
+    formattedLineTotal = json['formatted_line_total']?.toString();
+    decimalPoints = _parseTruthyInt(json['decimal_points']);
+    region = json['region']?.toString();
+    quantityLabel = json['quantity_label']?.toString();
+    currency = json['currency']?.toString();
 
     if (enabled != true && accountLabel?.trim().isNotEmpty == true) {
       enabled = true;
     }
   }
+}
+
+double? _parseDouble(dynamic value) {
+  if (value == null) {
+    return null;
+  }
+
+  if (value is num) {
+    return value.toDouble();
+  }
+
+  return double.tryParse(value.toString());
 }
 
 bool _parseDirectTopUpFlag(dynamic value) {

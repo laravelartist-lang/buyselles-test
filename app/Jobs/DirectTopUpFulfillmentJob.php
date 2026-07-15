@@ -71,6 +71,14 @@ class DirectTopUpFulfillmentJob implements ShouldQueue
                 return;
             }
 
+            if ($result['pending'] ?? false) {
+                Log::info('DirectTopUpFulfillmentJob: async top-up placed, awaiting completion', [
+                    'order_id' => $this->orderId,
+                ]);
+
+                return;
+            }
+
             if ($result['error']) {
                 $walletCheckoutService->markDirectTopUpOrderFailed(
                     $order->fresh(),

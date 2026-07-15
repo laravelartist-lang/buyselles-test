@@ -197,6 +197,10 @@
     <span id="route-wishlists" data-url="{{ route('wishlists') }}"></span>
     <span id="route-quick-view" data-url="{{ route('quick-view') }}"></span>
     <span id="route-checkout-details" data-url="{{ route('checkout-details') }}"></span>
+    <span id="message-direct-topup-account-required"
+        data-text="{{ translate('direct_topup_account_id_is_required') }}"></span>
+    <span id="message-direct-topup-quantity-required"
+        data-text="{{ translate('direct_topup_quantity_must_be_positive') }}"></span>
     <span id="route-checkout-payment" data-url="{{ route('checkout-payment') }}"></span>
     <span id="route-set-shipping-id" data-url="{{ route('customer.set-shipping-method') }}"></span>
     <span id="route-order-note" data-url="{{ route('order_note') }}"></span>

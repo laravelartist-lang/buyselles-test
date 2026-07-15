@@ -53,6 +53,7 @@
                                                 {{ getProductPriceByType(product: $product, type: 'discounted_unit_price', result: 'string') }}
                                             </span>
                                         </h4>
+                                        @include('web-views.partials._direct-topup-listing-price-meta', ['product' => $product])
                                         @php($overallRating = getOverallRating($product['reviews']))
                                         @if($overallRating[0] != 0 )
                                             <div class="rating-show">

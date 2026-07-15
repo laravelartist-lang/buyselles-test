@@ -9,11 +9,13 @@ use App\Models\Currency;
 use App\Models\NotificationMessage;
 use App\Models\Order;
 use App\Models\OrderStatusHistory;
+use App\Models\Product;
 use App\Models\Seller;
 use App\Models\Setting;
 use App\Models\ShippingMethod;
 use App\Models\Shop;
 use App\Models\User;
+use App\Services\DirectTopUp\DirectTopUpService;
 use App\Traits\CommonTrait;
 use Exception;
 use Illuminate\Support\Facades\App;
@@ -226,15 +228,126 @@ class Helpers
                         $storage[] = Helpers::set_data_format($item);
                     }
                 }
-                $data = $storage;
+
+                return self::enrichDirectTopUpListingBatch($storage);
+            }
+
+            return self::enrichDirectTopUpListingForApi(Helpers::set_data_format($data));
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private static function buildDirectTopUpListingEnrichment(Product $product): array
+    {
+        $service = app(DirectTopUpService::class);
+
+        return [
+            'is_direct_topup' => true,
+            'display_price' => $service->resolveListingDisplayAmount($product),
+            'formatted_display_price' => $service->formatListingDisplayPrice($product),
+            'direct_topup' => $service->buildListingPricePayload($product),
+        ];
+    }
+
+    /**
+     * @param  array<int, mixed>  $items
+     * @return array<int, mixed>
+     */
+    private static function enrichDirectTopUpListingBatch(array $items): array
+    {
+        $productIds = [];
+
+        foreach ($items as $item) {
+            $productId = is_array($item) ? ($item['id'] ?? null) : ($item->id ?? null);
+
+            if ($productId) {
+                $productIds[] = $productId;
+            }
+        }
+
+        if ($productIds === []) {
+            return $items;
+        }
+
+        $products = Product::query()
+            ->with('supplierMapping.supplierApi')
+            ->whereIn('id', array_unique($productIds))
+            ->get()
+            ->keyBy('id');
+
+        $service = app(DirectTopUpService::class);
+
+        return array_map(function ($item) use ($products, $service) {
+            $productId = is_array($item) ? ($item['id'] ?? null) : ($item->id ?? null);
+            $product = $products->get($productId);
+
+            if (! $product || ! $service->isDirectTopUpProduct($product)) {
+                if (is_array($item)) {
+                    $item['is_direct_topup'] = false;
+                } else {
+                    $item['is_direct_topup'] = false;
+                }
+
+                return $item;
+            }
+
+            foreach (self::buildDirectTopUpListingEnrichment($product) as $key => $value) {
+                if (is_array($item)) {
+                    $item[$key] = $value;
+                } else {
+                    $item[$key] = $value;
+                }
+            }
+
+            return $item;
+        }, $items);
+    }
+
+    public static function enrichDirectTopUpListingForApi(mixed $data): mixed
+    {
+        if (! is_object($data) && ! is_array($data)) {
+            return $data;
+        }
+
+        $productId = is_array($data) ? ($data['id'] ?? null) : ($data->id ?? null);
+
+        if (! $productId) {
+            return $data;
+        }
+
+        $product = $data instanceof Product
+            ? ($data->relationLoaded('supplierMapping') ? $data : $data->load('supplierMapping.supplierApi'))
+            : Product::query()->with('supplierMapping.supplierApi')->find($productId);
+
+        if (! $product) {
+            return $data;
+        }
+
+        $service = app(DirectTopUpService::class);
+
+        if (! $service->isDirectTopUpProduct($product)) {
+            if (is_array($data)) {
+                $data['is_direct_topup'] = false;
             } else {
-                $data = Helpers::set_data_format($data);
+                $data['is_direct_topup'] = false;
             }
 
             return $data;
         }
 
-        return null;
+        foreach (self::buildDirectTopUpListingEnrichment($product) as $key => $value) {
+            if (is_array($data)) {
+                $data[$key] = $value;
+            } else {
+                $data[$key] = $value;
+            }
+        }
+
+        return $data;
     }
 
     public static function product_data_formatting_for_json_data($data, $multi_data = false)

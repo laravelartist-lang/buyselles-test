@@ -100,7 +100,12 @@ class CartController extends ChangeNotifier {
     }
     notifyListeners();
     ApiResponseModel apiResponse;
-    apiResponse = await cartServiceInterface!.updateQuantity(key, quantity);
+    apiResponse = await cartServiceInterface!.updateQuantity(
+      key,
+      quantity,
+      isDirectTopup: DirectTopUpHelper.isDirectTopUpCartItem(cartList[index]),
+      directTopupQuantity: cartList[index].directTopupQuantity,
+    );
     if (apiResponse.response != null && apiResponse.response!.statusCode == 200) {
       cartList[index].increment  = false;
       cartList[index].decrement = false;

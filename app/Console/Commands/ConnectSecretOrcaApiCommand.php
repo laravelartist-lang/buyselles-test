@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Jobs\SyncSupplierCatalogJob;
 use App\Models\SupplierApi;
+use App\Services\Supplier\Presets\SecretOrcaPreset;
 use App\Services\Supplier\SupplierManager;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Cache;
@@ -16,66 +17,17 @@ class ConnectSecretOrcaApiCommand extends Command
                             {--rate-limit=120 : Rate limit per minute}
                             {--priority=0 : Supplier priority (lower = higher)}
                             {--sandbox : Mark supplier as sandbox/test key}
-                            {--force : Force re-create the supplier even if one exists}';
+                            {--force : Force re-create the supplier even if one exists}
+                            {--repair-settings : Re-apply preset settings to existing supplier without API key}';
 
     protected $description = 'Connect and configure the SecretOrca supplier via the Generic REST driver';
-
-    private const SUPPLIER_NAME = 'SecretOrca';
 
     /**
      * @return array<string, mixed>
      */
     public function secretOrcaSettings(): array
     {
-        return [
-            'api_key_header' => 'X-API-Key',
-
-            'auth_test_endpoint' => '/api/v1/external/catalog/products/',
-            'health_endpoint' => '/api/v1/external/catalog/products/',
-
-            // Django REST Framework pagination: { count, next, previous, results[] }
-            'pagination_page_param' => 'page',
-            'pagination_per_page_param' => 'page_size',
-            'pagination_per_page_default' => '100',
-            'pagination_page_base' => '1',
-            'pagination_data_path' => 'results',
-            'pagination_total_path' => 'count',
-
-            'products_endpoint' => '/api/v1/external/catalog/products/',
-            'products_response_path' => 'results',
-            'product_id_field' => 'id',
-            'product_name_field' => 'name',
-            'product_price_field' => 'unit_price',
-            'product_category_field' => 'bot_name',
-            'product_region_field' => 'code',
-            'product_stock_default' => '999999',
-
-            'topup_order_endpoint' => '/api/v1/external/orders/create/',
-            'topup_product_id_field' => 'product_id',
-            'topup_quantity_field' => 'quantity',
-            'topup_account_field' => 'target_account',
-            'topup_order_id_response_path' => 'order_number',
-            'topup_status_response_path' => 'status',
-            'topup_success_status_values' => ['completed'],
-            'order_status_endpoint' => '/api/v1/external/orders/{order_id}/',
-
-            'webhook_signature_header' => 'X-Webhook-Signature',
-            'webhook_hash_algo' => 'sha256',
-
-            'status_map' => json_encode([
-                'pending' => 'processing',
-                'queued' => 'processing',
-                'processing' => 'processing',
-                'completed' => 'fulfilled',
-                'failed' => 'failed',
-                'cancelled' => 'failed',
-                'refunded' => 'failed',
-            ]),
-
-            'source_currency' => 'USD',
-            'price_decimal_places' => '10',
-            'http_verify_ssl' => env('SECRETORCA_HTTP_VERIFY_SSL', app()->environment('local') ? '0' : '1'),
-        ];
+        return SecretOrcaPreset::settings();
     }
 
     public function handle(): int
@@ -84,7 +36,11 @@ class ConnectSecretOrcaApiCommand extends Command
         $apiKey = $this->option('api-key') ?: env('SECRETORCA_API_KEY');
 
         if (! is_string($apiKey) || $apiKey === '') {
-            $this->error('Missing API key. Pass --api-key= or set SECRETORCA_API_KEY in .env');
+            if ($this->option('repair-settings')) {
+                return $this->repairExistingSupplierSettings($baseUrl);
+            }
+
+            $this->error('Missing API key. Pass --api-key=, set SECRETORCA_API_KEY in .env, or use --repair-settings.');
 
             return self::FAILURE;
         }
@@ -97,19 +53,32 @@ class ConnectSecretOrcaApiCommand extends Command
         $supplier = SupplierApi::query()
             ->where('driver', 'generic_rest')
             ->where('base_url', $baseUrl)
-            ->where('name', self::SUPPLIER_NAME)
+            ->where('name', SecretOrcaPreset::SUPPLIER_NAME)
             ->first();
 
         if ($supplier && ! $this->option('force')) {
-            $supplier->settings = array_merge($this->secretOrcaSettings(), $supplier->settings ?? []);
+            $supplier->settings = array_merge($supplier->settings ?? [], $this->secretOrcaSettings());
             $supplier->auth_type = 'api_key';
             $supplier->supports_direct_top_up = true;
-            $supplier->setEncryptedCredentials(['api_key' => $apiKey]);
+
+            if (is_string($apiKey) && $apiKey !== '') {
+                $supplier->setEncryptedCredentials(['api_key' => $apiKey]);
+            } elseif ($this->option('repair-settings') || ! $supplier->getDecryptedCredentials()) {
+                $this->warn('No API key provided — kept existing stored credentials.');
+            }
+
             $supplier->save();
 
             $this->clearCatalogCache($supplier);
             $this->info('Updated existing supplier settings (ID: '.$supplier->id.').');
             $this->newLine();
+
+            if ($this->option('repair-settings')) {
+                $this->line('  order_status_endpoint : '.($supplier->settings['order_status_endpoint'] ?? 'missing'));
+                $this->line('  topup_order_endpoint  : '.($supplier->settings['topup_order_endpoint'] ?? 'missing'));
+
+                return self::SUCCESS;
+            }
 
             return $this->testConnection($supplier);
         }
@@ -120,7 +89,7 @@ class ConnectSecretOrcaApiCommand extends Command
         }
 
         $supplier = new SupplierApi;
-        $supplier->name = self::SUPPLIER_NAME;
+        $supplier->name = SecretOrcaPreset::SUPPLIER_NAME;
         $supplier->driver = 'generic_rest';
         $supplier->base_url = $baseUrl;
         $supplier->auth_type = 'api_key';
@@ -179,6 +148,31 @@ class ConnectSecretOrcaApiCommand extends Command
 
             return self::FAILURE;
         }
+
+        return self::SUCCESS;
+    }
+
+    private function repairExistingSupplierSettings(string $baseUrl): int
+    {
+        $supplier = SupplierApi::query()
+            ->where('driver', 'generic_rest')
+            ->where('base_url', $baseUrl)
+            ->where('name', SecretOrcaPreset::SUPPLIER_NAME)
+            ->first();
+
+        if ($supplier === null) {
+            $this->error('No existing SecretOrca supplier found to repair.');
+
+            return self::FAILURE;
+        }
+
+        $supplier->settings = array_merge($supplier->settings ?? [], $this->secretOrcaSettings());
+        $supplier->supports_direct_top_up = true;
+        $supplier->save();
+
+        $this->info('Repaired supplier #'.$supplier->id.' settings.');
+        $this->line('  order_status_endpoint : '.($supplier->settings['order_status_endpoint'] ?? 'missing'));
+        $this->line('  topup_order_endpoint  : '.($supplier->settings['topup_order_endpoint'] ?? 'missing'));
 
         return self::SUCCESS;
     }

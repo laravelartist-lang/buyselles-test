@@ -96,6 +96,9 @@
                         $minCartQuantity = $quantityLimits['min'];
                         $maxCartQuantity = $quantityLimits['max'];
                         $lineTotal = $cartItem->getLineTotal();
+                        $formattedLineTotal = ($isDirectTopUpItem && $product)
+                            ? app(\App\Services\DirectTopUp\DirectTopUpService::class)->formatWebPrice($product, $lineTotal)
+                            : webCurrencyConverter(amount: $lineTotal);
                         ?>
 
                         <div class="widget-cart-item">
@@ -131,7 +134,7 @@
                                         <div class="widget-product-meta">
                                             <span
                                                 class="fs-15 text-title fw-bold discount_price_of_{{ $cartItem['id'] }}">
-                                                {{ webCurrencyConverter(amount: $lineTotal) }}
+                                                {{ $formattedLineTotal }}
                                             </span>
                                         </div>
                                     </div>

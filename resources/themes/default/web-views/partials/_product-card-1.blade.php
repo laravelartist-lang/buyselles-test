@@ -43,6 +43,7 @@
                         <span class="flash-product-price text-dark fw-semibold">
                            {{ getProductPriceByType(product: $product, type: 'discounted_unit_price', result: 'string') }}
                        </span>
+                        @include('web-views.partials._direct-topup-listing-price-meta', ['product' => $product])
                     </div>
 
 

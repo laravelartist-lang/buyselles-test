@@ -105,6 +105,7 @@ class ProductDetailsController extends Controller
             $directTopUpService = app(DirectTopUpService::class);
             $isDirectTopUpProduct = $directTopUpService->isDirectTopUpProduct($product);
             $directTopUpConfig = $isDirectTopUpProduct ? $directTopUpService->buildModalConfig($product) : null;
+            $directTopUpPricing = $isDirectTopUpProduct ? $directTopUpService->buildPricingPayload($product) : null;
 
             $rating = getRating(reviews: $product->reviews);
             $decimalPointSettings = getWebConfig('decimal_point_settings');
@@ -176,6 +177,7 @@ class ProductDetailsController extends Controller
                 'productDetailsMeta',
                 'isDirectTopUpProduct',
                 'directTopUpConfig',
+                'directTopUpPricing',
             ));
         }
 

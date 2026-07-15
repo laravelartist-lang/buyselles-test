@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_sixvalley_ecommerce/common/basewidget/discount_tag_widget.dart';
 import 'package:flutter_sixvalley_ecommerce/features/product/domain/models/product_model.dart';
 import 'package:flutter_sixvalley_ecommerce/features/shop/domain/models/shop_navigation_model.dart';
+import 'package:flutter_sixvalley_ecommerce/helper/direct_topup_helper.dart';
 import 'package:flutter_sixvalley_ecommerce/helper/price_converter.dart';
 import 'package:flutter_sixvalley_ecommerce/helper/route_healper.dart';
 import 'package:flutter_sixvalley_ecommerce/localization/controllers/localization_controller.dart';
@@ -146,7 +147,7 @@ class ProductWidget extends StatelessWidget {
                   color: Theme.of(context).textTheme.bodyLarge?.color,
                 ), maxLines: productNameLine, overflow: TextOverflow.ellipsis),
 
-                if(hasDiscount())
+                if(hasDiscount() && !DirectTopUpHelper.isDirectTopUpListingProduct(productModel))
                   Text(PriceConverter.convertPrice(context, productModel.unitPrice), style: titleRegular.copyWith(
                     color: Theme.of(context).hintColor,
                     decoration: TextDecoration.lineThrough,
@@ -154,20 +155,39 @@ class ProductWidget extends StatelessWidget {
                     fontSize: Dimensions.fontSizeSmall,
                   )),
 
-                Text(
-                  PriceConverter.convertPrice(
-                    context, productModel.unitPrice,
-                    discountType: (productModel.clearanceSale?.discountAmount ?? 0) > 0
-                      ? productModel.clearanceSale?.discountType
-                      : productModel.discountType,
-                    discount: (productModel.clearanceSale?.discountAmount ?? 0) > 0
-                      ? productModel.clearanceSale?.discountAmount
-                      : productModel.discount,
+                if (DirectTopUpHelper.isDirectTopUpListingProduct(productModel)) ...[
+                  Text(
+                    DirectTopUpHelper.resolveListingPriceText(context, productModel) ?? '',
+                    style: robotoBold.copyWith(
+                      color: Provider.of<ThemeController>(context).darkTheme
+                          ? Theme.of(context).textTheme.bodyLarge?.color
+                          : Theme.of(context).primaryColor,
+                      fontSize: Dimensions.fontSizeDefault,
+                    ),
                   ),
-                  style: robotoBold.copyWith(color:  Provider.of<ThemeController>(context).darkTheme ?
-                  Theme.of(context).textTheme.bodyLarge?.color :
-                  Theme.of(context).primaryColor,fontSize: Dimensions.fontSizeDefault),
-                ),
+                  if (DirectTopUpHelper.listingCreditsSubtitle(productModel) != null)
+                    Text(
+                      DirectTopUpHelper.listingCreditsSubtitle(productModel)!,
+                      style: textRegular.copyWith(
+                        fontSize: Dimensions.fontSizeSmall,
+                        color: Theme.of(context).hintColor,
+                      ),
+                    ),
+                ] else
+                  Text(
+                    PriceConverter.convertPrice(
+                      context, productModel.unitPrice,
+                      discountType: (productModel.clearanceSale?.discountAmount ?? 0) > 0
+                        ? productModel.clearanceSale?.discountType
+                        : productModel.discountType,
+                      discount: (productModel.clearanceSale?.discountAmount ?? 0) > 0
+                        ? productModel.clearanceSale?.discountAmount
+                        : productModel.discount,
+                    ),
+                    style: robotoBold.copyWith(color:  Provider.of<ThemeController>(context).darkTheme ?
+                    Theme.of(context).textTheme.bodyLarge?.color :
+                    Theme.of(context).primaryColor,fontSize: Dimensions.fontSizeDefault),
+                  ),
 
               ]),
             ),

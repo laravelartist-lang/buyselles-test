@@ -471,9 +471,15 @@ class OrderController extends Controller
                 CustomerManager::create_wallet_transaction($user->id, Convert::default($paymentAmount), 'order_place', 'order payment', [], $orderIds);
             }
 
+            $firstOrder = ! empty($orderIds) ? Order::query()->find($orderIds[0]) : null;
+            $orderStatus = $firstOrder?->order_status;
+            $pendingFulfillment = in_array($orderStatus, ['pending', 'processing'], true);
+
             return response()->json([
                 'messages' => translate('order_placed_successfully'),
                 'order_ids' => $orderIds,
+                'order_status' => $orderStatus,
+                'pending_fulfillment' => $pendingFulfillment,
             ], 200);
         }
     }

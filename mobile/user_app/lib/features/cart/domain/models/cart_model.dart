@@ -195,7 +195,9 @@ class CartModel {
     appliedTaxType = json['applied_tax_type'];
     shippingCostTax = _parseDouble(json['shipping_cost_tax']);
     directTopupQuantity = _parseDouble(json['direct_topup_quantity']);
-    isDirectTopup = json['direct_topup_quantity'] != null;
+    isDirectTopup = json['is_direct_topup'] == true
+        || json['is_direct_topup'] == 1
+        || json['direct_topup_quantity'] != null;
   }
 
   Map<String, dynamic> toJson() {

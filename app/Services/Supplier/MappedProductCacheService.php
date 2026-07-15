@@ -78,6 +78,14 @@ class MappedProductCacheService
             $updates['purchase_price'] = $costPrice;
         }
 
+        if ((bool) $mapping->is_direct_topup) {
+            $catalogMinQuantity = $this->resolveCatalogMinQuantity($mapping);
+
+            if ($catalogMinQuantity !== null && (int) $product->minimum_order_qty !== $catalogMinQuantity) {
+                $updates['minimum_order_qty'] = $catalogMinQuantity;
+            }
+        }
+
         if ($updates === []) {
             return;
         }
@@ -89,5 +97,38 @@ class MappedProductCacheService
             'mapping_id' => $mapping->id,
             'updates' => $updates,
         ]);
+    }
+
+    private function resolveCatalogMinQuantity(SupplierProductMapping $mapping): ?int
+    {
+        if (! $mapping->supplier_api_id || trim((string) $mapping->supplier_product_id) === '') {
+            return null;
+        }
+
+        $catalog = Cache::get(SupplierCatalogSyncService::catalogCacheKey((int) $mapping->supplier_api_id), []);
+
+        if (! is_array($catalog)) {
+            return null;
+        }
+
+        foreach ($catalog as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+
+            if ((string) ($item['id'] ?? '') !== (string) $mapping->supplier_product_id) {
+                continue;
+            }
+
+            $minQuantity = (float) ($item['min_quantity'] ?? 0);
+
+            if ($minQuantity <= 0) {
+                return null;
+            }
+
+            return (int) ceil($minQuantity);
+        }
+
+        return null;
     }
 }

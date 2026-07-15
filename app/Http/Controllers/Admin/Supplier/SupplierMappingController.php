@@ -117,6 +117,7 @@ class SupplierMappingController extends BaseController
             'is_customizable' => 'nullable|boolean',
             'is_direct_topup' => 'nullable|boolean',
             'direct_topup_account_label' => 'nullable|string|max:255',
+            'direct_topup_region' => 'nullable|string|size:2|alpha',
             'min_amount' => 'nullable|numeric|min:0',
             'max_amount' => 'nullable|numeric|min:0|gte:min_amount',
         ]);
@@ -198,6 +199,7 @@ class SupplierMappingController extends BaseController
             'is_customizable' => 'nullable|boolean',
             'is_direct_topup' => 'nullable|boolean',
             'direct_topup_account_label' => 'nullable|string|max:255',
+            'direct_topup_region' => 'nullable|string|size:2|alpha',
             'min_amount' => 'nullable|numeric|min:0',
             'max_amount' => 'nullable|numeric|min:0|gte:min_amount',
         ]);
@@ -380,7 +382,8 @@ class SupplierMappingController extends BaseController
     /**
      * @return array{
      *     is_direct_topup: bool,
-     *     direct_topup_account_label: ?string
+     *     direct_topup_account_label: ?string,
+     *     direct_topup_region: ?string
      * }
      */
     private function resolveDirectTopupAttributesFromRequest(Request $request): array
@@ -391,6 +394,7 @@ class SupplierMappingController extends BaseController
             return [
                 'is_direct_topup' => false,
                 'direct_topup_account_label' => null,
+                'direct_topup_region' => null,
             ];
         }
 
@@ -404,9 +408,18 @@ class SupplierMappingController extends BaseController
             $accountLabel = translate('player_id') ?: 'Player ID';
         }
 
+        $region = $isDirectTopup
+            ? strtoupper(trim((string) $request->input('direct_topup_region', '')))
+            : null;
+
+        if ($region === '') {
+            $region = null;
+        }
+
         return [
             'is_direct_topup' => $isDirectTopup,
             'direct_topup_account_label' => $accountLabel,
+            'direct_topup_region' => $region,
         ];
     }
 

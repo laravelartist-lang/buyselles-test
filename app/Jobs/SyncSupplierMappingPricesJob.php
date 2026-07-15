@@ -62,6 +62,10 @@ class SyncSupplierMappingPricesJob implements ShouldQueue
                 if ($resolvedCost['cost_price'] <= 0
                     || ($resolvedCost['cost_price'] == $mapping->cost_price
                         && $resolvedCost['cost_currency'] === $mapping->cost_currency)) {
+                    if ($manager->normalizeLegacyMappingCost($mapping, $supplier)) {
+                        $updated++;
+                    }
+
                     continue;
                 }
 

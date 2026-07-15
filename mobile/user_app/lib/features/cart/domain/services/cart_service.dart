@@ -110,8 +110,18 @@ class CartService implements CartServiceInterface{
 
 
   @override
-  Future updateQuantity(int? key, int quantity) async {
-    return await cartRepositoryInterface.updateQuantity(key, quantity);
+  Future updateQuantity(
+    int? key,
+    int quantity, {
+    bool isDirectTopup = false,
+    double? directTopupQuantity,
+  }) async {
+    return await cartRepositoryInterface.updateQuantity(
+      key,
+      quantity,
+      isDirectTopup: isDirectTopup,
+      directTopupQuantity: directTopupQuantity,
+    );
   }
 
   @override

@@ -264,9 +264,23 @@
                                                         </del>
                                                     @endif
                                                     <span class="discounted-unit-price fs-24 font-bold">
-                                                        {{ getProductPriceByType(product: $product, type: 'discounted_unit_price', result: 'string') }}
+                                                        @if (!empty($isDirectTopUpProduct) && !empty($directTopUpPricing))
+                                                            {{ $directTopUpPricing['formatted_unit_price'] }}
+                                                        @else
+                                                            {{ getProductPriceByType(product: $product, type: 'discounted_unit_price', result: 'string') }}
+                                                        @endif
                                                     </span>
                                                 </h3>
+                                                @if (!empty($isDirectTopUpProduct) && !empty($directTopUpPricing))
+                                                    <div class="fs-14 text-muted mt-1">
+                                                        {{ number_format((float) $directTopUpPricing['quantity'], 0) }}
+                                                        {{ $directTopUpPricing['quantity_label'] }}
+                                                        &times;
+                                                        {{ $directTopUpPricing['formatted_unit_price'] }}
+                                                        =
+                                                        <strong class="text-base">{{ $directTopUpPricing['formatted_line_total'] }}</strong>
+                                                    </div>
+                                                @endif
                                             </div>
 
                                             @csrf
@@ -1243,8 +1257,11 @@
         'productDetails' => $product,
         'isDirectTopUpProduct' => $isDirectTopUpProduct ?? false,
         'directTopUpConfig' => $directTopUpConfig ?? null,
+        'directTopUpPricing' => $directTopUpPricing ?? null,
     ])
-    @include('layouts.front-end.partials.modal._direct-topup-buy-now')
+    @include('layouts.front-end.partials.modal._direct-topup-buy-now', [
+        'directTopUpPricing' => $directTopUpPricing ?? null,
+    ])
 
     @if ($product?->preview_file_full_url['path'])
         @include('web-views.partials._product-preview-modal', ['previewFileInfo' => $previewFileInfo])

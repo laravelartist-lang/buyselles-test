@@ -1,19 +1,26 @@
 @if (! empty($isDirectTopUpProduct) && ! empty($directTopUpConfig))
     @php
+        $directTopUpService = app(\App\Services\DirectTopUp\DirectTopUpService::class);
+        $directTopUpPricing = $directTopUpPricing ?? $directTopUpService->buildPricingPayload($product);
         $accountLabel = (string) $directTopUpConfig['account_label'];
         $requiresAccountVerification = (bool) ($directTopUpConfig['requires_account_verification'] ?? false);
         $showVerifyButton = false;
-        $directTopUpQuantity = max(1, (int) ($product->minimum_order_qty ?? 1));
-        $lineTotal = (float) $product->getEffectiveSellPrice() * $directTopUpQuantity;
+        $directTopUpQuantity = (float) $directTopUpPricing['quantity'];
+        $lineTotal = (float) $directTopUpPricing['line_total'];
         $directTopUpModalConfig = [
             'product_id' => $product->id,
             'account_label' => $accountLabel,
             'direct_topup_quantity' => $directTopUpQuantity,
-            'unit_price' => (float) $product->getEffectiveSellPrice(),
+            'unit_price' => (float) $directTopUpPricing['unit_price'],
+            'line_total' => $lineTotal,
+            'formatted_unit_price' => $directTopUpPricing['formatted_unit_price'],
+            'formatted_line_total' => $directTopUpPricing['formatted_line_total'],
+            'quantity_label' => $directTopUpPricing['quantity_label'],
+            'region' => $directTopUpPricing['region'],
             'currency' => getWebConfig(name: 'currency_code') ?? 'USD',
             'currency_symbol' => getCurrencySymbol(),
             'symbol_position' => getWebConfig('currency_symbol_position'),
-            'decimal_points' => (int) (getWebConfig('decimal_point_settings') ?? 2),
+            'decimal_points' => (int) $directTopUpPricing['decimal_points'],
             'requires_account_verification' => $requiresAccountVerification,
             'show_verify_button' => $showVerifyButton,
             'validate_account_url' => route('cart.validate-direct-topup-account'),
@@ -78,10 +85,27 @@
                     <input type="hidden" name="id" value="{{ $product->id }}">
                 </div>
 
+                <div class="bg-light rounded p-3 mb-3 fs-14" id="direct-topup-package-breakdown">
+                    <div class="d-flex justify-content-between mb-1">
+                        <span class="text-muted">{{ $directTopUpPricing['quantity_label'] }}</span>
+                        <span>{{ number_format($directTopUpQuantity, 0) }}</span>
+                    </div>
+                    <div class="d-flex justify-content-between mb-1">
+                        <span class="text-muted">{{ translate('direct_topup_price_per_unit') ?: translate('price') }}</span>
+                        <span>{{ $directTopUpPricing['formatted_unit_price'] }}</span>
+                    </div>
+                    @if (! empty($directTopUpPricing['region']))
+                        <div class="d-flex justify-content-between mb-1">
+                            <span class="text-muted">{{ translate('direct_topup_region') ?: 'Region' }}</span>
+                            <span>{{ $directTopUpPricing['region'] }}</span>
+                        </div>
+                    @endif
+                </div>
+
                 <div class="d-flex justify-content-between align-items-center border-top pt-3 mt-2">
                     <span class="text-muted fs-14">{{ translate('total_price') }}</span>
                     <strong class="fs-18 text-base" id="direct-topup-modal-total">
-                        {{ webCurrencyConverter(amount: $lineTotal) }}
+                        {{ $directTopUpPricing['formatted_line_total'] }}
                     </strong>
                 </div>
             </div>

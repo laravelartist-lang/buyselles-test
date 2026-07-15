@@ -1,6 +1,8 @@
 <?php
 
 use App\Models\Currency;
+use App\Models\Product;
+use App\Services\DirectTopUp\DirectTopUpService;
 
 if (! function_exists('loadCurrency')) {
     function loadCurrency(): void
@@ -84,7 +86,7 @@ if (! function_exists('webCurrencyConverter')) {
     /**
      * currency convert for web panel
      */
-    function webCurrencyConverter(string|int|float|null $amount = 0): float|string
+    function webCurrencyConverter(string|int|float|null $amount = 0, ?int $decimalPlaces = null): float|string
     {
         loadCurrency();
         $currencyModel = getWebConfig('currency_model');
@@ -100,9 +102,14 @@ if (! function_exists('webCurrencyConverter')) {
         } else {
             $rate = 1;
         }
-        $decimalPointSettings = getWebConfig('decimal_point_settings') ?? 2;
+        $decimalPointSettings = $decimalPlaces ?? (getWebConfig('decimal_point_settings') ?? 2);
 
-        return setCurrencySymbol(amount: round($amount * $rate, $decimalPointSettings), currencyCode: getCurrencyCode(type: 'web'), type: 'web');
+        return setCurrencySymbol(
+            amount: round((float) $amount * $rate, $decimalPointSettings),
+            currencyCode: getCurrencyCode(type: 'web'),
+            type: 'web',
+            decimalPlaces: $decimalPointSettings,
+        );
     }
 }
 
@@ -203,9 +210,9 @@ if (! function_exists('getCurrencySymbol')) {
 }
 
 if (! function_exists('setCurrencySymbol')) {
-    function setCurrencySymbol(string|int|float $amount, string $currencyCode = USD, string $type = 'default'): string
+    function setCurrencySymbol(string|int|float $amount, string $currencyCode = USD, string $type = 'default', ?int $decimalPlaces = null): string
     {
-        $decimalPointSettings = getWebConfig('decimal_point_settings');
+        $decimalPointSettings = $decimalPlaces ?? getWebConfig('decimal_point_settings');
         $position = getWebConfig('currency_symbol_position');
         if ($position === 'left') {
             $string = getCurrencySymbol(currencyCode: $currencyCode, type: $type).''.number_format($amount, (! empty($decimalPointSettings) ? $decimalPointSettings : 0));
@@ -291,6 +298,29 @@ if (! function_exists('getProductPriceByType')) {
         }
 
         if ($type == 'discounted_unit_price') {
+            if ($from == 'web') {
+                $productModel = $product instanceof Product
+                    ? $product
+                    : (isset($product['id']) ? Product::query()->with('supplierMapping.supplierApi')->find($product['id']) : null);
+
+                if ($productModel) {
+                    $directTopUpService = app(DirectTopUpService::class);
+                    $listingAmount = $directTopUpService->resolveListingDisplayAmount($productModel);
+
+                    if ($listingAmount !== null) {
+                        if ($result == 'value') {
+                            return $listingAmount;
+                        }
+
+                        $formattedListingPrice = $directTopUpService->formatListingDisplayPrice($productModel);
+
+                        if ($formattedListingPrice !== null) {
+                            return $formattedListingPrice;
+                        }
+                    }
+                }
+            }
+
             $unitPrice = $price != 0 ? $price : $product['unit_price'];
             if ((isset($product['clearanceSale']) && $product['clearanceSale']) || isset($product['clearance_sale']) && $product['clearance_sale']) {
                 $amount = $unitPrice - getProductPriceByType(product: $product, type: 'discounted_amount', result: 'value', price: $unitPrice);

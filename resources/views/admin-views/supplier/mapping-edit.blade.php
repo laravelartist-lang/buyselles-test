@@ -53,7 +53,7 @@
                     <div class="col-lg-4">
                         <div class="form-group">
                             <label class="form-label">{{ translate('cost_price') }} <span class="text-danger">*</span></label>
-                            <input type="number" name="cost_price" id="cost_price" class="form-control" step="0.01" min="0"
+                            <input type="number" name="cost_price" id="cost_price" class="form-control" step="any" min="0"
                                    value="{{ old('cost_price', $mapping->cost_price) }}" required>
                         </div>
                     </div>
@@ -159,6 +159,16 @@
                                    value="{{ old('direct_topup_account_label', $mapping->direct_topup_account_label) }}"
                                    placeholder="{{ translate('player_id') ?: 'Player ID' }}">
                             <small class="text-muted">{{ translate('direct_topup_player_id_hint') ?: 'Label shown to customers on the product page (e.g. Player ID).' }}</small>
+                        </div>
+                    </div>
+
+                    <div class="col-lg-6 direct-topup-fields direct-topup-section-content" style="{{ old('is_direct_topup', $mapping->is_direct_topup) ? '' : 'display:none;' }}">
+                        <div class="form-group">
+                            <label class="form-label">{{ translate('direct_topup_region') ?: 'Region (country code)' }}</label>
+                            <input type="text" name="direct_topup_region" class="form-control text-uppercase"
+                                   value="{{ old('direct_topup_region', $mapping->direct_topup_region) }}"
+                                   maxlength="2" placeholder="EG">
+                            <small class="text-muted">{{ translate('direct_topup_region_hint') ?: 'Fixed region sent to the supplier API (e.g. EG, SA, AE).' }}</small>
                         </div>
                     </div>
                 </div>

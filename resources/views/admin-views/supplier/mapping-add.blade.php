@@ -63,7 +63,7 @@
                     <div class="col-lg-4">
                         <div class="form-group">
                             <label class="form-label">{{ translate('cost_price') }} <span class="text-danger">*</span></label>
-                            <input type="number" name="cost_price" id="cost_price" class="form-control" step="0.01" min="0"
+                            <input type="number" name="cost_price" id="cost_price" class="form-control" step="any" min="0"
                                    value="{{ old('cost_price', '0.00') }}" required>
                         </div>
                     </div>
@@ -170,6 +170,16 @@
                             <small class="text-muted">{{ translate('direct_topup_player_id_hint') ?: 'Label shown to customers on the product page (e.g. Player ID).' }}</small>
                         </div>
                     </div>
+
+                    <div class="col-lg-6 direct-topup-fields direct-topup-section-content" style="display:none;">
+                        <div class="form-group">
+                            <label class="form-label">{{ translate('direct_topup_region') ?: 'Region (country code)' }}</label>
+                            <input type="text" name="direct_topup_region" class="form-control text-uppercase"
+                                   value="{{ old('direct_topup_region') }}"
+                                   maxlength="2" placeholder="EG">
+                            <small class="text-muted">{{ translate('direct_topup_region_hint') ?: 'Fixed region sent to the supplier API (e.g. EG, SA, AE).' }}</small>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="d-flex gap-3 mt-4">
@@ -186,6 +196,14 @@
 </div>
 
 {{-- ─── Catalog Browse Modal ──────────────────────────────────────────────── --}}
+<style>
+    #catalog-table-wrap .catalog-sku-col {
+        width: 4.5rem;
+        max-width: 4.5rem;
+        white-space: nowrap;
+        overflow: hidden;
+    }
+</style>
 <div class="modal fade" id="catalogModal" tabindex="-1" aria-labelledby="catalogModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-xl modal-dialog-scrollable">
         <div class="modal-content">
@@ -244,7 +262,7 @@
                     <table class="table table-bordered table-hover align-middle">
                         <thead class="table-light">
                             <tr>
-                                <th>{{ translate('id_SKU') }}</th>
+                                <th class="catalog-sku-col">{{ translate('id_SKU') }}</th>
                                 <th>{{ translate('name') }}</th>
                                 <th class="text-end">{{ translate('price') }} (USD)</th>
                                 <th class="text-end">{{ translate('price') }} (JOD)</th>
@@ -494,6 +512,15 @@
             .replace(/"/g, '&quot;');
     }
 
+    function shortenSku(value, maxLen) {
+        var str = String(value ?? '');
+        if (str.length <= maxLen) {
+            return str;
+        }
+
+        return str.slice(0, maxLen) + '\u2026';
+    }
+
     function ajaxGet(url) {
         return fetch(url, {
             headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
@@ -731,8 +758,11 @@
                         ? escHtml(String(p.source_price)) + ' <small class="text-muted">' + escHtml(p.source_currency || 'JOD') + '</small>'
                         : '<span class="text-muted">\u2014</span>';
 
+                    var skuId = String(p.id);
+                    var skuDisplay = shortenSku(skuId, 5);
+
                     return '<tr>' +
-                        '<td><code>' + escHtml(String(p.id)) + '</code></td>' +
+                        '<td class="catalog-sku-col"><code title="' + escHtml(skuId) + '">' + escHtml(skuDisplay) + '</code></td>' +
                         '<td>' + escHtml(p.name) + '</td>' +
                         '<td class="text-end fw-semibold">' + escHtml(String(p.price)) + ' <small class="text-muted">USD</small></td>' +
                         '<td class="text-end">' + jodPriceHtml + '</td>' +
