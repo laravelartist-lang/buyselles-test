@@ -46,6 +46,7 @@ class OrderDetail extends Model
         'product_details',
         'price',
         'custom_amount',
+        'supplier_denomination_id',
         'direct_topup_account_id',
         'direct_topup_quantity',
         'discount',
@@ -72,6 +73,7 @@ class OrderDetail extends Model
         'order_id' => 'integer',
         'price' => 'float',
         'custom_amount' => 'float',
+        'supplier_denomination_id' => 'integer',
         'direct_topup_account_id' => 'encrypted',
         'direct_topup_quantity' => 'float',
         'discount' => 'float',
@@ -89,21 +91,27 @@ class OrderDetail extends Model
 
     public function product(): BelongsTo
     {
-        return $this->belongsTo(Product::class)->where('status', 1);
+        return $this->belongsTo(Product::class)
+            ->withoutGlobalScope(Product::STOREFRONT_SCOPE)
+            ->where('status', 1);
     }
 
     // active_product
     public function activeProduct(): BelongsTo
     {
-        return $this->belongsTo(Product::class)->where('status', 1);
+        return $this->belongsTo(Product::class)
+            ->withoutGlobalScope(Product::STOREFRONT_SCOPE)
+            ->where('status', 1);
     }
 
     // product_all_status
     public function productAllStatus(): BelongsTo
     {
-        return $this->belongsTo(Product::class, 'product_id')->with(['clearanceSale' => function ($query) {
-            return $query->active();
-        }]);
+        return $this->belongsTo(Product::class, 'product_id')
+            ->withoutGlobalScope(Product::STOREFRONT_SCOPE)
+            ->with(['clearanceSale' => function ($query) {
+                return $query->active();
+            }]);
     }
 
     public function order(): BelongsTo

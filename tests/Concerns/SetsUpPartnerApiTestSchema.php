@@ -130,15 +130,24 @@ trait SetsUpPartnerApiTestSchema
             $table->string('added_by')->default('admin');
             $table->string('name')->nullable();
             $table->string('slug')->nullable();
+            $table->string('code')->nullable();
             $table->unsignedBigInteger('category_id')->nullable();
             $table->string('product_type')->default('digital');
             $table->string('digital_product_type')->default('ready_product');
             $table->integer('status')->default(1);
             $table->integer('request_status')->default(1);
             $table->boolean('partner_approved')->default(false);
+            $table->boolean('partner_api_only')->default(false);
             $table->decimal('unit_price', 24, 4)->default(0);
             $table->decimal('purchase_price', 24, 4)->default(0);
             $table->integer('current_stock')->default(0);
+            $table->integer('minimum_order_qty')->default(1);
+            $table->integer('featured_status')->default(0);
+            $table->integer('featured')->default(0);
+            $table->decimal('tax', 24, 4)->default(0);
+            $table->decimal('discount', 24, 4)->default(0);
+            $table->decimal('shipping_cost', 24, 4)->default(0);
+            $table->integer('multiply_qty')->default(0);
             $table->text('details')->nullable();
             $table->timestamps();
         });
@@ -163,9 +172,18 @@ trait SetsUpPartnerApiTestSchema
             $table->unsignedBigInteger('product_id')->index();
             $table->unsignedBigInteger('supplier_api_id')->nullable();
             $table->string('supplier_product_id')->nullable();
+            $table->string('supplier_product_name')->nullable();
+            $table->decimal('cost_price', 24, 10)->default(0);
+            $table->string('cost_currency', 3)->default('USD');
+            $table->string('markup_type')->default('percent');
+            $table->decimal('markup_value', 24, 4)->default(0);
             $table->integer('priority')->default(1);
             $table->boolean('is_active')->default(true);
+            $table->boolean('is_customizable')->default(false);
             $table->boolean('is_direct_topup')->default(false);
+            $table->string('direct_topup_account_label')->nullable();
+            $table->string('direct_topup_region', 2)->nullable();
+            $table->decimal('direct_topup_bundle_quantity', 20, 4)->nullable();
             $table->timestamps();
         });
 
@@ -208,6 +226,10 @@ trait SetsUpPartnerApiTestSchema
             $table->unsignedBigInteger('seller_id')->nullable();
             $table->integer('qty')->default(1);
             $table->decimal('price', 24, 4)->default(0);
+            $table->decimal('custom_amount', 24, 4)->nullable();
+            $table->unsignedBigInteger('supplier_denomination_id')->nullable();
+            $table->text('direct_topup_account_id')->nullable();
+            $table->decimal('direct_topup_quantity', 24, 4)->nullable();
             $table->decimal('tax', 24, 4)->default(0);
             $table->decimal('discount', 24, 4)->default(0);
             $table->text('product_details')->nullable();
@@ -238,6 +260,87 @@ trait SetsUpPartnerApiTestSchema
             $table->text('error_message')->nullable();
             $table->timestamp('created_at')->nullable();
         });
+
+        $this->recreateTable('partner_catalogs', function (Blueprint $table): void {
+            $table->id();
+            $table->unsignedBigInteger('user_id')->nullable()->unique();
+            $table->unsignedBigInteger('seller_id')->nullable()->unique();
+            $table->boolean('is_active')->default(true);
+            $table->timestamps();
+        });
+
+        $this->recreateTable('partner_catalog_items', function (Blueprint $table): void {
+            $table->id();
+            $table->unsignedBigInteger('partner_catalog_id')->index();
+            $table->unsignedBigInteger('product_id')->index();
+            $table->decimal('partner_price', 24, 10)->nullable();
+            $table->string('variable_price_type', 20)->nullable();
+            $table->decimal('variable_price_value', 24, 10)->nullable();
+            $table->string('currency', 3)->default('USD');
+            $table->boolean('is_active')->default(true);
+            $table->timestamps();
+            $table->unique(['partner_catalog_id', 'product_id']);
+        });
+
+        $this->recreateTable('partner_catalog_denomination_prices', function (Blueprint $table): void {
+            $table->id();
+            $table->unsignedBigInteger('partner_catalog_item_id')->index();
+            $table->unsignedBigInteger('supplier_product_denomination_id')->index();
+            $table->decimal('partner_price', 24, 10);
+            $table->boolean('is_active')->default(true);
+            $table->timestamps();
+            $table->unique(['partner_catalog_item_id', 'supplier_product_denomination_id'], 'partner_catalog_denomination_unique');
+        });
+
+        $this->recreateTable('supplier_product_denominations', function (Blueprint $table): void {
+            $table->id();
+            $table->unsignedBigInteger('supplier_product_mapping_id')->index();
+            $table->string('supplier_product_id')->nullable();
+            $table->string('name')->nullable();
+            $table->string('type')->default('fixed');
+            $table->decimal('face_value', 24, 4)->nullable();
+            $table->decimal('min_face_value', 24, 4)->nullable();
+            $table->decimal('max_face_value', 24, 4)->nullable();
+            $table->string('face_value_currency', 3)->default('USD');
+            $table->decimal('cost_price', 24, 4)->nullable();
+            $table->boolean('is_active')->default(true);
+            $table->integer('sort_order')->default(0);
+            $table->timestamps();
+        });
+    }
+
+    protected function assignProductToPartnerCatalog(
+        int $productId,
+        float $partnerPrice = 12.5,
+        ?int $userId = null,
+    ): int {
+        $userId ??= (int) $this->app['db']->table('reseller_api_keys')->value('user_id');
+
+        $this->app['db']->table('products')
+            ->where('id', $productId)
+            ->update(['partner_api_only' => true]);
+
+        $catalogId = $this->app['db']->table('partner_catalogs')->where('user_id', $userId)->value('id');
+
+        if ($catalogId === null) {
+            $catalogId = $this->app['db']->table('partner_catalogs')->insertGetId([
+                'user_id' => $userId,
+                'seller_id' => null,
+                'is_active' => true,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+
+        return (int) $this->app['db']->table('partner_catalog_items')->insertGetId([
+            'partner_catalog_id' => $catalogId,
+            'product_id' => $productId,
+            'partner_price' => $partnerPrice,
+            'currency' => 'USD',
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
     }
 
     protected function seedActivePartnerApiKey(int $sellerId = 1, float $walletBalance = 1000): ResellerApiKey

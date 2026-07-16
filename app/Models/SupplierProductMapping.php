@@ -88,7 +88,8 @@ class SupplierProductMapping extends Model
 
     public function product(): BelongsTo
     {
-        return $this->belongsTo(Product::class);
+        return $this->belongsTo(Product::class)
+            ->withoutGlobalScope(Product::STOREFRONT_SCOPE);
     }
 
     public function supplierApi(): BelongsTo
@@ -269,6 +270,17 @@ class SupplierProductMapping extends Model
     public function scopeByPriority($query)
     {
         return $query->orderBy('priority', 'asc');
+    }
+
+    /**
+     * Storefront / admin Product Mappings only.
+     * Partner API catalog mappings must never appear in that list.
+     */
+    public function scopeStorefrontOnly($query)
+    {
+        return $query->whereHas('product', function ($productQuery): void {
+            $productQuery->where('partner_api_only', false);
+        });
     }
 
     // ─── Static helpers ──────────────────────────────────────────────────

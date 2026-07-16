@@ -617,6 +617,7 @@ class SupplierController extends BaseController
         }
 
         return SupplierProductMapping::query()
+            ->storefrontOnly()
             ->where('supplier_api_id', $supplier->id)
             ->where('is_active', true)
             ->where('is_direct_topup', true)
@@ -679,6 +680,7 @@ class SupplierController extends BaseController
 
         if ($request->filled('mapping_id')) {
             $mapping = SupplierProductMapping::query()
+                ->storefrontOnly()
                 ->where('id', $request->integer('mapping_id'))
                 ->where('supplier_api_id', $supplier->id)
                 ->where('is_active', true)

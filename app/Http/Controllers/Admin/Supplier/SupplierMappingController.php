@@ -34,11 +34,14 @@ class SupplierMappingController extends BaseController
         $supplierId = $request->get('supplier_id');
 
         $mappings = SupplierProductMapping::query()
+            ->storefrontOnly()
             ->with(['product', 'supplierApi'])
             ->when($supplierId, fn ($q) => $q->where('supplier_api_id', $supplierId))
             ->when($searchValue, function ($q) use ($searchValue) {
-                $q->whereHas('product', fn ($pq) => $pq->where('name', 'like', "%{$searchValue}%"))
-                    ->orWhere('supplier_product_id', 'like', "%{$searchValue}%");
+                $q->where(function ($searchQuery) use ($searchValue): void {
+                    $searchQuery->whereHas('product', fn ($pq) => $pq->where('name', 'like', "%{$searchValue}%"))
+                        ->orWhere('supplier_product_id', 'like', "%{$searchValue}%");
+                });
             })
             ->orderBy('priority')
             ->paginate(getWebConfig(name: 'pagination_limit'));
@@ -175,7 +178,7 @@ class SupplierMappingController extends BaseController
      */
     public function getUpdateView(int $id): View|RedirectResponse
     {
-        $mapping = SupplierProductMapping::with(['product', 'supplierApi'])->findOrFail($id);
+        $mapping = $this->findStorefrontMappingOrFail($id)->load(['product', 'supplierApi']);
 
         $suppliers = SupplierApi::orderBy('name')->get(['id', 'name', 'driver', 'is_active', 'supports_direct_top_up']);
         $categories = $this->categoryRepo->getListWhere(filters: ['position' => 0], dataLimit: 'all');
@@ -218,7 +221,7 @@ class SupplierMappingController extends BaseController
             return redirect()->back()->withInput();
         }
 
-        $mapping = SupplierProductMapping::findOrFail($id);
+        $mapping = $this->findStorefrontMappingOrFail($id);
         $supplierProductChanged = $mapping->supplier_product_id !== $request->input('supplier_product_id');
         $supplierChanged = (int) $mapping->supplier_api_id !== (int) $request->input('supplier_api_id');
         $productChanged = (int) $mapping->product_id !== (int) $request->input('product_id');
@@ -266,7 +269,7 @@ class SupplierMappingController extends BaseController
      */
     public function updateStatus(Request $request): JsonResponse
     {
-        $mapping = SupplierProductMapping::findOrFail($request->input('id'));
+        $mapping = $this->findStorefrontMappingOrFail((int) $request->input('id'));
         $mapping->update(['is_active' => $request->input('status', 0)]);
 
         return response()->json([
@@ -315,7 +318,7 @@ class SupplierMappingController extends BaseController
      */
     public function delete(Request $request): RedirectResponse
     {
-        SupplierProductMapping::findOrFail($request->input('id'))->delete();
+        $this->findStorefrontMappingOrFail((int) $request->input('id'))->delete();
 
         Toastr::success(translate('mapping_deleted_successfully'));
 
@@ -436,6 +439,13 @@ class SupplierMappingController extends BaseController
         ];
     }
 
+    private function findStorefrontMappingOrFail(int $id): SupplierProductMapping
+    {
+        return SupplierProductMapping::query()
+            ->storefrontOnly()
+            ->findOrFail($id);
+    }
+
     private function excludeProductsMappedToSupplier(
         Builder $query,
         int $supplierApiId,
@@ -446,6 +456,7 @@ class SupplierMappingController extends BaseController
         }
 
         $mappedProductIds = SupplierProductMapping::query()
+            ->storefrontOnly()
             ->where('supplier_api_id', $supplierApiId)
             ->when($exceptMappingId > 0, fn (Builder $mappingQuery) => $mappingQuery->where('id', '!=', $exceptMappingId))
             ->pluck('product_id');
@@ -463,6 +474,7 @@ class SupplierMappingController extends BaseController
         ?int $exceptMappingId = null,
     ): bool {
         return SupplierProductMapping::query()
+            ->storefrontOnly()
             ->where('product_id', $productId)
             ->where('supplier_api_id', $supplierApiId)
             ->when($exceptMappingId, fn (Builder $query) => $query->where('id', '!=', $exceptMappingId))

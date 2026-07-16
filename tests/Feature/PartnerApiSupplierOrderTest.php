@@ -39,6 +39,7 @@ class PartnerApiSupplierOrderTest extends TestCase
     {
         $this->seedProduct(id: 20, name: 'Supplier Backed');
         $this->seedSupplierMapping(productId: 20, driver: 'golf_api');
+        $this->assignProductToPartnerCatalog(productId: 20, partnerPrice: 10);
 
         $manager = Mockery::mock(SupplierManager::class);
         $manager->shouldReceive('getAvailableStockForMapping')->andReturn(5);
@@ -54,6 +55,7 @@ class PartnerApiSupplierOrderTest extends TestCase
         $response->assertJsonPath('data.status', 'pending_fulfillment');
         $response->assertJsonPath('data.quantity_fulfilled', 0);
         $response->assertJsonPath('data.codes', []);
+        $response->assertJsonPath('data.total_cost', 10);
 
         Bus::assertDispatched(SupplierCodeFetchJob::class);
     }
@@ -61,6 +63,7 @@ class PartnerApiSupplierOrderTest extends TestCase
     public function test_create_order_on_local_product_returns_fulfilled_with_codes(): void
     {
         $this->seedProduct(id: 21, name: 'Local Pool');
+        $this->assignProductToPartnerCatalog(productId: 21, partnerPrice: 10);
         $this->seedDigitalCode(productId: 21, plainCode: 'FULFILL-CODE-1');
 
         $response = $this->postJson('/api/v1/partner/orders', [
@@ -80,6 +83,7 @@ class PartnerApiSupplierOrderTest extends TestCase
     {
         $this->seedProduct(id: 23, name: 'Hybrid Fulfillment');
         $this->seedSupplierMapping(productId: 23, driver: 'bamboo');
+        $this->assignProductToPartnerCatalog(productId: 23, partnerPrice: 10);
         $this->seedDigitalCode(productId: 23, plainCode: 'LOCAL-FIRST-CODE');
 
         $manager = Mockery::mock(SupplierManager::class);
@@ -99,7 +103,7 @@ class PartnerApiSupplierOrderTest extends TestCase
         Bus::assertNotDispatched(SupplierCodeFetchJob::class);
     }
 
-    public function test_create_order_rejects_direct_topup_product(): void
+    public function test_create_order_rejects_unassigned_direct_topup_product(): void
     {
         $this->seedProduct(id: 22, name: 'Jawaker Topup');
         $this->seedDirectTopupMapping(productId: 22);
@@ -107,10 +111,11 @@ class PartnerApiSupplierOrderTest extends TestCase
         $response = $this->postJson('/api/v1/partner/orders', [
             'product_id' => 22,
             'quantity' => 1,
+            'direct_topup_account_id' => 'player123',
         ], $this->partnerApiHeaders());
 
-        $response->assertStatus(422);
-        $response->assertJsonPath('error', 'Direct top-up products are not supported via Partner API.');
+        $response->assertNotFound();
+        $response->assertJsonPath('error', 'Product is not available in this partner catalog.');
     }
 
     private function seedProduct(int $id, string $name): void

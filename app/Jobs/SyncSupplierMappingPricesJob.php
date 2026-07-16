@@ -35,6 +35,7 @@ class SyncSupplierMappingPricesJob implements ShouldQueue
         SupplierCurrencyConverter $converter,
     ): void {
         $mappings = SupplierProductMapping::query()
+            ->storefrontOnly()
             ->active()
             ->whereHas('supplierApi', fn ($query) => $query->where('is_active', true))
             ->with('supplierApi')

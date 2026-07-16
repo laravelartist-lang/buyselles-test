@@ -49,16 +49,19 @@ class PartnerApiDocumentationExamplesService
             ->orderBy('id')
             ->first();
 
-        $productsList = $this->resellerApiService->listProducts(
-            search: null,
-            categoryId: null,
-            page: 1,
-            perPage: 20,
-        );
+        $productsList = $sampleKey !== null
+            ? $this->resellerApiService->listProducts(
+                resellerKey: $sampleKey,
+                search: null,
+                categoryId: null,
+                page: 1,
+                perPage: 20,
+            )
+            : ['data' => [], 'meta' => ['current_page' => 1, 'last_page' => 1, 'per_page' => 20, 'total' => 0]];
 
         $liveProduct = $productsList['data'][0] ?? null;
-        $liveProductDetail = $liveProduct !== null
-            ? $this->resellerApiService->getProduct((int) $liveProduct['id'])
+        $liveProductDetail = $liveProduct !== null && $sampleKey !== null
+            ? $this->resellerApiService->getProduct($sampleKey, (int) $liveProduct['id'])
             : null;
 
         $walletSource = $sampleKey !== null && $this->partnerWallet->usesVendorWallet($sampleKey)
@@ -144,8 +147,11 @@ class PartnerApiDocumentationExamplesService
             'name' => 'Example Digital Product',
             'slug' => 'example-digital-product',
             'category_id' => is_numeric($product['category_id'] ?? null) ? (int) $product['category_id'] : 1,
-            'unit_price' => 20.00,
-            'purchase_price' => 15.00,
+            'pricing' => [
+                'type' => 'fixed',
+                'currency' => 'USD',
+                'unit_price' => 20.00,
+            ],
             'available_stock' => 42,
             'thumbnail' => $this->dummyThumbnail($product['thumbnail'] ?? null),
             'seller_type' => $product['seller_type'] ?? 'in_house',
@@ -154,6 +160,7 @@ class PartnerApiDocumentationExamplesService
                 ? ($product['supplier'] ?? 'bamboo')
                 : null,
             'requires_account_id' => false,
+            'direct_topup' => null,
         ];
     }
 
@@ -180,8 +187,11 @@ class PartnerApiDocumentationExamplesService
             'name' => 'Example Digital Product',
             'slug' => 'example-digital-product',
             'category_id' => 1,
-            'unit_price' => 20.00,
-            'purchase_price' => 15.00,
+            'pricing' => [
+                'type' => 'fixed',
+                'currency' => 'USD',
+                'unit_price' => 20.00,
+            ],
             'available_stock' => 42,
             'thumbnail' => $this->dummyThumbnail(null),
             'seller_type' => 'in_house',

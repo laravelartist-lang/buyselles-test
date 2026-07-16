@@ -475,6 +475,7 @@ Route::group(['prefix' => 'v1/partner', 'middleware' => ['reseller_api_auth']], 
     Route::controller(\App\Http\Controllers\Api\ResellerController::class)->group(function () {
         Route::get('products', 'products');
         Route::get('products/{id}', 'productDetail');
+        Route::post('products/{id}/quote', 'quoteProduct');
         Route::post('orders', 'createOrder');
         Route::get('orders/{id}', 'orderDetail');
         Route::get('balance', 'balance');
@@ -486,6 +487,7 @@ Route::group(['prefix' => 'reseller', 'middleware' => ['reseller_api_auth']], fu
     Route::controller(\App\Http\Controllers\Api\ResellerController::class)->group(function () {
         Route::get('products', 'products');
         Route::get('products/{id}', 'productDetail');
+        Route::post('products/{id}/quote', 'quoteProduct');
         Route::post('orders', 'createOrder');
         Route::get('orders/{id}', 'orderDetail');
         Route::get('balance', 'balance');

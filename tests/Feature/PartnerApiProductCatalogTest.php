@@ -19,10 +19,11 @@ class PartnerApiProductCatalogTest extends TestCase
         $this->seedActivePartnerApiKey();
     }
 
-    public function test_list_products_returns_in_house_only_by_default(): void
+    public function test_list_products_returns_only_assigned_partner_catalog_items(): void
     {
         $this->seedProduct(id: 1, addedBy: 'admin', partnerApproved: true, name: 'In House Product');
         $this->seedProduct(id: 2, addedBy: 'seller', partnerApproved: true, name: 'Vendor Product');
+        $this->assignProductToPartnerCatalog(productId: 1, partnerPrice: 10);
 
         $response = $this->getJson('/api/v1/partner/products', $this->partnerApiHeaders());
 
@@ -32,26 +33,33 @@ class PartnerApiProductCatalogTest extends TestCase
         $response->assertJsonPath('data.0.seller_type', 'in_house');
     }
 
-    public function test_list_products_include_vendor_param_includes_vendor_products(): void
+    public function test_assigned_vendor_product_appears_when_seller_type_vendor(): void
     {
         $this->seedProduct(id: 1, addedBy: 'admin', partnerApproved: true, name: 'In House Product');
         $this->seedProduct(id: 2, addedBy: 'seller', partnerApproved: true, name: 'Vendor Product');
+        $this->assignProductToPartnerCatalog(productId: 1, partnerPrice: 10);
+        $this->assignProductToPartnerCatalog(productId: 2, partnerPrice: 12);
 
-        $response = $this->getJson('/api/v1/partner/products?include_vendor=1', $this->partnerApiHeaders());
+        $response = $this->getJson('/api/v1/partner/products?seller_type=vendor', $this->partnerApiHeaders());
 
         $response->assertOk();
-        $response->assertJsonCount(2, 'data');
+        $response->assertJsonCount(1, 'data');
+        $response->assertJsonPath('data.0.id', 2);
     }
 
-    public function test_direct_topup_products_are_excluded_from_catalog(): void
+    public function test_direct_topup_products_appear_when_assigned(): void
     {
         $this->seedProduct(id: 3, addedBy: 'admin', partnerApproved: true, name: 'Direct Topup Product');
         $this->seedDirectTopupMapping(productId: 3);
+        $this->assignProductToPartnerCatalog(productId: 3, partnerPrice: 4.5);
 
-        $response = $this->getJson('/api/v1/partner/products', $this->partnerApiHeaders());
+        $response = $this->getJson('/api/v1/partner/products?fulfillment_type=direct_topup', $this->partnerApiHeaders());
 
         $response->assertOk();
-        $response->assertJsonCount(0, 'data');
+        $response->assertJsonCount(1, 'data');
+        $response->assertJsonPath('data.0.id', 3);
+        $response->assertJsonPath('data.0.fulfillment_type', 'direct_topup');
+        $response->assertJsonPath('data.0.requires_account_id', true);
     }
 
     public function test_fulfillment_type_filter_returns_supplier_mapped_products(): void
@@ -59,6 +67,8 @@ class PartnerApiProductCatalogTest extends TestCase
         $this->seedProduct(id: 4, addedBy: 'admin', partnerApproved: true, name: 'Local Product');
         $this->seedProduct(id: 5, addedBy: 'admin', partnerApproved: true, name: 'Supplier Product');
         $this->seedSupplierMapping(productId: 5, driver: 'bamboo');
+        $this->assignProductToPartnerCatalog(productId: 4, partnerPrice: 9);
+        $this->assignProductToPartnerCatalog(productId: 5, partnerPrice: 11);
 
         $response = $this->getJson('/api/v1/partner/products?fulfillment_type=supplier_codes', $this->partnerApiHeaders());
 
@@ -69,7 +79,7 @@ class PartnerApiProductCatalogTest extends TestCase
         $response->assertJsonPath('data.0.supplier', 'bamboo');
     }
 
-    public function test_vendor_product_detail_returns_404_without_include_vendor(): void
+    public function test_unassigned_product_detail_returns_404(): void
     {
         $this->seedProduct(id: 6, addedBy: 'seller', partnerApproved: true, name: 'Vendor Only');
 
@@ -78,48 +88,16 @@ class PartnerApiProductCatalogTest extends TestCase
         $response->assertNotFound();
     }
 
-    public function test_vendor_product_detail_is_available_with_include_vendor(): void
+    public function test_assigned_vendor_product_detail_is_available(): void
     {
         $this->seedProduct(id: 7, addedBy: 'seller', partnerApproved: true, name: 'Vendor Visible');
+        $this->assignProductToPartnerCatalog(productId: 7, partnerPrice: 8);
 
-        $response = $this->getJson('/api/v1/partner/products/7?include_vendor=1', $this->partnerApiHeaders());
+        $response = $this->getJson('/api/v1/partner/products/7', $this->partnerApiHeaders());
 
         $response->assertOk();
         $response->assertJsonPath('data.seller_type', 'vendor');
-    }
-
-    public function test_list_products_include_ready_after_sell_type(): void
-    {
-        $this->seedProduct(id: 8, addedBy: 'admin', partnerApproved: true, name: 'After Sell Product', digitalProductType: 'ready_after_sell');
-
-        $response = $this->getJson('/api/v1/partner/products', $this->partnerApiHeaders());
-
-        $response->assertOk();
-        $response->assertJsonCount(1, 'data');
-        $response->assertJsonPath('data.0.id', 8);
-    }
-
-    public function test_in_house_products_are_listed_without_partner_approval(): void
-    {
-        $this->seedProduct(id: 9, addedBy: 'admin', partnerApproved: false, name: 'Unapproved In House');
-
-        $response = $this->getJson('/api/v1/partner/products', $this->partnerApiHeaders());
-
-        $response->assertOk();
-        $response->assertJsonCount(1, 'data');
-        $response->assertJsonPath('data.0.id', 9);
-    }
-
-    public function test_unapproved_vendor_products_are_excluded_from_catalog(): void
-    {
-        $this->seedProduct(id: 10, addedBy: 'admin', partnerApproved: false, name: 'In House Visible');
-        $this->seedProduct(id: 11, addedBy: 'seller', partnerApproved: false, name: 'Vendor Hidden');
-
-        $response = $this->getJson('/api/v1/partner/products?include_vendor=1', $this->partnerApiHeaders());
-
-        $response->assertOk();
-        $response->assertJsonCount(1, 'data');
-        $response->assertJsonPath('data.0.id', 10);
+        $response->assertJsonPath('data.pricing.unit_price', 8);
     }
 
     private function seedProduct(int $id, string $addedBy, bool $partnerApproved, string $name, string $digitalProductType = 'ready_product'): void
@@ -183,6 +161,7 @@ class PartnerApiProductCatalogTest extends TestCase
             'supplier_product_id' => 'jawaker-1',
             'is_active' => true,
             'is_direct_topup' => true,
+            'direct_topup_account_label' => 'Player ID',
             'created_at' => now(),
             'updated_at' => now(),
         ]);

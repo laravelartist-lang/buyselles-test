@@ -29,11 +29,11 @@ class ResellerController extends Controller
         }
 
         $products = $this->resellerService->listProducts(
+            resellerKey: $resellerKey,
             search: $request->query('search'),
             categoryId: $request->query('category_id') ? (int) $request->query('category_id') : null,
             page: (int) $request->query('page', 1),
             perPage: min((int) $request->query('per_page', 20), 100),
-            includeVendor: $request->boolean('include_vendor'),
             fulfillmentType: $this->normalizeFulfillmentType($request->query('fulfillment_type')),
             sellerType: $this->normalizeSellerType($request->query('seller_type')),
         );
@@ -53,13 +53,58 @@ class ResellerController extends Controller
             return response()->json(['error' => 'Permission denied.'], 403);
         }
 
-        $product = $this->resellerService->getProduct($id, $request->boolean('include_vendor'));
+        $product = $this->resellerService->getProduct($resellerKey, $id);
 
         if (! $product) {
             return response()->json(['error' => 'Product not found.'], 404);
         }
 
         return response()->json(['data' => $product]);
+    }
+
+    /**
+     * POST /api/reseller/products/{id}/quote
+     * Return the authoritative current price for a selected product variant.
+     */
+    public function quoteProduct(Request $request, int $id): JsonResponse
+    {
+        $resellerKey = $request->attributes->get('reseller_key');
+
+        if (! $resellerKey->hasPermission('products.list')) {
+            return response()->json(['error' => 'Permission denied.'], 403);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'quantity' => 'nullable|integer|min:1|max:100',
+            'supplier_denomination_id' => 'nullable|integer|exists:supplier_product_denominations,id',
+            'custom_amount' => 'nullable|numeric|min:0.0000000001',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['errors' => $validator->errors()], 422);
+        }
+
+        try {
+            $quote = $this->resellerService->quoteProduct(
+                resellerKey: $resellerKey,
+                productId: $id,
+                quantity: (int) $request->input('quantity', 1),
+                denominationId: $request->filled('supplier_denomination_id')
+                    ? (int) $request->input('supplier_denomination_id')
+                    : null,
+                customAmount: $request->filled('custom_amount')
+                    ? (float) $request->input('custom_amount')
+                    : null,
+            );
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['error' => $e->getMessage()], 422);
+        }
+
+        if ($quote === null) {
+            return response()->json(['error' => 'Product not found.'], 404);
+        }
+
+        return response()->json(['data' => $quote]);
     }
 
     /**
@@ -77,6 +122,10 @@ class ResellerController extends Controller
         $validator = Validator::make($request->all(), [
             'product_id' => 'required|integer|exists:products,id',
             'quantity' => 'required|integer|min:1|max:100',
+            'supplier_denomination_id' => 'nullable|integer|exists:supplier_product_denominations,id',
+            'custom_amount' => 'nullable|numeric|min:0.0000000001',
+            'direct_topup_account_id' => 'nullable|string|max:255',
+            'expected_total' => 'nullable|numeric|min:0.0000000001',
             'reference' => 'nullable|string|max:255',
         ]);
 
@@ -90,6 +139,16 @@ class ResellerController extends Controller
             quantity: $request->input('quantity'),
             reference: $request->input('reference'),
             idempotencyKey: $request->header('X-Idempotency-Key'),
+            denominationId: $request->filled('supplier_denomination_id')
+                ? (int) $request->input('supplier_denomination_id')
+                : null,
+            customAmount: $request->filled('custom_amount')
+                ? (float) $request->input('custom_amount')
+                : null,
+            directTopUpAccountId: $request->input('direct_topup_account_id'),
+            expectedTotal: $request->filled('expected_total')
+                ? (float) $request->input('expected_total')
+                : null,
         );
 
         if (isset($result['error'])) {
@@ -149,7 +208,7 @@ class ResellerController extends Controller
             return null;
         }
 
-        return in_array($value, ['local_codes', 'supplier_codes'], true) ? $value : null;
+        return in_array($value, ['local_codes', 'supplier_codes', 'direct_topup'], true) ? $value : null;
     }
 
     private function normalizeSellerType(mixed $value): ?string

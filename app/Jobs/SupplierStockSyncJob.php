@@ -34,6 +34,7 @@ class SupplierStockSyncJob implements ShouldQueue
     public function handle(SupplierManager $manager): void
     {
         $mappings = SupplierProductMapping::query()
+            ->storefrontOnly()
             ->active()
             ->with('supplierApi')
             ->get();

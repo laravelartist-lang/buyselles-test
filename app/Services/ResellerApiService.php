@@ -2,15 +2,18 @@
 
 namespace App\Services;
 
+use App\Jobs\DirectTopUpFulfillmentJob;
 use App\Jobs\ReleasePartnerEscrowJob;
 use App\Jobs\SupplierCodeFetchJob;
 use App\Models\DigitalProductCode;
 use App\Models\Order;
 use App\Models\OrderDetail;
+use App\Models\PartnerCatalogItem;
 use App\Models\PartnerOrderIdempotency;
-use App\Models\Product;
 use App\Models\ResellerApiKey;
 use App\Models\SellerWallet;
+use App\Services\DirectTopUp\DirectTopUpService;
+use App\Services\Partner\PartnerCatalogPricingService;
 use App\Services\Partner\PartnerProductCatalogQuery;
 use App\Services\Partner\PartnerProductPresenter;
 use App\Services\Partner\PartnerProductStockResolver;
@@ -20,53 +23,60 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use InvalidArgumentException;
 
 class ResellerApiService
 {
     public function __construct(
         private readonly PartnerProductCatalogQuery $catalogQuery,
         private readonly PartnerProductPresenter $productPresenter,
+        private readonly PartnerCatalogPricingService $catalogPricing,
         private readonly PartnerProductStockResolver $stockResolver,
         private readonly DigitalProductCodeService $codeService,
         private readonly SupplierOrderEligibilityService $supplierOrderEligibilityService,
         private readonly PartnerWalletService $partnerWallet,
+        private readonly DirectTopUpService $directTopUpService,
     ) {}
 
     /**
      * List digital ready-product catalog items with available stock counts.
      */
     public function listProducts(
+        ResellerApiKey $resellerKey,
         ?string $search,
         ?int $categoryId,
         int $page,
         int $perPage,
-        bool $includeVendor = false,
         ?string $fulfillmentType = null,
         ?string $sellerType = null,
     ): array {
         $query = $this->catalogQuery->baseQuery(
-            includeVendor: $includeVendor,
+            resellerKey: $resellerKey,
             fulfillmentType: $fulfillmentType,
             sellerType: $sellerType,
-        )->with(['supplierMapping.supplierApi']);
+        );
 
         if ($search) {
-            $query->where('name', 'like', '%'.$search.'%');
+            $query->whereHas('product', fn ($productQuery) => $productQuery
+                ->where('name', 'like', '%'.$search.'%'));
         }
 
         if ($categoryId) {
-            $query->where('category_id', $categoryId);
+            $query->whereHas('product', fn ($productQuery) => $productQuery
+                ->where('category_id', $categoryId));
         }
 
-        $products = $query->paginate($perPage, ['*'], 'page', $page);
+        $catalogItems = $query->paginate($perPage, ['*'], 'page', $page);
 
         return [
-            'data' => $products->map(fn (Product $product) => $this->productPresenter->toListArray($product))->all(),
+            'data' => $catalogItems
+                ->map(fn (PartnerCatalogItem $catalogItem) => $this->productPresenter->toListArray($catalogItem))
+                ->all(),
             'meta' => [
-                'current_page' => $products->currentPage(),
-                'last_page' => $products->lastPage(),
-                'per_page' => $products->perPage(),
-                'total' => $products->total(),
+                'current_page' => $catalogItems->currentPage(),
+                'last_page' => $catalogItems->lastPage(),
+                'per_page' => $catalogItems->perPage(),
+                'total' => $catalogItems->total(),
             ],
         ];
     }
@@ -74,23 +84,56 @@ class ResellerApiService
     /**
      * Get single product details with stock count.
      */
-    public function getProduct(int $id, bool $includeVendor = false): ?array
+    public function getProduct(ResellerApiKey $resellerKey, int $id): ?array
     {
-        $product = $this->catalogQuery->findEligibleProduct($id, $includeVendor);
+        $catalogItem = $this->catalogQuery->findEligibleItem($resellerKey, $id);
 
-        if (! $product) {
+        if (! $catalogItem) {
             return null;
         }
 
-        return $this->productPresenter->toDetailArray($product);
+        return $this->productPresenter->toDetailArray($catalogItem);
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public function quoteProduct(
+        ResellerApiKey $resellerKey,
+        int $productId,
+        int $quantity,
+        ?int $denominationId = null,
+        ?float $customAmount = null,
+    ): ?array {
+        $catalogItem = $this->catalogQuery->findEligibleItem($resellerKey, $productId);
+
+        if ($catalogItem === null) {
+            return null;
+        }
+
+        return $this->catalogPricing->quote(
+            catalogItem: $catalogItem,
+            quantity: $quantity,
+            denominationId: $denominationId,
+            customAmount: $customAmount,
+        );
     }
 
     /**
      * Create a reseller order idempotently: debit wallet, assign codes, return result.
      * If $idempotencyKey is provided and a matching record exists, the cached response is returned.
      */
-    public function createOrder(ResellerApiKey $resellerKey, int $productId, int $quantity, ?string $reference, ?string $idempotencyKey = null): array
-    {
+    public function createOrder(
+        ResellerApiKey $resellerKey,
+        int $productId,
+        int $quantity,
+        ?string $reference,
+        ?string $idempotencyKey = null,
+        ?int $denominationId = null,
+        ?float $customAmount = null,
+        ?string $directTopUpAccountId = null,
+        ?float $expectedTotal = null,
+    ): array {
         if ($idempotencyKey !== null) {
             $existing = PartnerOrderIdempotency::query()
                 ->where('reseller_api_key_id', $resellerKey->id)
@@ -102,47 +145,100 @@ class ResellerApiService
             }
         }
 
-        $product = $this->catalogQuery->findOrderProduct($productId);
+        $previewItem = $this->catalogQuery->findEligibleItem($resellerKey, $productId);
 
-        if (! $product) {
-            return ['error' => 'Product not found or not available.', 'status' => 404];
+        if ($previewItem === null) {
+            return ['error' => 'Product is not available in this partner catalog.', 'status' => 404];
         }
 
-        if ($this->catalogQuery->hasActiveDirectTopupMapping($productId)) {
-            return [
-                'error' => 'Direct top-up products are not supported via Partner API.',
-                'status' => 422,
-            ];
-        }
+        $product = $previewItem->product;
+        $isDirectTopUp = (bool) $product->supplierMapping?->is_direct_topup;
 
-        $availableCount = $this->stockResolver->resolve($product);
+        if ($isDirectTopUp) {
+            $bundleQuantity = $this->directTopUpService->resolveBundleQuantity($product);
+            $directTopUpErrors = $this->directTopUpService->validatePurchase(
+                product: $product,
+                accountId: trim((string) $directTopUpAccountId),
+                quantity: $bundleQuantity,
+            );
 
-        if ($availableCount < $quantity) {
-            return [
-                'error' => 'Insufficient stock.',
-                'available' => $availableCount,
-                'requested' => $quantity,
-                'status' => 409,
-            ];
-        }
+            if ($directTopUpErrors !== []) {
+                return [
+                    'error' => (string) reset($directTopUpErrors),
+                    'errors' => $directTopUpErrors,
+                    'status' => 422,
+                ];
+            }
+        } else {
+            $availableCount = $this->stockResolver->resolve($product);
 
-        $totalCost = $product->unit_price * $quantity;
-        $availableBalance = $this->partnerWallet->getAvailableBalance($resellerKey);
-
-        if ($availableBalance < $totalCost) {
-            return [
-                'error' => 'Insufficient wallet balance.',
-                'balance' => $availableBalance,
-                'required' => $totalCost,
-                'status' => 402,
-            ];
+            if ($availableCount < $quantity) {
+                return [
+                    'error' => 'Insufficient stock.',
+                    'available' => $availableCount,
+                    'requested' => $quantity,
+                    'status' => 409,
+                ];
+            }
         }
 
         try {
-            return DB::transaction(function () use ($resellerKey, $product, $productId, $quantity, $totalCost, $reference, $idempotencyKey) {
+            return DB::transaction(function () use (
+                $resellerKey,
+                $productId,
+                $quantity,
+                $reference,
+                $idempotencyKey,
+                $denominationId,
+                $customAmount,
+                $directTopUpAccountId,
+                $expectedTotal,
+            ) {
+                $catalogItem = $this->catalogQuery->findOrderItem(
+                    resellerKey: $resellerKey,
+                    productId: $productId,
+                    lockForUpdate: true,
+                );
+
+                if ($catalogItem === null) {
+                    return ['error' => 'Product is not available in this partner catalog.', 'status' => 404];
+                }
+
+                $quote = $this->catalogPricing->quote(
+                    catalogItem: $catalogItem,
+                    quantity: $quantity,
+                    denominationId: $denominationId,
+                    customAmount: $customAmount,
+                );
+                $totalCost = $quote['subtotal'];
+
+                if ($expectedTotal !== null && abs($expectedTotal - $totalCost) >= 0.0000001) {
+                    return [
+                        'error' => 'Price changed. Request a new quote before ordering.',
+                        'code' => 'price_changed',
+                        'expected_total' => $expectedTotal,
+                        'current_quote' => $quote,
+                        'status' => 409,
+                    ];
+                }
+
+                $availableBalance = $this->partnerWallet->getAvailableBalance($resellerKey);
+
+                if ($availableBalance < $totalCost) {
+                    return [
+                        'error' => 'Insufficient wallet balance.',
+                        'balance' => $availableBalance,
+                        'required' => $totalCost,
+                        'status' => 402,
+                    ];
+                }
+
+                $product = $catalogItem->product;
+                $isDirectTopUp = (bool) $product->supplierMapping?->is_direct_topup;
+
                 $order = Order::withoutEvents(function () use ($resellerKey, $totalCost, $reference) {
                     return Order::create([
-                        'customer_id' => null,
+                        'customer_id' => $resellerKey->seller_id === null ? $resellerKey->user_id : null,
                         'customer_type' => 'partner',
                         'payment_status' => 'paid',
                         'order_status' => 'processing',
@@ -157,13 +253,19 @@ class ResellerApiService
 
                 $this->partnerWallet->debitForOrder($resellerKey, $totalCost, $order->id);
 
-                OrderDetail::create([
+                $orderDetail = OrderDetail::create([
                     'order_id' => $order->id,
                     'product_id' => $productId,
                     'seller_id' => $product->user_id,
-                    'product_details' => json_encode($this->productPresenter->toOrderSnapshot($product)),
+                    'product_details' => json_encode($this->productPresenter->toOrderSnapshot($catalogItem, $quote)),
                     'qty' => $quantity,
-                    'price' => $product->unit_price,
+                    'price' => $quote['unit_price'],
+                    'custom_amount' => $quote['custom_amount'],
+                    'supplier_denomination_id' => $quote['denomination_id'],
+                    'direct_topup_account_id' => $isDirectTopUp ? trim((string) $directTopUpAccountId) : null,
+                    'direct_topup_quantity' => $isDirectTopUp
+                        ? $this->directTopUpService->resolveBundleQuantity($product)
+                        : null,
                     'tax' => 0,
                     'discount' => 0,
                     'product_type' => 'digital',
@@ -172,15 +274,20 @@ class ResellerApiService
                 ]);
 
                 $order->load('orderDetails');
-                $this->codeService->assignAndNotify($order);
 
-                if ($this->supplierOrderEligibilityService->orderNeedsSupplierCodeFetch($order)) {
-                    SupplierCodeFetchJob::dispatch($order->id);
+                if ($isDirectTopUp) {
+                    DirectTopUpFulfillmentJob::dispatch($order->id);
+                } else {
+                    $this->codeService->assignAndNotify($order);
+
+                    if ($this->supplierOrderEligibilityService->orderNeedsSupplierCodeFetch($order)) {
+                        SupplierCodeFetchJob::dispatch($order->id);
+                    }
                 }
 
-                $codes = $this->collectOrderCodes($order);
+                $codes = $isDirectTopUp ? [] : $this->collectOrderCodes($order);
                 $quantityFulfilled = count($codes);
-                $isFulfilled = $quantityFulfilled >= $quantity;
+                $isFulfilled = ! $isDirectTopUp && $quantityFulfilled >= $quantity;
 
                 $order->update([
                     'order_status' => $isFulfilled ? 'delivered' : 'processing',
@@ -201,8 +308,10 @@ class ResellerApiService
                         'quantity_requested' => $quantity,
                         'quantity_fulfilled' => $quantityFulfilled,
                         'total_cost' => $totalCost,
+                        'pricing' => $quote,
                         'status' => $isFulfilled ? 'fulfilled' : 'pending_fulfillment',
                         'reference' => $reference,
+                        'order_detail_id' => $orderDetail->id,
                         'codes' => $codes,
                     ],
                 ];
@@ -218,6 +327,8 @@ class ResellerApiService
 
                 return $result;
             });
+        } catch (InvalidArgumentException $e) {
+            return ['error' => $e->getMessage(), 'status' => 422];
         } catch (\Throwable $e) {
             Log::error('ResellerApiService: order creation failed', [
                 'product_id' => $productId,
@@ -236,7 +347,13 @@ class ResellerApiService
     {
         $order = Order::query()
             ->where('id', $orderId)
-            ->where('seller_id', $resellerKey->seller_id)
+            ->when(
+                $resellerKey->seller_id !== null,
+                fn ($query) => $query->where('seller_id', $resellerKey->seller_id),
+                fn ($query) => $query
+                    ->where('customer_id', $resellerKey->user_id)
+                    ->whereNull('seller_id'),
+            )
             ->where('payment_method', 'partner_wallet')
             ->with(['orderDetails'])
             ->first();

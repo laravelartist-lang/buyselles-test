@@ -39,6 +39,7 @@ class PartnerApiDocumentationExamplesServiceTest extends TestCase
             'created_at' => now(),
             'updated_at' => now(),
         ]);
+        $this->assignProductToPartnerCatalog(productId: 30, partnerPrice: 12.5);
 
         $examples = app(PartnerApiDocumentationExamplesService::class)->build();
         $encoded = json_encode($examples);

@@ -80,23 +80,22 @@ Accept: application/json</pre>
             {{-- ── Product Catalog ─────────────────────────────────────── --}}
             <div class="docs-section" id="product-catalog">
                 <h5 class="fw-bold mb-3">Product Catalog</h5>
-                <p>By default, the Partner API returns <strong>in-house</strong> digital products only (<code>added_by = admin</code>) that use <code>ready_product</code> or <code>ready_after_sell</code> fulfillment. Vendor products require <code>partner_approved</code> before they appear. Direct top-up products are excluded in v1.</p>
+                <p>The Partner API exposes a <strong>curated, partner-specific catalog</strong>. Only products an admin assigns to your partner account appear. Each assignment has an <strong>exact partner price</strong> (not a global markup). Unassigned supplier catalog items are never listed.</p>
                 <div class="info-box mb-3">
-                    <strong>Upstream suppliers (Bamboo, Golf API):</strong> Supplier catalog SKUs are not exposed directly. Admin maps a supplier product to an in-house digital SKU; partners order that in-house product ID. Fulfillment uses the mapped supplier when local codes are unavailable.
+                    <strong>Admin workflow:</strong> Reseller API Keys → Partner API Catalog → choose a supplier → browse that supplier’s catalog (same sync UI as storefront mappings) → set an exact partner price → Allow. Storefront supplier mappings remain separate; removing a Partner API catalog item does not delete storefront mappings.
                 </div>
                 <table class="table table-sm table-bordered mb-3">
                     <thead class="table-light">
                         <tr><th>Query param</th><th>Values</th><th>Description</th></tr>
                     </thead>
                     <tbody>
-                        <tr><td><code>include_vendor</code></td><td><code>1</code></td><td>Also include partner-approved vendor (<code>added_by = seller</code>) products</td></tr>
-                        <tr><td><code>fulfillment_type</code></td><td><code>local_codes</code> | <code>supplier_codes</code></td><td>Filter by fulfillment source</td></tr>
+                        <tr><td><code>fulfillment_type</code></td><td><code>local_codes</code> | <code>supplier_codes</code> | <code>direct_topup</code></td><td>Filter by fulfillment source</td></tr>
                         <tr><td><code>seller_type</code></td><td><code>in_house</code> | <code>vendor</code></td><td>Filter by product owner type</td></tr>
                     </tbody>
                 </table>
                 <div class="fw-semibold mb-2">Product response fields <span class="text-muted small">(sanitized example — structure matches live API)</span></div>
 <pre class="code-block">{!! e($apiExampleFormatter->formatJson($apiExamples['catalog_field_sample'])) !!}</pre>
-                <p class="text-muted small mt-2">Direct top-up products (<code>requires_account_id: true</code>) will be supported in a future API version.</p>
+                <p class="text-muted small mt-2">Charge price is always <code>pricing.unit_price</code> (or denomination / top-up bundle price). Optional quote: <code>POST /products/{id}/quote</code>.</p>
             </div>
 
             {{-- ── Endpoints ───────────────────────────────────────────── --}}

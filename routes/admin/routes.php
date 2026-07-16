@@ -88,6 +88,7 @@ use App\Http\Controllers\Admin\Settings\VendorRegistrationSettingController;
 use App\Http\Controllers\Admin\Settings\VendorSettingsController;
 use App\Http\Controllers\Admin\Shipping\ShippingMethodController;
 use App\Http\Controllers\Admin\Shipping\ShippingTypeController;
+use App\Http\Controllers\Admin\Supplier\PartnerCatalogController;
 use App\Http\Controllers\Admin\Supplier\ResellerApiKeyController;
 use App\Http\Controllers\Admin\Supplier\SupplierController;
 use App\Http\Controllers\Admin\Supplier\SupplierLogController;
@@ -1379,6 +1380,12 @@ Route::group(['prefix' => 'admin', 'as' => 'admin.', 'middleware' => ['admin', '
             Route::post('{id}/update', 'updateKey')->name('update');
             Route::post('{id}/regenerate', 'regenerateKey')->name('regenerate');
             Route::get('{id}/logs', 'keyLogs')->name('logs');
+        });
+        Route::controller(PartnerCatalogController::class)->group(function () {
+            Route::get('{keyId}/catalog', 'index')->name('catalog');
+            Route::post('{keyId}/catalog/assign', 'assignFromSupplier')->name('catalog.assign');
+            Route::post('{keyId}/catalog', 'store')->name('catalog.store');
+            Route::post('{keyId}/catalog/{itemId}/delete', 'destroy')->name('catalog.destroy');
         });
     });
 });
