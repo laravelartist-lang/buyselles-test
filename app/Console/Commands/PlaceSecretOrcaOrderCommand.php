@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\SupplierApi;
 use App\Models\SupplierProductMapping;
+use App\Services\DirectTopUp\DirectTopUpService;
 use App\Services\Supplier\Drivers\GenericRestDriver;
 use App\Services\Supplier\Presets\SecretOrcaPreset;
 use App\Services\Supplier\SupplierManager;
@@ -15,7 +16,7 @@ class PlaceSecretOrcaOrderCommand extends Command
                             {--supplier= : Supplier API ID (defaults to active SecretOrca)}
                             {--mapping= : Supplier product mapping ID (resolves product_id + region)}
                             {--product-id= : Secret Orca product UUID (overrides mapping)}
-                            {--quantity=900 : Amount to send (diamond/coin count)}
+                            {--quantity= : Amount to send (defaults to mapping bundle quantity or 900)}
                             {--account= : target_account / Player ID (required)}
                             {--region= : Region code e.g. EG, SA, AE, PK (defaults to mapping direct_topup_region)}
                             {--client-order-id= : Optional client_order_id for your tracking}
@@ -56,7 +57,10 @@ class PlaceSecretOrcaOrderCommand extends Command
             return self::FAILURE;
         }
 
-        $quantity = (float) $this->option('quantity');
+        $quantityInput = $this->option('quantity');
+        $quantity = $quantityInput !== null && $quantityInput !== ''
+            ? (float) $quantityInput
+            : $this->resolveDefaultQuantity($mapping);
         $region = strtoupper(trim((string) ($this->option('region')
             ?: $mapping?->direct_topup_region
             ?: '')));
@@ -193,7 +197,25 @@ class PlaceSecretOrcaOrderCommand extends Command
             ->where('id', (int) $this->option('mapping'))
             ->where('supplier_api_id', $supplier->id)
             ->where('is_active', true)
+            ->with('product')
             ->first();
+    }
+
+    private function resolveDefaultQuantity(?SupplierProductMapping $mapping): float
+    {
+        if ($mapping !== null) {
+            $mapping->loadMissing('product');
+
+            if ($mapping->product !== null) {
+                return app(DirectTopUpService::class)->resolveBundleQuantity($mapping->product);
+            }
+
+            if ($mapping->direct_topup_bundle_quantity !== null && (float) $mapping->direct_topup_bundle_quantity > 0) {
+                return (float) $mapping->direct_topup_bundle_quantity;
+            }
+        }
+
+        return 900;
     }
 
     private function repairSettings(SupplierApi $supplier): void

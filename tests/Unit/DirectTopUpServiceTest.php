@@ -61,6 +61,7 @@ class DirectTopUpServiceTest extends TestCase
             $table->boolean('is_active')->default(true);
             $table->boolean('is_direct_topup')->default(false);
             $table->string('direct_topup_account_label', 255)->nullable();
+            $table->decimal('direct_topup_bundle_quantity', 20, 4)->nullable();
             $table->timestamps();
         });
 
@@ -73,6 +74,7 @@ class DirectTopUpServiceTest extends TestCase
             $table->string('product_type')->nullable();
             $table->string('digital_product_type')->nullable();
             $table->decimal('unit_price', 14, 2)->nullable();
+            $table->integer('minimum_order_qty')->default(1);
             $table->tinyInteger('status')->default(1);
             $table->timestamps();
         });
@@ -116,6 +118,61 @@ class DirectTopUpServiceTest extends TestCase
         $this->assertArrayNotHasKey('min_quantity', $payload);
         $this->assertArrayNotHasKey('max_quantity', $payload);
         $this->assertArrayNotHasKey('price_per_unit', $payload);
+    }
+
+    public function test_resolve_bundle_quantity_prefers_mapping_field(): void
+    {
+        $product = $this->makeDirectTopUpProduct();
+        $product->minimum_order_qty = 5;
+        $product->save();
+
+        $this->app['db']->table('supplier_product_mappings')
+            ->where('product_id', $product->id)
+            ->update(['direct_topup_bundle_quantity' => 5000]);
+
+        $product->unsetRelation('supplierMapping');
+
+        $this->assertSame(5000.0, $this->service->resolveBundleQuantity($product->fresh(['supplierMapping'])));
+        $this->assertSame(5000.0, $this->service->resolveQuantity($product->fresh(['supplierMapping'])));
+    }
+
+    public function test_resolve_bundle_quantity_falls_back_to_product_minimum_order_qty(): void
+    {
+        $product = $this->makeDirectTopUpProduct();
+        $product->minimum_order_qty = 1000;
+        $product->save();
+
+        $this->assertSame(1000.0, $this->service->resolveBundleQuantity($product->fresh(['supplierMapping'])));
+    }
+
+    public function test_validate_purchase_rejects_mismatched_bundle_quantity(): void
+    {
+        $product = $this->makeDirectTopUpProduct();
+
+        $this->app['db']->table('supplier_product_mappings')
+            ->where('product_id', $product->id)
+            ->update(['direct_topup_bundle_quantity' => 1000]);
+
+        $product->unsetRelation('supplierMapping');
+
+        $errors = $this->service->validatePurchase($product->fresh(['supplierMapping']), 'player123', 500);
+
+        $this->assertArrayHasKey('direct_topup_quantity', $errors);
+    }
+
+    public function test_validate_purchase_accepts_matching_bundle_quantity(): void
+    {
+        $product = $this->makeDirectTopUpProduct();
+
+        $this->app['db']->table('supplier_product_mappings')
+            ->where('product_id', $product->id)
+            ->update(['direct_topup_bundle_quantity' => 1000]);
+
+        $product->unsetRelation('supplierMapping');
+
+        $errors = $this->service->validatePurchase($product->fresh(['supplierMapping']), 'player123', 1000);
+
+        $this->assertArrayNotHasKey('direct_topup_quantity', $errors);
     }
 
     public function test_is_direct_topup_product_when_mapping_has_label_without_supplier_support_flag(): void

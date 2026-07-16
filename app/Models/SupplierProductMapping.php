@@ -27,6 +27,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property bool $is_direct_topup
  * @property string|null $direct_topup_account_label
  * @property string|null $direct_topup_region
+ * @property float|null $direct_topup_bundle_quantity
  * @property float|null $min_amount
  * @property float|null $max_amount
  * @property Carbon|null $last_synced_at
@@ -55,6 +56,7 @@ class SupplierProductMapping extends Model
         'is_direct_topup',
         'direct_topup_account_label',
         'direct_topup_region',
+        'direct_topup_bundle_quantity',
         'min_amount',
         'max_amount',
         'last_synced_at',
@@ -73,6 +75,7 @@ class SupplierProductMapping extends Model
             'is_direct_topup' => 'boolean',
             'direct_topup_account_label' => 'string',
             'direct_topup_region' => 'string',
+            'direct_topup_bundle_quantity' => 'decimal:4',
             'min_amount' => 'decimal:2',
             'max_amount' => 'decimal:2',
             'last_synced_at' => 'datetime',

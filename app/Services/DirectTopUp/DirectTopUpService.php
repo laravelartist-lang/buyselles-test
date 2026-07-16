@@ -115,8 +115,13 @@ class DirectTopUpService
             $errors['direct_topup_account_id'] = translate('direct_topup_account_id_invalid_format');
         }
 
+        $expectedQuantity = $this->resolveBundleQuantity($product);
+
         if ($quantity <= 0) {
             $errors['direct_topup_quantity'] = translate('direct_topup_quantity_must_be_positive');
+        } elseif (! $this->quantitiesMatch($quantity, $expectedQuantity)) {
+            $errors['direct_topup_quantity'] = translate('direct_topup_quantity_must_match_bundle')
+                ?: 'Quantity must match the configured bundle size.';
         }
 
         if ($errors === [] && $this->requiresAccountVerification($product)) {
@@ -342,9 +347,24 @@ class DirectTopUpService
         return $product->getEffectiveSellPrice();
     }
 
+    public function resolveBundleQuantity(Product $product): float
+    {
+        $mapping = $this->getMapping($product);
+
+        if ($mapping !== null && $mapping->direct_topup_bundle_quantity !== null) {
+            $bundleQuantity = (float) $mapping->direct_topup_bundle_quantity;
+
+            if ($bundleQuantity > 0) {
+                return $bundleQuantity;
+            }
+        }
+
+        return max(1, (float) ($product->minimum_order_qty ?? 1));
+    }
+
     public function resolveQuantity(Product $product): float
     {
-        return max(1, (float) ($product->minimum_order_qty ?? 1));
+        return $this->resolveBundleQuantity($product);
     }
 
     public function getPriceDecimalPlaces(Product $product): int
@@ -532,6 +552,11 @@ class DirectTopUpService
         }
 
         return substr($accountId, 0, 2).str_repeat('*', max(0, strlen($accountId) - 4)).substr($accountId, -2);
+    }
+
+    private function quantitiesMatch(float $actual, float $expected): bool
+    {
+        return abs($actual - $expected) < 0.0001;
     }
 
     private function getMapping(Product $product): ?SupplierProductMapping

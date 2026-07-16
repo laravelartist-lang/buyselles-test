@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin\Supplier;
 use App\Http\Controllers\BaseController;
 use App\Models\SupplierApi;
 use App\Models\SupplierProductMapping;
+use App\Services\DirectTopUp\DirectTopUpService;
 use App\Services\Supplier\Drivers\GenericRestDriver;
 use App\Services\Supplier\Presets\SecretOrcaPreset;
 use App\Services\Supplier\SupplierHealthMonitor;
@@ -622,16 +623,22 @@ class SupplierController extends BaseController
             ->with(['product:id,name,minimum_order_qty'])
             ->orderBy('id')
             ->get()
-            ->map(fn (SupplierProductMapping $mapping): array => [
-                'id' => $mapping->id,
-                'supplier_product_id' => $mapping->supplier_product_id,
-                'supplier_product_name' => $mapping->supplier_product_name,
-                'product_id' => $mapping->product_id,
-                'product_name' => $mapping->product?->name,
-                'region' => $mapping->direct_topup_region,
-                'account_label' => $mapping->direct_topup_account_label,
-                'default_quantity' => max(1, (float) ($mapping->product?->minimum_order_qty ?? 1)),
-            ])
+            ->map(function (SupplierProductMapping $mapping): array {
+                $defaultQuantity = $mapping->product !== null
+                    ? app(DirectTopUpService::class)->resolveBundleQuantity($mapping->product)
+                    : max(1, (float) ($mapping->direct_topup_bundle_quantity ?? 1));
+
+                return [
+                    'id' => $mapping->id,
+                    'supplier_product_id' => $mapping->supplier_product_id,
+                    'supplier_product_name' => $mapping->supplier_product_name,
+                    'product_id' => $mapping->product_id,
+                    'product_name' => $mapping->product?->name,
+                    'region' => $mapping->direct_topup_region,
+                    'account_label' => $mapping->direct_topup_account_label,
+                    'default_quantity' => $defaultQuantity,
+                ];
+            })
             ->values()
             ->all();
     }

@@ -1314,7 +1314,11 @@ class CartManager
     private static function addDirectTopUpToCart($request, $product, $shippingType, DirectTopUpService $directTopUpService): array
     {
         $accountId = trim((string) ($request['direct_topup_account_id'] ?? ''));
-        $directTopUpQuantity = (float) ($request['direct_topup_quantity'] ?? 0);
+        $bundleQuantity = $directTopUpService->resolveBundleQuantity($product);
+        $requestedQuantity = isset($request['direct_topup_quantity']) && $request['direct_topup_quantity'] !== ''
+            ? (float) $request['direct_topup_quantity']
+            : 0.0;
+        $directTopUpQuantity = $requestedQuantity > 0 ? $requestedQuantity : $bundleQuantity;
 
         $errors = $directTopUpService->validatePurchase($product, $accountId, $directTopUpQuantity);
         if ($errors !== []) {
@@ -1431,7 +1435,11 @@ class CartManager
         }
 
         $directTopUpService = app(DirectTopUpService::class);
-        $directTopUpQuantity = (float) ($request['direct_topup_quantity'] ?? $cart->direct_topup_quantity);
+        $bundleQuantity = $directTopUpService->resolveBundleQuantity($product);
+        $requestedQuantity = isset($request['direct_topup_quantity']) && $request['direct_topup_quantity'] !== ''
+            ? (float) $request['direct_topup_quantity']
+            : 0.0;
+        $directTopUpQuantity = $requestedQuantity > 0 ? $requestedQuantity : $bundleQuantity;
 
         if ($request->has('direct_topup_account_id')) {
             $accountId = trim((string) $request['direct_topup_account_id']);

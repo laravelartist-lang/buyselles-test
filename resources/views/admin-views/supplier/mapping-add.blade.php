@@ -173,6 +173,16 @@
 
                     <div class="col-lg-6 direct-topup-fields direct-topup-section-content" style="display:none;">
                         <div class="form-group">
+                            <label class="form-label">{{ translate('direct_topup_bundle_quantity') ?: 'Bundle quantity' }} <span class="text-danger">*</span></label>
+                            <input type="number" name="direct_topup_bundle_quantity" class="form-control"
+                                   value="{{ old('direct_topup_bundle_quantity') }}"
+                                   min="0.0001" step="any" placeholder="1000">
+                            <small class="text-muted">{{ translate('direct_topup_bundle_quantity_hint') ?: 'Credits/coins sent to the supplier per purchase (e.g. 1000, 5000, 10000).' }}</small>
+                        </div>
+                    </div>
+
+                    <div class="col-lg-6 direct-topup-fields direct-topup-section-content" style="display:none;">
+                        <div class="form-group">
                             <label class="form-label">{{ translate('direct_topup_region') ?: 'Region (country code)' }}</label>
                             <input type="text" name="direct_topup_region" class="form-control text-uppercase"
                                    value="{{ old('direct_topup_region') }}"

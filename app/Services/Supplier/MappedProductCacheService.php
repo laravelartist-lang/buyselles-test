@@ -79,10 +79,10 @@ class MappedProductCacheService
         }
 
         if ((bool) $mapping->is_direct_topup) {
-            $catalogMinQuantity = $this->resolveCatalogMinQuantity($mapping);
+            $minQuantity = $this->resolveDirectTopUpMinQuantity($mapping);
 
-            if ($catalogMinQuantity !== null && (int) $product->minimum_order_qty !== $catalogMinQuantity) {
-                $updates['minimum_order_qty'] = $catalogMinQuantity;
+            if ($minQuantity !== null && (int) $product->minimum_order_qty !== $minQuantity) {
+                $updates['minimum_order_qty'] = $minQuantity;
             }
         }
 
@@ -97,6 +97,19 @@ class MappedProductCacheService
             'mapping_id' => $mapping->id,
             'updates' => $updates,
         ]);
+    }
+
+    private function resolveDirectTopUpMinQuantity(SupplierProductMapping $mapping): ?int
+    {
+        if ($mapping->direct_topup_bundle_quantity !== null) {
+            $bundleQuantity = (float) $mapping->direct_topup_bundle_quantity;
+
+            if ($bundleQuantity > 0) {
+                return (int) ceil($bundleQuantity);
+            }
+        }
+
+        return $this->resolveCatalogMinQuantity($mapping);
     }
 
     private function resolveCatalogMinQuantity(SupplierProductMapping $mapping): ?int

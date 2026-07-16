@@ -124,6 +124,7 @@ class GenericRestDriverSecretOrcaTest extends TestCase
             $table->boolean('is_direct_topup')->default(true);
             $table->string('direct_topup_account_label')->nullable();
             $table->string('direct_topup_region', 2)->nullable();
+            $table->decimal('direct_topup_bundle_quantity', 20, 4)->nullable();
             $table->timestamps();
         });
 
