@@ -24,12 +24,36 @@
                 @endif
             </div>
             <p class="text-muted small mb-0 mt-2">
-                {{ translate('partner_api_catalog_help') ?: 'Partner API only. Allowed items create hidden Partner-API products that never appear on the storefront. Storefront supplier mappings stay completely separate.' }}
+                {{ translate('partner_api_catalog_help') ?: 'Pick products from the Global Catalog (storefront products with partner-specific pricing) or add partner-exclusive SKUs from a supplier catalog.' }}
             </p>
         </div>
         <a href="{{ route('admin.reseller-keys.edit', $key->id) }}" class="btn btn-outline-secondary">
             {{ translate('back') }}
         </a>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="mb-0">
+                <i class="fi fi-rr-apps me-2"></i>
+                {{ translate('add_from_global_catalog') ?: 'Add from global catalog' }}
+            </h5>
+        </div>
+        <div class="card-body">
+            <div class="row g-3 align-items-end">
+                <div class="col-md-8">
+                    <label class="form-label fw-semibold">{{ translate('search_product') }}</label>
+                    <input type="search" id="global-catalog-search" class="form-control"
+                           placeholder="{{ translate('search_product') }}…">
+                    <div id="global-catalog-results" class="list-group mt-2 d-none"></div>
+                </div>
+                <div class="col-md-4">
+                    <div class="alert alert-light border mb-0 py-2 small">
+                        {{ translate('global_catalog_partner_note') ?: 'These products stay on the storefront. Partner API uses separate pricing from this page.' }}
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <div class="card mb-4">
@@ -61,7 +85,7 @@
                 </div>
                 <div class="col-md-4">
                     <div class="alert alert-light border mb-0 py-2 small">
-                        {{ translate('partner_catalog_does_not_affect_storefront') ?: 'These items never appear on the website. Removing one only removes Partner API access.' }}
+                        {{ translate('partner_catalog_supplier_note') ?: 'Partner-exclusive SKUs only. These never appear on the storefront or Product Mappings.' }}
                     </div>
                 </div>
             </div>
@@ -81,9 +105,9 @@
                             <th>{{ translate('product') }}</th>
                             <th>{{ translate('supplier') }}</th>
                             <th>{{ translate('supplier_product_id') ?: 'Supplier SKU' }}</th>
-                            <th class="text-end">{{ translate('partner_price') ?: 'Partner price' }}</th>
+                            <th class="text-end" style="min-width:200px;">{{ translate('partner_price') ?: 'Partner price' }}</th>
                             <th>{{ translate('type') }}</th>
-                            <th class="text-center">{{ translate('status') }}</th>
+                            <th class="text-center">{{ translate('active') }}</th>
                             <th class="text-end">{{ translate('action') }}</th>
                         </tr>
                     </thead>
@@ -100,8 +124,19 @@
                                 </td>
                                 <td>{{ $mapping?->supplierApi?->name ?: '—' }}</td>
                                 <td><code class="small">{{ $mapping?->supplier_product_id ?: '—' }}</code></td>
-                                <td class="text-end fw-semibold">
-                                    {{ $item->currency }} {{ number_format((float) $item->partner_price, 4) }}
+                                <td class="text-end">
+                                    <div class="d-flex align-items-center gap-1 justify-content-end">
+                                        <input type="number" min="0.0001" step="any"
+                                               class="form-control form-control-sm partner-item-price-input"
+                                               value="{{ (float) $item->partner_price }}"
+                                               style="width:110px;">
+                                        <span class="text-muted small">{{ $item->currency }}</span>
+                                        <button type="button"
+                                                class="btn btn-sm btn-outline-primary partner-item-save-btn ms-1"
+                                                data-item-id="{{ $item->id }}">
+                                            {{ translate('save') }}
+                                        </button>
+                                    </div>
                                 </td>
                                 <td>
                                     @if($mapping?->is_direct_topup)
@@ -113,21 +148,19 @@
                                     @endif
                                 </td>
                                 <td class="text-center">
-                                    @if($item->is_active)
-                                        <span class="badge bg-success">{{ translate('active') }}</span>
-                                    @else
-                                        <span class="badge bg-secondary">{{ translate('inactive') }}</span>
-                                    @endif
+                                    <div class="form-check form-switch d-inline-block">
+                                        <input class="form-check-input partner-item-toggle"
+                                               type="checkbox"
+                                               data-item-id="{{ $item->id }}"
+                                               @checked($item->is_active)>
+                                    </div>
                                 </td>
                                 <td class="text-end">
-                                    <form method="POST"
-                                          action="{{ route('admin.reseller-keys.catalog.destroy', [$key->id, $item->id]) }}"
-                                          class="d-inline partner-catalog-remove-form">
-                                        @csrf
-                                        <button type="submit" class="btn btn-sm btn-outline-danger">
-                                            {{ translate('remove') }}
-                                        </button>
-                                    </form>
+                                    <button type="button"
+                                            class="btn btn-sm btn-outline-danger partner-item-remove-btn"
+                                            data-item-id="{{ $item->id }}">
+                                        {{ translate('remove') }}
+                                    </button>
                                 </td>
                             </tr>
                         @empty
@@ -234,9 +267,17 @@
 @push('script')
 <script>
 (function () {
+    'use strict';
+
     const catalogUrl = "{{ rtrim(url('admin/supplier'), '/') }}";
     const assignUrl = "{{ route('admin.reseller-keys.catalog.assign', $key->id) }}";
+    const assignExistingUrl = "{{ route('admin.reseller-keys.catalog.assign-existing', $key->id) }}";
+    const globalSearchUrl = "{{ route('admin.partner.global-catalog.search') }}";
+    const toggleUrlTemplate = "{{ route('admin.reseller-keys.catalog.toggle', [$key->id, '__ID__']) }}";
+    const updatePriceUrlTemplate = "{{ route('admin.reseller-keys.catalog.update-price', [$key->id, '__ID__']) }}";
+    const destroyUrlTemplate = "{{ route('admin.reseller-keys.catalog.destroy', [$key->id, '__ID__']) }}";
     const csrfToken = "{{ csrf_token() }}";
+
     const supplierSel = document.getElementById('partner-supplier-select');
     const browseBtn = document.getElementById('partner-browse-catalog-btn');
     const searchInput = document.getElementById('catalog-search');
@@ -259,11 +300,50 @@
     const cancelBtn = document.getElementById('catalog-cancel-btn');
     const freshBtn = document.getElementById('catalog-fresh-btn');
     const modalEl = document.getElementById('partnerCatalogModal');
+    const globalSearchInput = document.getElementById('global-catalog-search');
+    const globalResultsEl = document.getElementById('global-catalog-results');
 
     let currentPage = 0;
     let pollTimer = null;
     let activeSupplierId = null;
+    let globalSearchTimer = null;
     const pageSize = 50;
+
+    function showToast(type, message) {
+        const text = message || '';
+        if (typeof toastMagic !== 'undefined') {
+            toastMagic[type](text, '', true);
+            return;
+        }
+        alert(text);
+    }
+
+    function showSuccess(message) {
+        showToast('success', message);
+    }
+
+    function showError(message) {
+        showToast('error', message);
+    }
+
+    function confirmDelete(callback) {
+        const getText = document.getElementById('get-confirm-and-cancel-button-text-for-delete');
+        Swal.fire({
+            title: getText?.dataset.sure || '{{ translate('are_you_sure') }}',
+            text: getText?.dataset.text || '{{ translate('you_will_not_be_able_to_revert_this') }}',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#3085d6',
+            cancelButtonColor: '#d33',
+            cancelButtonText: getText?.dataset.cancel || '{{ translate('cancel') }}',
+            confirmButtonText: getText?.dataset.confirm || '{{ translate('yes_delete_it') }}',
+            reverseButtons: true,
+        }).then(function (result) {
+            if (result.isConfirmed && typeof callback === 'function') {
+                callback();
+            }
+        });
+    }
 
     function setVisibility(loading, error, table, empty) {
         loadingEl.style.display = loading ? '' : 'none';
@@ -298,7 +378,7 @@
                 'Accept': 'application/json',
             }
         };
-        if (body) {
+        if (body !== undefined) {
             options.headers['Content-Type'] = 'application/json';
             options.body = JSON.stringify(body);
         }
@@ -322,8 +402,7 @@
         if (!supplierSel.value) return;
         activeSupplierId = supplierSel.value;
         currentPage = 0;
-        var modal = bootstrap.Modal.getOrCreateInstance(modalEl);
-        modal.show();
+        bootstrap.Modal.getOrCreateInstance(modalEl).show();
         openCatalog(activeSupplierId);
     });
 
@@ -475,7 +554,7 @@
         var priceInput = row.querySelector('.partner-price-input');
         var partnerPrice = parseFloat(priceInput.value || '0');
         if (!(partnerPrice > 0)) {
-            alert('Enter a partner price greater than 0.');
+            showError('{{ translate('enter_a_valid_partner_price') ?: 'Enter a partner price greater than 0.' }}');
             return;
         }
 
@@ -491,13 +570,14 @@
             partner_price: partnerPrice,
             currency: 'USD',
             is_direct_topup: supportsTopup ? 1 : 0,
-        }).then(function () {
+        }).then(function (res) {
+            showSuccess(res.message);
             btn.classList.remove('btn-primary');
             btn.classList.add('btn-success');
             btn.textContent = '{{ translate('allowed') ?: 'Allowed' }}';
         }).catch(function (err) {
             btn.disabled = false;
-            alert(err.message);
+            showError(err.message);
         });
     });
 
@@ -538,11 +618,136 @@
         startSync(activeSupplierId, { fresh: true });
     });
 
-    document.querySelectorAll('.partner-catalog-remove-form').forEach(function (form) {
-        form.addEventListener('submit', function (e) {
-            if (!confirm('{{ translate('are_you_sure') }}')) {
-                e.preventDefault();
+    function renderGlobalResults(products) {
+        if (!products.length) {
+            globalResultsEl.innerHTML = '<div class="list-group-item text-muted">{{ translate('no_products_found') }}</div>';
+            globalResultsEl.classList.remove('d-none');
+            return;
+        }
+
+        globalResultsEl.innerHTML = products.map(function (product) {
+            return '<div class="list-group-item">' +
+                '<div class="d-flex justify-content-between align-items-center gap-3 flex-wrap">' +
+                    '<div>' +
+                        '<div class="fw-semibold">' + escHtml(product.name) + '</div>' +
+                        '<div class="text-muted small">#' + product.id + ' · ' + escHtml(product.fulfillment_type) + '</div>' +
+                    '</div>' +
+                    '<div class="d-flex align-items-center gap-2">' +
+                        '<input type="number" min="0.0001" step="any" class="form-control form-control-sm global-partner-price" style="width:120px;" value="' + escHtml(product.reference_price) + '">' +
+                        '<button type="button" class="btn btn-sm btn-primary global-assign-btn" data-id="' + product.id + '">{{ translate('allow') ?: 'Allow' }}</button>' +
+                    '</div>' +
+                '</div>' +
+            '</div>';
+        }).join('');
+        globalResultsEl.classList.remove('d-none');
+    }
+
+    globalSearchInput.addEventListener('input', function () {
+        clearTimeout(globalSearchTimer);
+        var q = globalSearchInput.value.trim();
+        if (q.length < 2) {
+            globalResultsEl.classList.add('d-none');
+            return;
+        }
+        globalSearchTimer = setTimeout(function () {
+            fetch(globalSearchUrl + '?q=' + encodeURIComponent(q), {
+                headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+            })
+                .then(function (res) { return res.json(); })
+                .then(function (data) {
+                    renderGlobalResults(data.products || []);
+                })
+                .catch(function () {
+                    globalResultsEl.classList.add('d-none');
+                });
+        }, 300);
+    });
+
+    globalResultsEl.addEventListener('click', function (e) {
+        var btn = e.target.closest('.global-assign-btn');
+        if (!btn) return;
+        var row = btn.closest('.list-group-item');
+        var priceInput = row.querySelector('.global-partner-price');
+        var partnerPrice = parseFloat(priceInput.value || '0');
+        if (!(partnerPrice > 0)) {
+            showError('{{ translate('enter_a_valid_partner_price') ?: 'Enter a partner price greater than 0.' }}');
+            return;
+        }
+        btn.disabled = true;
+        ajaxPost(assignExistingUrl, {
+            product_id: parseInt(btn.dataset.id, 10),
+            partner_price: partnerPrice,
+            currency: 'USD',
+            is_active: true,
+        }).then(function (res) {
+            showSuccess(res.message);
+            btn.classList.remove('btn-primary');
+            btn.classList.add('btn-success');
+            btn.textContent = '{{ translate('allowed') ?: 'Allowed' }}';
+        }).catch(function (err) {
+            btn.disabled = false;
+            showError(err.message);
+        });
+    });
+
+    document.addEventListener('change', function (e) {
+        var toggle = e.target.closest('.partner-item-toggle');
+        if (!toggle) return;
+
+        var itemId = toggle.dataset.itemId;
+        var url = toggleUrlTemplate.replace('__ID__', itemId);
+        var checked = toggle.checked;
+        toggle.disabled = true;
+
+        ajaxPost(url, { is_active: checked }).then(function (res) {
+            showSuccess(res.message);
+        }).catch(function (err) {
+            toggle.checked = !checked;
+            showError(err.message);
+        }).finally(function () {
+            toggle.disabled = false;
+        });
+    });
+
+    document.addEventListener('click', function (e) {
+        var saveBtn = e.target.closest('.partner-item-save-btn');
+        if (saveBtn) {
+            var itemId = saveBtn.dataset.itemId;
+            var row = saveBtn.closest('tr');
+            var priceInput = row.querySelector('.partner-item-price-input');
+            var price = parseFloat(priceInput.value || '0');
+            if (!(price > 0)) {
+                showError('{{ translate('enter_a_valid_partner_price') ?: 'Enter a partner price greater than 0.' }}');
+                return;
             }
+            var url = updatePriceUrlTemplate.replace('__ID__', itemId);
+            saveBtn.disabled = true;
+            ajaxPost(url, { partner_price: price }).then(function (res) {
+                showSuccess(res.message);
+            }).catch(function (err) {
+                showError(err.message);
+            }).finally(function () {
+                saveBtn.disabled = false;
+            });
+            return;
+        }
+
+        var removeBtn = e.target.closest('.partner-item-remove-btn');
+        if (!removeBtn) return;
+
+        var itemId = removeBtn.dataset.itemId;
+        var url = destroyUrlTemplate.replace('__ID__', itemId);
+
+        confirmDelete(function () {
+            removeBtn.disabled = true;
+            ajaxPost(url).then(function (res) {
+                var deletedMsg = document.getElementById('get-deleted-message');
+                showSuccess(res.message || deletedMsg?.dataset.text || '{{ translate('deleted_successfully') }}');
+                removeBtn.closest('tr').remove();
+            }).catch(function (err) {
+                removeBtn.disabled = false;
+                showError(err.message);
+            });
         });
     });
 

@@ -3,12 +3,14 @@
 namespace App\Http\Controllers\Admin\Supplier;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Admin\PartnerCatalogAssignExistingRequest;
 use App\Http\Requests\Admin\PartnerCatalogAssignFromSupplierRequest;
 use App\Http\Requests\Admin\PartnerCatalogItemRequest;
 use App\Models\PartnerCatalogItem;
 use App\Models\Product;
 use App\Models\ResellerApiKey;
 use App\Models\SupplierApi;
+use App\Services\Partner\GlobalPartnerCatalogQuery;
 use App\Services\Partner\PartnerCatalogAssignmentService;
 use App\Services\Partner\PartnerIdentityService;
 use Brian2694\Toastr\Facades\Toastr;
@@ -29,6 +31,7 @@ class PartnerCatalogController extends Controller
     public function __construct(
         private readonly PartnerIdentityService $partnerIdentity,
         private readonly PartnerCatalogAssignmentService $assignmentService,
+        private readonly GlobalPartnerCatalogQuery $globalCatalogQuery,
     ) {}
 
     public function index(Request $request, int $keyId): View
@@ -62,8 +65,55 @@ class PartnerCatalogController extends Controller
     }
 
     /**
+     * Assign an existing global catalog (storefront) product to this partner.
+     */
+    public function assignExistingProduct(
+        PartnerCatalogAssignExistingRequest $request,
+        int $keyId,
+    ): JsonResponse|RedirectResponse {
+        $key = ResellerApiKey::query()->findOrFail($keyId);
+        $catalog = $this->partnerIdentity->resolveOrCreateCatalog($key);
+
+        try {
+            $item = $this->assignmentService->assignExistingProduct(
+                catalog: $catalog,
+                productId: (int) $request->validated('product_id'),
+                partnerPrice: (float) $request->validated('partner_price'),
+                options: [
+                    'currency' => $request->validated('currency') ?? 'USD',
+                    'is_active' => $request->boolean('is_active', true),
+                ],
+            );
+        } catch (InvalidArgumentException $e) {
+            if ($request->expectsJson()) {
+                return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+            }
+
+            Toastr::error($e->getMessage());
+
+            return redirect()->back()->withInput();
+        }
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => translate('partner_catalog_item_saved') ?: 'Product added to partner catalog.',
+                'item' => [
+                    'id' => $item->id,
+                    'product_id' => $item->product_id,
+                    'partner_price' => (float) $item->partner_price,
+                ],
+            ]);
+        }
+
+        Toastr::success(translate('partner_catalog_item_saved') ?: 'Product added to partner catalog.');
+
+        return redirect()->route('admin.reseller-keys.catalog', $keyId);
+    }
+
+    /**
      * Assign a supplier catalog item to this partner with an exact partner price.
-     * Reuses existing storefront mappings when the supplier SKU is already mapped.
+     * Creates partner-exclusive products that never appear on the storefront.
      */
     public function assignFromSupplier(
         PartnerCatalogAssignFromSupplierRequest $request,
@@ -111,17 +161,13 @@ class PartnerCatalogController extends Controller
     {
         $key = ResellerApiKey::query()->findOrFail($keyId);
         $catalog = $this->partnerIdentity->resolveOrCreateCatalog($key);
-        $product = Product::query()
-            ->withoutGlobalScope(Product::STOREFRONT_SCOPE)
-            ->where('partner_api_only', true)
-            ->with(['supplierMapping.activeDenominations'])
-            ->findOrFail((int) $request->validated('product_id'));
+        $product = $this->findPartnerCatalogProduct((int) $request->validated('product_id'));
 
         $this->validatePricingConfiguration($request, $product);
 
         if (! $catalog->items()->where('product_id', $product->id)->exists()) {
             throw ValidationException::withMessages([
-                'product_id' => 'Assign this product from a supplier catalog first.',
+                'product_id' => 'Assign this product to the partner catalog first.',
             ]);
         }
 
@@ -157,19 +203,94 @@ class PartnerCatalogController extends Controller
         return redirect()->route('admin.reseller-keys.catalog', $keyId);
     }
 
-    public function destroy(int $keyId, int $itemId): RedirectResponse
+    public function destroy(Request $request, int $keyId, int $itemId): RedirectResponse|JsonResponse
     {
         $key = ResellerApiKey::query()->findOrFail($keyId);
         $catalog = $this->partnerIdentity->findCatalog($key);
 
         if ($catalog !== null) {
-            // Only remove from Partner API catalog — never delete storefront mappings/products.
             $catalog->items()->whereKey($itemId)->delete();
+        }
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => translate('partner_catalog_item_removed') ?: 'Removed from partner catalog.',
+            ]);
         }
 
         Toastr::success(translate('partner_catalog_item_removed') ?: 'Removed from partner catalog.');
 
         return redirect()->route('admin.reseller-keys.catalog', $keyId);
+    }
+
+    public function toggle(Request $request, int $keyId, int $itemId): JsonResponse
+    {
+        $request->validate([
+            'is_active' => ['required', 'boolean'],
+        ]);
+
+        $key = ResellerApiKey::query()->findOrFail($keyId);
+        $catalog = $this->partnerIdentity->resolveOrCreateCatalog($key);
+
+        $item = $catalog->items()->whereKey($itemId)->firstOrFail();
+        $item->update(['is_active' => $request->boolean('is_active')]);
+
+        return response()->json([
+            'success' => true,
+            'message' => translate('status_updated_successfully'),
+            'item' => [
+                'id' => $item->id,
+                'is_active' => (bool) $item->is_active,
+            ],
+        ]);
+    }
+
+    public function updatePrice(Request $request, int $keyId, int $itemId): JsonResponse
+    {
+        $request->validate([
+            'partner_price' => ['required', 'numeric', 'min:0.0001'],
+        ]);
+
+        $key = ResellerApiKey::query()->findOrFail($keyId);
+        $catalog = $this->partnerIdentity->resolveOrCreateCatalog($key);
+
+        $item = $catalog->items()->whereKey($itemId)->firstOrFail();
+        $item->update([
+            'partner_price' => (float) $request->input('partner_price'),
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => translate('partner_catalog_item_saved') ?: 'Partner price updated.',
+            'item' => [
+                'id' => $item->id,
+                'partner_price' => (float) $item->partner_price,
+            ],
+        ]);
+    }
+
+    private function findPartnerCatalogProduct(int $productId): Product
+    {
+        $partnerOnlyProduct = Product::query()
+            ->withoutGlobalScope(Product::STOREFRONT_SCOPE)
+            ->where('partner_api_only', true)
+            ->with(['supplierMapping.activeDenominations'])
+            ->find($productId);
+
+        if ($partnerOnlyProduct !== null) {
+            return $partnerOnlyProduct;
+        }
+
+        $globalProduct = $this->globalCatalogQuery->findEligibleProduct($productId);
+
+        if ($globalProduct === null) {
+            abort(404);
+        }
+
+        $globalProduct->loadMissing(['supplierMapping.activeDenominations']);
+
+        return $globalProduct;
     }
 
     private function validatePricingConfiguration(

@@ -309,6 +309,36 @@ trait SetsUpPartnerApiTestSchema
         });
     }
 
+    protected function assignStorefrontProductToPartnerCatalog(
+        int $productId,
+        float $partnerPrice = 12.5,
+        ?int $userId = null,
+    ): int {
+        $userId ??= (int) $this->app['db']->table('reseller_api_keys')->value('user_id');
+
+        $catalogId = $this->app['db']->table('partner_catalogs')->where('user_id', $userId)->value('id');
+
+        if ($catalogId === null) {
+            $catalogId = $this->app['db']->table('partner_catalogs')->insertGetId([
+                'user_id' => $userId,
+                'seller_id' => null,
+                'is_active' => true,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+
+        return (int) $this->app['db']->table('partner_catalog_items')->insertGetId([
+            'partner_catalog_id' => $catalogId,
+            'product_id' => $productId,
+            'partner_price' => $partnerPrice,
+            'currency' => 'USD',
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    }
+
     protected function assignProductToPartnerCatalog(
         int $productId,
         float $partnerPrice = 12.5,

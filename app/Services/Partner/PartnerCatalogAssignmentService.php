@@ -14,6 +14,99 @@ use InvalidArgumentException;
 
 class PartnerCatalogAssignmentService
 {
+    public function __construct(
+        private readonly GlobalPartnerCatalogQuery $globalCatalogQuery,
+    ) {}
+
+    /**
+     * Assign an existing storefront product from the global catalog to a partner.
+     *
+     * @param  array{
+     *     currency?: string,
+     *     is_active?: bool,
+     *     variable_price_type?: string|null,
+     *     variable_price_value?: float|null,
+     *     denomination_prices?: array<int, array{denomination_id: int, partner_price: float}>
+     * }  $options
+     */
+    public function assignExistingProduct(
+        PartnerCatalog $catalog,
+        int $productId,
+        ?float $partnerPrice,
+        array $options = [],
+    ): PartnerCatalogItem {
+        $product = $this->globalCatalogQuery->findEligibleProduct($productId);
+
+        if ($product === null) {
+            throw new InvalidArgumentException('Product is not eligible for the global catalog.');
+        }
+
+        if ($partnerPrice !== null && $partnerPrice <= 0) {
+            throw new InvalidArgumentException('Partner price must be greater than zero.');
+        }
+
+        return DB::transaction(function () use ($catalog, $product, $partnerPrice, $options): PartnerCatalogItem {
+            $catalogItem = PartnerCatalogItem::query()
+                ->where('partner_catalog_id', $catalog->id)
+                ->where('product_id', $product->id)
+                ->lockForUpdate()
+                ->first();
+
+            $attributes = [
+                'partner_catalog_id' => $catalog->id,
+                'product_id' => $product->id,
+                'partner_price' => $partnerPrice,
+                'variable_price_type' => $options['variable_price_type'] ?? null,
+                'variable_price_value' => $options['variable_price_value'] ?? null,
+                'currency' => strtoupper((string) ($options['currency'] ?? 'USD')),
+                'is_active' => (bool) ($options['is_active'] ?? true),
+            ];
+
+            if ($catalogItem === null) {
+                $catalogItem = PartnerCatalogItem::query()->create($attributes);
+            } else {
+                $catalogItem->update($attributes);
+            }
+
+            if (! empty($options['denomination_prices'])) {
+                $catalogItem->denominationPrices()->delete();
+                $catalogItem->denominationPrices()->createMany(
+                    collect($options['denomination_prices'])
+                        ->map(fn (array $price): array => [
+                            'supplier_product_denomination_id' => (int) $price['denomination_id'],
+                            'partner_price' => (float) $price['partner_price'],
+                            'is_active' => true,
+                        ])
+                        ->all()
+                );
+            }
+
+            return $catalogItem->fresh([
+                'product.supplierMapping.supplierApi',
+                'activeDenominationPrices',
+            ]);
+        });
+    }
+
+    public function toggleVisibility(PartnerCatalog $catalog, int $productId, bool $isActive): PartnerCatalogItem
+    {
+        $catalogItem = PartnerCatalogItem::query()
+            ->where('partner_catalog_id', $catalog->id)
+            ->where('product_id', $productId)
+            ->first();
+
+        if ($catalogItem === null) {
+            throw new InvalidArgumentException('Product is not assigned to this partner catalog.');
+        }
+
+        $catalogItem->update(['is_active' => $isActive]);
+
+        return $catalogItem->fresh([
+            'product.supplierMapping.supplierApi',
+            'activeDenominationPrices',
+        ]);
+    }
+
     /**
      * Assign a supplier catalog SKU to a partner catalog with an exact partner price.
      *

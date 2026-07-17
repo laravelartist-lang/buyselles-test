@@ -123,12 +123,17 @@ class PartnerProductCatalogQuery
     private function applyProductEligibility(Builder $query): void
     {
         $query->withoutGlobalScope(Product::STOREFRONT_SCOPE)
-            ->where('partner_api_only', true)
             ->where('product_type', 'digital')
             ->whereIn('digital_product_type', $this->eligibleDigitalProductTypes())
             ->where('status', 1)
             ->where('request_status', 1)
-            ->whereIn('added_by', ['admin', 'seller']);
+            ->where(function (Builder $builder): void {
+                $builder->where('partner_api_only', true)
+                    ->orWhere(function (Builder $storefrontQuery): void {
+                        $storefrontQuery->where('partner_api_only', false)
+                            ->where('added_by', 'admin');
+                    });
+            });
 
         $this->applyVendorPartnerApprovalConstraint($query);
     }

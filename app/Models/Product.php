@@ -217,6 +217,11 @@ class Product extends Model
         return $this->hasOne(SupplierProductMapping::class)->where('is_active', true)->orderBy('priority', 'asc');
     }
 
+    public function partnerCatalogItems(): HasMany
+    {
+        return $this->hasMany(PartnerCatalogItem::class);
+    }
+
     public function translations(): MorphMany
     {
         return $this->morphMany('App\Models\Translation', 'translationable');

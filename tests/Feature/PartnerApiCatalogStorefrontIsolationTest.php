@@ -179,4 +179,34 @@ class PartnerApiCatalogStorefrontIsolationTest extends TestCase
         $this->assertContains($storefrontMappingId, $listedIds);
         $this->assertNotContains($partnerMappingId, $listedIds);
     }
+
+    public function test_global_catalog_assignment_does_not_set_partner_api_only(): void
+    {
+        $productId = $this->app['db']->table('products')->insertGetId([
+            'user_id' => 1,
+            'added_by' => 'admin',
+            'name' => 'Global Catalog Product',
+            'slug' => 'global-catalog-product',
+            'product_type' => 'digital',
+            'digital_product_type' => 'ready_product',
+            'status' => 1,
+            'request_status' => 1,
+            'partner_api_only' => false,
+            'unit_price' => 10,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $key = ResellerApiKey::query()->firstOrFail();
+        $catalog = app(PartnerIdentityService::class)->resolveOrCreateCatalog($key);
+
+        app(PartnerCatalogAssignmentService::class)->assignExistingProduct(
+            catalog: $catalog,
+            productId: $productId,
+            partnerPrice: 14,
+        );
+
+        $this->assertFalse((bool) Product::query()->find($productId)?->partner_api_only);
+        $this->assertNotNull(Product::query()->find($productId));
+    }
 }

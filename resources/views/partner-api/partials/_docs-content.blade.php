@@ -80,9 +80,13 @@ Accept: application/json</pre>
             {{-- ── Product Catalog ─────────────────────────────────────── --}}
             <div class="docs-section" id="product-catalog">
                 <h5 class="fw-bold mb-3">Product Catalog</h5>
-                <p>The Partner API exposes a <strong>curated, partner-specific catalog</strong>. Only products an admin assigns to your partner account appear. Each assignment has an <strong>exact partner price</strong> (not a global markup). Unassigned supplier catalog items are never listed.</p>
+                <p>The Partner API exposes a <strong>curated, partner-specific catalog</strong>. Only products an admin assigns to your partner account appear. Each assignment has an <strong>exact partner price</strong> (not a global markup). Unassigned products are never listed.</p>
                 <div class="info-box mb-3">
-                    <strong>Admin workflow:</strong> Reseller API Keys → Partner API Catalog → choose a supplier → browse that supplier’s catalog (same sync UI as storefront mappings) → set an exact partner price → Allow. Storefront supplier mappings remain separate; removing a Partner API catalog item does not delete storefront mappings.
+                    <strong>Admin workflow:</strong>
+                    <ul class="mb-0">
+                        <li><strong>Global Catalog</strong> — Partner API → Global Catalog → pick a storefront product → assign to partners with custom pricing and visibility toggles. These products remain on the website.</li>
+                        <li><strong>Partner-exclusive SKUs</strong> — Reseller API Keys → Partner API Catalog → browse a supplier catalog → set an exact partner price → Allow. These SKUs never appear on the storefront.</li>
+                    </ul>
                 </div>
                 <table class="table table-sm table-bordered mb-3">
                     <thead class="table-light">

@@ -1600,11 +1600,11 @@
             </li>
 
             {{-- Partner / Reseller API Keys --}}
-            <li class="nav-item nav-item_title {{ Request::is('admin/reseller-keys*') ? 'scroll-here' : '' }}">
+            <li class="nav-item nav-item_title {{ Request::is('admin/reseller-keys*') || Request::is('admin/partner*') ? 'scroll-here' : '' }}">
                 <small class="nav-subtitle" title="">{{ translate('partner_api') }}</small>
             </li>
-            <li class="{{ Request::is('admin/reseller-keys*') ? 'sub-menu-opened' : '' }}">
-                <a class="nav-link nav-link-toggle {{ Request::is('admin/reseller-keys*') ? 'active' : '' }}"
+            <li class="{{ Request::is('admin/reseller-keys*') || Request::is('admin/partner*') ? 'sub-menu-opened' : '' }}">
+                <a class="nav-link nav-link-toggle {{ Request::is('admin/reseller-keys*') || Request::is('admin/partner*') ? 'active' : '' }}"
                     href="javascript:" title="{{ translate('partner_api') }}">
                     <i class="fi fi-sr-users-alt"></i>
                     <span class="aside-mini-hidden-element flex-grow-1 d-flex justify-content-between align-items-center">
@@ -1617,6 +1617,12 @@
                 <ul class="aside-submenu navbar-nav">
                     <li class="nav-item px-3 py-2 fw-semibold text-dark bg-section2 aside-mini-show-element">
                         {{ translate('partner_api') }}
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {{ Request::is('admin/partner/global-catalog*') ? 'active' : '' }}"
+                            href="{{ route('admin.partner.global-catalog') }}" title="{{ translate('global_catalog') ?: 'Global Catalog' }}">
+                            <span class="text-truncate">{{ translate('global_catalog') ?: 'Global Catalog' }}</span>
+                        </a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link {{ Request::is('admin/reseller-keys/list') ? 'active' : '' }}"

@@ -88,6 +88,7 @@ use App\Http\Controllers\Admin\Settings\VendorRegistrationSettingController;
 use App\Http\Controllers\Admin\Settings\VendorSettingsController;
 use App\Http\Controllers\Admin\Shipping\ShippingMethodController;
 use App\Http\Controllers\Admin\Shipping\ShippingTypeController;
+use App\Http\Controllers\Admin\Supplier\GlobalPartnerCatalogController;
 use App\Http\Controllers\Admin\Supplier\PartnerCatalogController;
 use App\Http\Controllers\Admin\Supplier\ResellerApiKeyController;
 use App\Http\Controllers\Admin\Supplier\SupplierController;
@@ -1367,6 +1368,16 @@ Route::group(['prefix' => 'admin', 'as' => 'admin.', 'middleware' => ['admin', '
     });
 
     // ─── Reseller / Partner API Key Management ──────────────────────────
+    Route::group(['prefix' => 'partner', 'as' => 'partner.'], function () {
+        Route::controller(GlobalPartnerCatalogController::class)->group(function () {
+            Route::get('global-catalog', 'index')->name('global-catalog');
+            Route::get('global-catalog/search', 'search')->name('global-catalog.search');
+            Route::get('global-catalog/{productId}/partners', 'partners')->name('global-catalog.partners');
+            Route::post('global-catalog/{productId}/assign', 'assign')->name('global-catalog.assign');
+            Route::post('global-catalog/{productId}/toggle', 'toggle')->name('global-catalog.toggle');
+        });
+    });
+
     Route::group(['prefix' => 'reseller-keys', 'as' => 'reseller-keys.'], function () {
         Route::controller(ResellerApiKeyController::class)->group(function () {
             Route::get('list', 'index')->name('list');
@@ -1384,8 +1395,11 @@ Route::group(['prefix' => 'admin', 'as' => 'admin.', 'middleware' => ['admin', '
         Route::controller(PartnerCatalogController::class)->group(function () {
             Route::get('{keyId}/catalog', 'index')->name('catalog');
             Route::post('{keyId}/catalog/assign', 'assignFromSupplier')->name('catalog.assign');
+            Route::post('{keyId}/catalog/assign-existing', 'assignExistingProduct')->name('catalog.assign-existing');
             Route::post('{keyId}/catalog', 'store')->name('catalog.store');
             Route::post('{keyId}/catalog/{itemId}/delete', 'destroy')->name('catalog.destroy');
+            Route::post('{keyId}/catalog/{itemId}/toggle', 'toggle')->name('catalog.toggle');
+            Route::post('{keyId}/catalog/{itemId}/update-price', 'updatePrice')->name('catalog.update-price');
         });
     });
 });
