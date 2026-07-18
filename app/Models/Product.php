@@ -70,6 +70,8 @@ class Product extends Model
 {
     use CacheManagerTrait, StorageTrait;
 
+    public const STOREFRONT_SCOPE = 'not_partner_api_only';
+
     protected $fillable = [
         'user_id',
         'shop_id',
@@ -132,6 +134,7 @@ class Product extends Model
         'location_area_id',
         'pending_city_request_id',
         'pending_area_request_id',
+        'partner_api_only',
     ];
 
     /**
@@ -167,6 +170,7 @@ class Product extends Model
         'featured_status' => 'integer',
         'refundable' => 'integer',
         'featured' => 'integer',
+        'partner_api_only' => 'boolean',
         'flash_deal' => 'integer',
         'seller_id' => 'integer',
         'sort_priority' => 'integer',
@@ -211,6 +215,11 @@ class Product extends Model
     public function supplierMapping(): HasOne
     {
         return $this->hasOne(SupplierProductMapping::class)->where('is_active', true)->orderBy('priority', 'asc');
+    }
+
+    public function partnerCatalogItems(): HasMany
+    {
+        return $this->hasMany(PartnerCatalogItem::class);
     }
 
     public function translations(): MorphMany
@@ -671,6 +680,10 @@ class Product extends Model
             cacheRemoveByType(type: 'products');
         });
 
+        static::addGlobalScope(self::STOREFRONT_SCOPE, function (Builder $builder): void {
+            $builder->where($builder->getModel()->getTable().'.partner_api_only', false);
+        });
+
         static::addGlobalScope('translate', function (Builder $builder) {
             $builder->with(['translations' => function ($query) {
                 if (strpos(url()->current(), '/api')) {
@@ -685,5 +698,22 @@ class Product extends Model
                 });
             }]);
         });
+    }
+
+    /**
+     * Include Partner API-only products that are hidden from storefront queries.
+     */
+    public function scopeWithPartnerApiOnly(Builder $query): Builder
+    {
+        return $query->withoutGlobalScope(self::STOREFRONT_SCOPE);
+    }
+
+    /**
+     * Only Partner API-only products.
+     */
+    public function scopePartnerApiOnly(Builder $query): Builder
+    {
+        return $query->withoutGlobalScope(self::STOREFRONT_SCOPE)
+            ->where($query->getModel()->getTable().'.partner_api_only', true);
     }
 }
