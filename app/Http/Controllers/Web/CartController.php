@@ -63,9 +63,10 @@ class CartController extends Controller
             $lineTotal = (float) $pricing['line_total'];
             $discount = getProductPriceByType(product: $product, type: 'discounted_amount', result: 'value', price: $lineTotal);
             $discountType = getProductPriceByType(product: $product, type: 'discount_type', result: 'string');
+            $customerPrice = $lineTotal - $discount;
 
             return [
-                'price' => $directTopUpService->formatWebPrice($product, $lineTotal - $discount),
+                'price' => $directTopUpService->formatWebPrice($product, $customerPrice),
                 'discount' => $discountType == 'flat' ? $directTopUpService->formatWebPrice($product, $discount) : getProductPriceByType(product: $product, type: 'discount', result: 'value').'%',
                 'discount_type' => $discountType,
                 'discount_amount' => $discount,
@@ -74,10 +75,12 @@ class CartController extends Controller
                 'is_supplier_mapped' => true,
                 'is_direct_topup' => true,
                 'direct_topup_quantity' => $directTopUpQuantity,
+                'line_total' => $lineTotal,
+                'formatted_line_total' => $pricing['formatted_line_total'],
                 'delivery_cost' => 0,
                 'unit_price' => $directTopUpService->formatWebPrice($product, $pricePerUnit),
                 'total_unit_price' => $directTopUpService->formatWebPrice($product, $pricePerUnit),
-                'discounted_unit_price' => $directTopUpService->formatWebPrice($product, $pricePerUnit),
+                'discounted_unit_price' => $directTopUpService->formatWebPrice($product, $customerPrice),
                 'color_name' => '',
                 'stock_limit' => getWebConfig(name: 'stock_limit'),
                 'in_cart_status' => 0,

@@ -95,8 +95,7 @@ class SupplierProductMapping extends Model
 
     public function product(): BelongsTo
     {
-        return $this->belongsTo(Product::class)
-            ->withoutGlobalScope(Product::STOREFRONT_SCOPE);
+        return $this->belongsTo(Product::class);
     }
 
     public function supplierApi(): BelongsTo
@@ -182,6 +181,7 @@ class SupplierProductMapping extends Model
 
     /**
      * Calculate the suggested sell price based on cost + markup.
+     * For direct top-up products, flat markup is applied once per bundle (see calculateDirectTopUpBundlePrice).
      */
     public function calculateSellPrice(): float
     {
@@ -191,16 +191,113 @@ class SupplierProductMapping extends Model
             return round($this->cost_price * (1 + $this->markup_value / 100), $decimalPlaces);
         }
 
+        if ($this->is_direct_topup) {
+            return round((float) $this->cost_price, $decimalPlaces);
+        }
+
         return round($this->cost_price + $this->markup_value, $decimalPlaces);
+    }
+
+    /**
+     * Calculate the wholesale bundle cost (per-coin cost × quantity).
+     */
+    public function calculateDirectTopUpBundleCost(float $quantity): float
+    {
+        $quantity = max(0, $quantity);
+
+        return round((float) $this->cost_price * $quantity, $this->resolveDisplayDecimalPlaces());
+    }
+
+    /**
+     * Resolve the configured bundle quantity for direct top-up mappings.
+     */
+    public function resolveDirectTopUpBundleQuantity(): float
+    {
+        if ($this->direct_topup_bundle_quantity !== null) {
+            $bundleQuantity = (float) $this->direct_topup_bundle_quantity;
+
+            if ($bundleQuantity > 0) {
+                return $bundleQuantity;
+            }
+        }
+
+        return 0.0;
+    }
+
+    /**
+     * Bundle cost shown in admin for direct top-up mappings.
+     */
+    public function getDirectTopUpAdminDisplayCost(): float
+    {
+        $quantity = $this->resolveDirectTopUpBundleQuantity();
+
+        if ($quantity <= 0) {
+            return round((float) $this->cost_price, $this->resolveDisplayDecimalPlaces());
+        }
+
+        return $this->calculateDirectTopUpBundleCost($quantity);
+    }
+
+    /**
+     * Bundle sell price shown in admin for direct top-up mappings.
+     */
+    public function getDirectTopUpAdminDisplaySellPrice(): float
+    {
+        $quantity = $this->resolveDirectTopUpBundleQuantity();
+
+        if ($quantity <= 0) {
+            return $this->calculateSellPrice();
+        }
+
+        return $this->calculateDirectTopUpBundlePrice($quantity);
+    }
+
+    /**
+     * Per-coin supplier cost for direct top-up breakdowns.
+     */
+    public function getDirectTopUpCostPerCoin(): float
+    {
+        return round((float) $this->cost_price, $this->resolveSellPriceDecimalPlaces());
+    }
+
+    /**
+     * Calculate the customer-facing bundle price for direct top-up products.
+     * Percent markup: (cost × (1 + markup%)) × quantity.
+     * Flat markup: (cost × quantity) + flat (applied once per bundle, not per coin).
+     */
+    public function calculateDirectTopUpBundlePrice(float $quantity): float
+    {
+        $quantity = max(0, $quantity);
+        $cost = (float) $this->cost_price;
+        $baseTotal = $cost * $quantity;
+        $decimalPlaces = $this->resolveDisplayDecimalPlaces();
+
+        if ($this->markup_type === 'percent') {
+            return round($baseTotal * (1 + $this->markup_value / 100), $decimalPlaces);
+        }
+
+        return round($baseTotal + (float) $this->markup_value, $decimalPlaces);
     }
 
     public function resolvePriceDecimalPlaces(): int
     {
-        if ($this->is_direct_topup && (float) $this->cost_price > 0 && (float) $this->cost_price < 0.01) {
+        if ($this->is_direct_topup && (float) $this->cost_price > 0 && (float) $this->cost_price < 1) {
             return 10;
         }
 
         return 2;
+    }
+
+    /**
+     * Customer-facing prices always use the store's configured decimal setting (typically 2).
+     */
+    public function resolveDisplayDecimalPlaces(): int
+    {
+        if (! \Illuminate\Support\Facades\Schema::hasTable('business_settings')) {
+            return 2;
+        }
+
+        return (int) (getWebConfig('decimal_point_settings') ?? 2);
     }
 
     private function resolveSellPriceDecimalPlaces(): int
@@ -244,6 +341,18 @@ class SupplierProductMapping extends Model
             if ($this->min_amount !== null && (float) $this->min_amount > 0) {
                 return (float) $this->min_amount;
             }
+        }
+
+        if ($this->is_direct_topup) {
+            $bundleQuantity = $this->resolveDirectTopUpBundleQuantity();
+
+            if ($bundleQuantity > 0) {
+                return $this->calculateDirectTopUpBundlePrice($bundleQuantity);
+            }
+
+            $costPerCoin = $this->getDirectTopUpCostPerCoin();
+
+            return $costPerCoin > 0 ? $costPerCoin : (float) ($this->min_amount ?? 0);
         }
 
         $sellPrice = $this->calculateSellPrice();
@@ -315,17 +424,6 @@ class SupplierProductMapping extends Model
     public function scopeByPriority($query)
     {
         return $query->orderBy('priority', 'asc');
-    }
-
-    /**
-     * Storefront / admin Product Mappings only.
-     * Partner API catalog mappings must never appear in that list.
-     */
-    public function scopeStorefrontOnly($query)
-    {
-        return $query->whereHas('product', function ($productQuery): void {
-            $productQuery->where('partner_api_only', false);
-        });
     }
 
     // ─── Static helpers ──────────────────────────────────────────────────

@@ -344,6 +344,12 @@ class DirectTopUpService
 
     public function getPricePerUnit(Product $product): float
     {
+        $mapping = $this->getMapping($product);
+
+        if ($mapping !== null && $mapping->is_direct_topup) {
+            return $mapping->getDirectTopUpCostPerCoin();
+        }
+
         return $product->getEffectiveSellPrice();
     }
 
@@ -369,10 +375,15 @@ class DirectTopUpService
 
     public function getPriceDecimalPlaces(Product $product): int
     {
+        return $this->getDisplayDecimalPlaces($product);
+    }
+
+    public function getDisplayDecimalPlaces(Product $product): int
+    {
         $mapping = $this->getMapping($product);
 
         if ($mapping !== null) {
-            return $mapping->resolvePriceDecimalPlaces();
+            return $mapping->resolveDisplayDecimalPlaces();
         }
 
         return (int) (getWebConfig('decimal_point_settings') ?? 2);
@@ -380,21 +391,12 @@ class DirectTopUpService
 
     public function getLineTotalDecimalPlaces(Product $product, float $lineTotal): int
     {
-        $unitDecimals = $this->getPriceDecimalPlaces($product);
-        $globalDecimals = (int) (getWebConfig('decimal_point_settings') ?? 2);
-
-        if ($lineTotal > 0 && $lineTotal < 0.01) {
-            return max($unitDecimals, $globalDecimals);
-        }
-
-        return max($unitDecimals, $globalDecimals);
+        return $this->getDisplayDecimalPlaces($product);
     }
 
     public function formatWebPrice(Product $product, float $amount): string
     {
-        $decimals = $this->getLineTotalDecimalPlaces($product, $amount);
-
-        return (string) webCurrencyConverter($amount, $decimals);
+        return (string) webCurrencyConverter($amount, $this->getDisplayDecimalPlaces($product));
     }
 
     /**
@@ -412,11 +414,14 @@ class DirectTopUpService
      */
     public function buildPricingPayload(Product $product): array
     {
-        $quantity = $this->resolveQuantity($product);
-        $unitPrice = $this->getPricePerUnit($product);
-        $lineTotal = $this->calculateTotalPrice($product, $quantity);
-        $decimalPoints = $this->getPriceDecimalPlaces($product);
         $mapping = $this->getMapping($product);
+        $quantity = $this->resolveQuantity($product);
+        $lineTotal = $this->resolveBundleLineTotal($product) ?? $this->calculateTotalPrice($product, $quantity);
+        $unitPrice = $this->getPricePerUnit($product);
+        $bundleCost = $this->isDirectTopUpMapping($mapping)
+            ? $mapping->calculateDirectTopUpBundleCost($quantity)
+            : null;
+        $decimalPoints = $this->getDisplayDecimalPlaces($product);
         $accountLabel = trim((string) ($mapping?->direct_topup_account_label ?? '')) !== ''
             ? (string) $mapping->direct_topup_account_label
             : (translate('account_id') ?: 'Account ID');
@@ -427,9 +432,11 @@ class DirectTopUpService
         return [
             'quantity' => $quantity,
             'unit_price' => $unitPrice,
+            'bundle_cost' => $bundleCost,
             'line_total' => $lineTotal,
             'decimal_points' => $decimalPoints,
             'formatted_unit_price' => $this->formatWebPrice($product, $unitPrice),
+            'formatted_bundle_cost' => $bundleCost !== null ? $this->formatWebPrice($product, $bundleCost) : null,
             'formatted_line_total' => $this->formatWebPrice($product, $lineTotal),
             'account_label' => $accountLabel,
             'region' => $region,
@@ -441,6 +448,12 @@ class DirectTopUpService
     {
         $this->validateConfiguration($product);
 
+        $mapping = $this->getMapping($product);
+
+        if ($mapping !== null && $mapping->is_direct_topup) {
+            return $mapping->calculateDirectTopUpBundlePrice($quantity);
+        }
+
         $lineTotal = $quantity * $this->getPricePerUnit($product);
         $decimalPlaces = $this->getLineTotalDecimalPlaces($product, $lineTotal);
 
@@ -449,15 +462,23 @@ class DirectTopUpService
 
     public function resolveListingDisplayAmount(Product $product): ?float
     {
-        if (! $this->isDirectTopUpProduct($product)) {
+        return $this->resolveBundleLineTotal($product);
+    }
+
+    public function resolveBundleLineTotal(Product $product): ?float
+    {
+        $mapping = $this->getMapping($product);
+
+        if ($mapping === null || ! $mapping->is_direct_topup) {
             return null;
         }
 
-        $quantity = $this->resolveQuantity($product);
-        $lineTotal = $quantity * $this->getPricePerUnit($product);
-        $decimalPlaces = $this->getLineTotalDecimalPlaces($product, $lineTotal);
+        return $mapping->calculateDirectTopUpBundlePrice($this->resolveBundleQuantity($product));
+    }
 
-        return round($lineTotal, $decimalPlaces);
+    public function isDirectTopUpMapping(?SupplierProductMapping $mapping): bool
+    {
+        return $mapping !== null && (bool) $mapping->is_direct_topup;
     }
 
     public function formatListingDisplayPrice(Product $product): ?string

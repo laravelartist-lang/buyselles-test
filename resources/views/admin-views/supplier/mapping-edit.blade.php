@@ -55,6 +55,9 @@
                             <label class="form-label">{{ translate('cost_price') }} <span class="text-danger">*</span></label>
                             <input type="number" name="cost_price" id="cost_price" class="form-control" step="any" min="0"
                                    value="{{ old('cost_price', $mapping->cost_price) }}" required>
+                            <small class="text-muted direct-topup-cost-hint" style="{{ old('is_direct_topup', $mapping->is_direct_topup) ? '' : 'display:none;' }}">
+                                {{ translate('direct_topup_cost_per_coin_hint') ?: 'Per-coin supplier cost (e.g. 0.01). Bundle cost = cost × bundle quantity.' }}
+                            </small>
                         </div>
                     </div>
 
@@ -173,6 +176,28 @@
                                    value="{{ old('direct_topup_bundle_quantity', $mapping->direct_topup_bundle_quantity) }}"
                                    min="0.0001" step="any" placeholder="1000">
                             <small class="text-muted">{{ translate('direct_topup_bundle_quantity_hint') ?: 'Credits/coins sent to the supplier per purchase (e.g. 1000, 5000, 10000).' }}</small>
+                        </div>
+                    </div>
+
+                    <div class="col-lg-12 direct-topup-fields direct-topup-section-content" style="{{ old('is_direct_topup', $mapping->is_direct_topup) ? '' : 'display:none;' }}">
+                        <div class="alert alert-light border mb-0" id="direct-topup-pricing-preview">
+                            <div class="fw-semibold mb-2">{{ translate('direct_topup_bundle_pricing_preview') ?: 'Bundle pricing preview' }}</div>
+                            <div class="row g-2 fs-14">
+                                <div class="col-md-4">
+                                    <span class="text-muted d-block">{{ translate('cost') }}</span>
+                                    <strong id="direct-topup-preview-cost">{{ $mapping->cost_currency }} {{ number_format($mapping->getDirectTopUpAdminDisplayCost(), 2) }}</strong>
+                                </div>
+                                <div class="col-md-4">
+                                    <span class="text-muted d-block">{{ translate('markup') }}</span>
+                                    <strong id="direct-topup-preview-markup">
+                                        {{ $mapping->markup_type === 'percent' ? $mapping->markup_value . '%' : $mapping->cost_currency . ' ' . number_format($mapping->markup_value, 2) }}
+                                    </strong>
+                                </div>
+                                <div class="col-md-4">
+                                    <span class="text-muted d-block">{{ translate('sell_price') }}</span>
+                                    <strong id="direct-topup-preview-sell">{{ $mapping->cost_currency }} {{ number_format($mapping->getDirectTopUpAdminDisplaySellPrice(), 2) }}</strong>
+                                </div>
+                            </div>
                         </div>
                     </div>
 

@@ -50,6 +50,8 @@
                 <div class="direct-topup-purchase-section mb-3"
                     id="direct-topup-purchase-section"
                     data-direct-topup-quantity="{{ $directTopUpQuantity }}"
+                    data-formatted-line-total="{{ $directTopUpPricing['formatted_line_total'] }}"
+                    data-line-total="{{ $lineTotal }}"
                     data-requires-account-verification="{{ $requiresAccountVerification ? '1' : '0' }}">
 
                     <div class="d-flex align-items-start gap-3 mb-2 flex-wrap">
@@ -90,10 +92,6 @@
                         <span class="text-muted">{{ $directTopUpPricing['quantity_label'] }}</span>
                         <span>{{ number_format($directTopUpQuantity, 0) }}</span>
                     </div>
-                    <div class="d-flex justify-content-between mb-1">
-                        <span class="text-muted">{{ translate('direct_topup_price_per_unit') ?: translate('price') }}</span>
-                        <span>{{ $directTopUpPricing['formatted_unit_price'] }}</span>
-                    </div>
                     @if (! empty($directTopUpPricing['region']))
                         <div class="d-flex justify-content-between mb-1">
                             <span class="text-muted">{{ translate('direct_topup_region') ?: 'Region' }}</span>
@@ -104,7 +102,9 @@
 
                 <div class="d-flex justify-content-between align-items-center border-top pt-3 mt-2">
                     <span class="text-muted fs-14">{{ translate('total_price') }}</span>
-                    <strong class="fs-18 text-base" id="direct-topup-modal-total">
+                    <strong class="fs-18 text-base" id="direct-topup-modal-total"
+                        data-formatted-line-total="{{ $directTopUpPricing['formatted_line_total'] }}"
+                        data-line-total="{{ $lineTotal }}">
                         {{ $directTopUpPricing['formatted_line_total'] }}
                     </strong>
                 </div>

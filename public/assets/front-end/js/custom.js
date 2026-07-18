@@ -1284,8 +1284,88 @@ function syncDirectTopUpFormFields(formSelector = ".add-to-cart-details-form") {
         return;
     }
 
-    const qty = parseInt(String($section.data("direct-topup-quantity")), 10) || 1;
+    const config = getDirectTopUpModalConfig();
+    const qty = resolveDirectTopUpBundleQuantity($section, config);
     $(formSelector).find("#direct-topup-quantity-hidden").val(qty);
+}
+
+function formatDirectTopUpModalPrice(config, lineTotal) {
+    const amount = parseDirectTopUpAmount(lineTotal);
+
+    if (amount <= 0) {
+        return "";
+    }
+
+    const decimalPoints = parseInt(config?.decimal_points, 10);
+    const decimals = Number.isFinite(decimalPoints) ? decimalPoints : 2;
+    const formattedAmount = amount.toFixed(decimals);
+    const symbol = config?.currency_symbol || "$";
+    const position = config?.symbol_position || "left";
+
+    if (position === "right") {
+        return formattedAmount + symbol;
+    }
+
+    return symbol + formattedAmount;
+}
+
+function resolveDirectTopUpBundleQuantity($section, config = null) {
+    const pricingConfig = config || getDirectTopUpModalConfig();
+    const fromAttr = parseFloat(String($section.attr("data-direct-topup-quantity") || ""));
+
+    if (Number.isFinite(fromAttr) && fromAttr > 0) {
+        return fromAttr;
+    }
+
+    const fromConfig = parseDirectTopUpAmount(pricingConfig.direct_topup_quantity);
+
+    if (fromConfig > 0) {
+        return fromConfig;
+    }
+
+    const fromLastPricing = parseDirectTopUpAmount(window.__directTopUpLastPricing?.direct_topup_quantity);
+
+    if (fromLastPricing > 0) {
+        return fromLastPricing;
+    }
+
+    return 1;
+}
+
+function resolveDirectTopUpModalTotalText($section, $modalTotal, config = null) {
+    const pricingConfig = config || getDirectTopUpModalConfig();
+    const formattedCandidates = [
+        $section.attr("data-formatted-line-total"),
+        $modalTotal.attr("data-formatted-line-total"),
+        pricingConfig.formatted_line_total,
+        window.__directTopUpLastPricing?.formatted_line_total,
+        $.trim($modalTotal.text()),
+    ];
+
+    for (const candidate of formattedCandidates) {
+        const text = String(candidate || "").trim();
+
+        if (text && text !== "$0.00" && text !== "0" && text !== "0.00") {
+            return text;
+        }
+    }
+
+    const lineTotalCandidates = [
+        $section.attr("data-line-total"),
+        $modalTotal.attr("data-line-total"),
+        pricingConfig.line_total,
+        window.__directTopUpLastPricing?.line_total,
+    ];
+
+    for (const raw of lineTotalCandidates) {
+        const formatted = formatDirectTopUpModalPrice(pricingConfig, raw);
+
+        if (formatted) {
+            return formatted;
+        }
+    }
+
+    return "";
 }
 
 function getDirectTopUpModalConfig() {
@@ -1294,6 +1374,20 @@ function getDirectTopUpModalConfig() {
     } catch (e) {
         return {};
     }
+}
+
+function parseDirectTopUpAmount(value) {
+    if (value === null || value === undefined || value === "") {
+        return 0;
+    }
+
+    if (typeof value === "number" && Number.isFinite(value)) {
+        return value;
+    }
+
+    const parsed = parseFloat(String(value).replace(/[^0-9.-]/g, ""));
+
+    return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function shouldEnforceDirectTopUpVerifyUi(config) {
@@ -1433,35 +1527,16 @@ function initDirectTopUpModalBehavior($root) {
     }
 
     const currencyConfig = getDirectTopUpModalConfig();
-    const quantity = parseInt(String($section.data("direct-topup-quantity")), 10)
-        || parseInt(String(currencyConfig.direct_topup_quantity), 10)
-        || 1;
-    const perUnit = parseFloat(currencyConfig.unit_price) || 0;
-
+    const quantity = resolveDirectTopUpBundleQuantity($section, currencyConfig);
     const $hiddenQty = $root.find("#direct-topup-quantity-hidden");
     const $modalTotal = $root.find("#direct-topup-modal-total");
 
-    const currencySymbol = currencyConfig.currency_symbol || "";
-    const symbolPosition = currencyConfig.symbol_position || "left";
-    const decimalPoints = parseInt(currencyConfig.decimal_points, 10) || 2;
-
-    function formatPrice(value) {
-        const num = Number(value).toFixed(decimalPoints);
-        return symbolPosition === "left" ? currencySymbol + num : num + currencySymbol;
-    }
-
-    function roundPrice(value) {
-        const factor = Math.pow(10, decimalPoints);
-        return Math.round(Number(value) * factor) / factor;
-    }
-
-    const total = roundPrice(quantity * perUnit);
-
     $hiddenQty.val(quantity);
-    if (currencyConfig.formatted_line_total) {
-        $modalTotal.text(currencyConfig.formatted_line_total);
-    } else {
-        $modalTotal.text(formatPrice(total));
+
+    const formattedTotal = resolveDirectTopUpModalTotalText($section, $modalTotal, currencyConfig);
+
+    if (formattedTotal) {
+        $modalTotal.text(formattedTotal);
     }
 
     resetDirectTopUpVerificationState($root);
@@ -1506,7 +1581,9 @@ function submitDirectTopUpBuyNowModal() {
     }
 
     const accountId = $.trim($form.find("#direct-topup-account-input").val() || "");
-    const directTopUpQty = parseFloat($form.find("#direct-topup-quantity-hidden").val()) || 0;
+    const $section = $root.find("#direct-topup-purchase-section");
+    const directTopUpQty = resolveDirectTopUpBundleQuantity($section, config);
+    $form.find("#direct-topup-quantity-hidden").val(directTopUpQty);
     const productId = $form.find('input[name="id"]').val();
     const cartAddUrl = $("#route-cart-add").data("url");
 
@@ -2617,6 +2694,10 @@ function getVariantPrice(formSelector = ".add-to-cart-details-form") {
                 $(".btn-number").attr("disabled", true);
             },
             success: function (response) {
+                if (response?.is_direct_topup) {
+                    window.__directTopUpLastPricing = response;
+                }
+
                 if (formSelector === ".add-to-cart-sticky-form" || checkFirstTimeVariant) {
                     checkFirstTimeVariant = false;
                 }
@@ -2766,8 +2847,12 @@ function updateProductDetailsTopSection(formSelector, response) {
     const isDirectTopUp = response?.is_direct_topup || isDirectTopUpDetailsPage();
 
     if (isDirectTopUp) {
-        const topUpQty = Math.floor(parseFloat(response?.direct_topup_quantity ?? response?.in_cart_quantity ?? 1));
-        $('#direct-topup-quantity-hidden').val(topUpQty);
+        if (response?.is_direct_topup) {
+            window.__directTopUpLastPricing = response;
+        }
+
+        const topUpQty = parseFloat(response?.direct_topup_quantity ?? response?.quantity ?? 1) || 1;
+        $(formSelector).find('#direct-topup-quantity-hidden').val(topUpQty);
         $(formSelector).find(".product-quantity").hide();
         $(formSelector).find(".product-add-to-cart-button").hide();
         $(formSelector).find(".product-add-and-buy-section").show().addClass("d-flex");
@@ -2809,7 +2894,11 @@ function updateProductDetailsTopSection(formSelector, response) {
     $(formSelector).find(".product-generated-variation-code").val(response?.variation_code);
     $(formSelector).find(".product-generated-variation-text").text(response?.variation_code);
 
-    $(formSelector).find(".discounted-unit-price").html(response?.discounted_unit_price);
+    $(formSelector).find(".discounted-unit-price").html(
+        isDirectTopUp
+            ? (response?.formatted_line_total || response?.price || response?.discounted_unit_price)
+            : response?.discounted_unit_price
+    );
     $(formSelector).find(".product-total-unit-price").html(response?.discount_amount > 0 ? response?.total_unit_price : "");
 
     let actionAddToCartBtn = $(formSelector).find(".product-add-to-cart-button");

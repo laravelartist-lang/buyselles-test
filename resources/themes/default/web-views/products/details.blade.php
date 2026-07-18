@@ -265,7 +265,7 @@
                                                     @endif
                                                     <span class="discounted-unit-price fs-24 font-bold">
                                                         @if (!empty($isDirectTopUpProduct) && !empty($directTopUpPricing))
-                                                            {{ $directTopUpPricing['formatted_unit_price'] }}
+                                                            {{ $directTopUpPricing['formatted_line_total'] }}
                                                         @else
                                                             {{ getProductPriceByType(product: $product, type: 'discounted_unit_price', result: 'string') }}
                                                         @endif
@@ -275,10 +275,6 @@
                                                     <div class="fs-14 text-muted mt-1">
                                                         {{ number_format((float) $directTopUpPricing['quantity'], 0) }}
                                                         {{ $directTopUpPricing['quantity_label'] }}
-                                                        &times;
-                                                        {{ $directTopUpPricing['formatted_unit_price'] }}
-                                                        =
-                                                        <strong class="text-base">{{ $directTopUpPricing['formatted_line_total'] }}</strong>
                                                     </div>
                                                 @endif
                                             </div>

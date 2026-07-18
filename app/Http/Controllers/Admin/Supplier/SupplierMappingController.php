@@ -8,6 +8,7 @@ use App\Jobs\SyncDenominationsJob;
 use App\Models\Product;
 use App\Models\SupplierApi;
 use App\Models\SupplierProductMapping;
+use App\Services\Supplier\MappedProductCacheService;
 use App\Services\Supplier\SupplierCurrencyConverter;
 use Brian2694\Toastr\Facades\Toastr;
 use Illuminate\Contracts\View\View;
@@ -23,6 +24,7 @@ class SupplierMappingController extends BaseController
 {
     public function __construct(
         private readonly CategoryRepositoryInterface $categoryRepo,
+        private readonly MappedProductCacheService $mappedProductCacheService,
     ) {}
 
     /**
@@ -34,14 +36,11 @@ class SupplierMappingController extends BaseController
         $supplierId = $request->get('supplier_id');
 
         $mappings = SupplierProductMapping::query()
-            ->storefrontOnly()
             ->with(['product', 'supplierApi'])
             ->when($supplierId, fn ($q) => $q->where('supplier_api_id', $supplierId))
             ->when($searchValue, function ($q) use ($searchValue) {
-                $q->where(function ($searchQuery) use ($searchValue): void {
-                    $searchQuery->whereHas('product', fn ($pq) => $pq->where('name', 'like', "%{$searchValue}%"))
-                        ->orWhere('supplier_product_id', 'like', "%{$searchValue}%");
-                });
+                $q->whereHas('product', fn ($pq) => $pq->where('name', 'like', "%{$searchValue}%"))
+                    ->orWhere('supplier_product_id', 'like', "%{$searchValue}%");
             })
             ->orderBy('priority')
             ->paginate(getWebConfig(name: 'pagination_limit'));
@@ -170,6 +169,8 @@ class SupplierMappingController extends BaseController
 
         SyncDenominationsJob::dispatch($mapping->id);
 
+        $this->mappedProductCacheService->bustForMapping($mapping->fresh(), refreshSupplierStock: false);
+
         Toastr::success(translate('mapping_added_successfully'));
 
         return redirect()->route('admin.supplier.mapping.list');
@@ -180,7 +181,7 @@ class SupplierMappingController extends BaseController
      */
     public function getUpdateView(int $id): View|RedirectResponse
     {
-        $mapping = $this->findStorefrontMappingOrFail($id)->load(['product', 'supplierApi']);
+        $mapping = SupplierProductMapping::with(['product', 'supplierApi'])->findOrFail($id);
 
         $suppliers = SupplierApi::orderBy('name')->get(['id', 'name', 'driver', 'is_active', 'supports_direct_top_up']);
         $categories = $this->categoryRepo->getListWhere(filters: ['position' => 0], dataLimit: 'all');
@@ -224,7 +225,7 @@ class SupplierMappingController extends BaseController
             return redirect()->back()->withInput();
         }
 
-        $mapping = $this->findStorefrontMappingOrFail($id);
+        $mapping = SupplierProductMapping::findOrFail($id);
         $supplierProductChanged = $mapping->supplier_product_id !== $request->input('supplier_product_id');
         $supplierChanged = (int) $mapping->supplier_api_id !== (int) $request->input('supplier_api_id');
         $productChanged = (int) $mapping->product_id !== (int) $request->input('product_id');
@@ -263,6 +264,8 @@ class SupplierMappingController extends BaseController
             SyncDenominationsJob::dispatch($mapping->id);
         }
 
+        $this->mappedProductCacheService->bustForMapping($mapping->fresh(), refreshSupplierStock: false);
+
         Toastr::success(translate('mapping_updated_successfully'));
 
         return redirect()->route('admin.supplier.mapping.list');
@@ -273,7 +276,7 @@ class SupplierMappingController extends BaseController
      */
     public function updateStatus(Request $request): JsonResponse
     {
-        $mapping = $this->findStorefrontMappingOrFail((int) $request->input('id'));
+        $mapping = SupplierProductMapping::findOrFail($request->input('id'));
         $mapping->update(['is_active' => $request->input('status', 0)]);
 
         return response()->json([
@@ -322,7 +325,7 @@ class SupplierMappingController extends BaseController
      */
     public function delete(Request $request): RedirectResponse
     {
-        $this->findStorefrontMappingOrFail((int) $request->input('id'))->delete();
+        SupplierProductMapping::findOrFail($request->input('id'))->delete();
 
         Toastr::success(translate('mapping_deleted_successfully'));
 
@@ -443,13 +446,6 @@ class SupplierMappingController extends BaseController
         ];
     }
 
-    private function findStorefrontMappingOrFail(int $id): SupplierProductMapping
-    {
-        return SupplierProductMapping::query()
-            ->storefrontOnly()
-            ->findOrFail($id);
-    }
-
     private function excludeProductsMappedToSupplier(
         Builder $query,
         int $supplierApiId,
@@ -460,7 +456,6 @@ class SupplierMappingController extends BaseController
         }
 
         $mappedProductIds = SupplierProductMapping::query()
-            ->storefrontOnly()
             ->where('supplier_api_id', $supplierApiId)
             ->when($exceptMappingId > 0, fn (Builder $mappingQuery) => $mappingQuery->where('id', '!=', $exceptMappingId))
             ->pluck('product_id');
@@ -478,7 +473,6 @@ class SupplierMappingController extends BaseController
         ?int $exceptMappingId = null,
     ): bool {
         return SupplierProductMapping::query()
-            ->storefrontOnly()
             ->where('product_id', $productId)
             ->where('supplier_api_id', $supplierApiId)
             ->when($exceptMappingId, fn (Builder $query) => $query->where('id', '!=', $exceptMappingId))

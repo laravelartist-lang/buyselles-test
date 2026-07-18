@@ -28,6 +28,7 @@ use App\Models\SupplierProductMapping;
 use App\Models\Tag;
 use App\Models\Translation;
 use App\Models\Wishlist;
+use App\Services\DirectTopUp\DirectTopUpService;
 use Carbon\Carbon;
 use Exception;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -2842,6 +2843,33 @@ class ProductManager
 
     public static function getInitialProductQuantity($product): array
     {
+        $directTopUpService = app(DirectTopUpService::class);
+
+        if ($directTopUpService->isDirectTopUpProduct($product)) {
+            $lineTotal = $directTopUpService->resolveBundleLineTotal($product) ?? 0.0;
+            $discount = getProductPriceByType(
+                product: $product,
+                type: 'discounted_amount',
+                result: 'value',
+                price: $lineTotal,
+            );
+            $discountType = getProductPriceByType(product: $product, type: 'discount_type', result: 'string');
+            $customerPrice = max(0, $lineTotal - $discount);
+
+            return [
+                'first_variant_in_cart' => false,
+                'quantity' => 1,
+                'price' => $customerPrice,
+                'discount' => $discountType == 'flat'
+                    ? webCurrencyConverter($discount)
+                    : getProductPriceByType(product: $product, type: 'discount', result: 'value').'%',
+                'discount_type' => $discountType,
+                'total_quantity_price' => $customerPrice,
+                'variant' => '',
+                'restock_request_status' => 0,
+            ];
+        }
+
         $cartList = CartManager::getCartListQuery();
         $firstVariant = '';
         $firstVariantInCart = false;

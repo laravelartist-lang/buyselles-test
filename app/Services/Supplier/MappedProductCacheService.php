@@ -73,7 +73,15 @@ class MappedProductCacheService
             $updates['unit_price'] = $displayPrice;
         }
 
-        $costPrice = (float) $mapping->cost_price;
+        if ((bool) $mapping->is_direct_topup) {
+            $bundleQuantity = $mapping->resolveDirectTopUpBundleQuantity();
+            $costPrice = $bundleQuantity > 0
+                ? $mapping->calculateDirectTopUpBundleCost($bundleQuantity)
+                : (float) $mapping->cost_price;
+        } else {
+            $costPrice = (float) $mapping->cost_price;
+        }
+
         if ($costPrice >= 0 && (float) $product->purchase_price !== $costPrice) {
             $updates['purchase_price'] = $costPrice;
         }

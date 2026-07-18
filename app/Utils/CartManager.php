@@ -1315,10 +1315,15 @@ class CartManager
     {
         $accountId = trim((string) ($request['direct_topup_account_id'] ?? ''));
         $bundleQuantity = $directTopUpService->resolveBundleQuantity($product);
-        $requestedQuantity = isset($request['direct_topup_quantity']) && $request['direct_topup_quantity'] !== ''
-            ? (float) $request['direct_topup_quantity']
-            : 0.0;
-        $directTopUpQuantity = $requestedQuantity > 0 ? $requestedQuantity : $bundleQuantity;
+        $hasExplicitQuantity = $request->has('direct_topup_quantity') && $request['direct_topup_quantity'] !== '';
+        $requestedQuantity = $hasExplicitQuantity ? (float) $request['direct_topup_quantity'] : 0.0;
+
+        if ($hasExplicitQuantity && $requestedQuantity <= 0) {
+            return ['status' => 0, 'message' => translate('direct_topup_quantity_must_be_positive') ?: 'Quantity must be positive.'];
+        }
+
+        // Direct top-up bundles are fixed-size; always charge and fulfil the configured bundle quantity.
+        $directTopUpQuantity = $bundleQuantity;
 
         $errors = $directTopUpService->validatePurchase($product, $accountId, $directTopUpQuantity);
         if ($errors !== []) {

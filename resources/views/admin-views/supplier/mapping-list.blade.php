@@ -73,12 +73,12 @@
                             <td>
                                 <code>{{ $mapping->supplier_product_id }}</code>
                             </td>
-                            <td class="text-center">{{ $mapping->cost_currency }} {{ number_format($mapping->cost_price, 2) }}</td>
+                            <td class="text-center">{{ $mapping->cost_currency }} {{ number_format($mapping->is_direct_topup ? $mapping->getDirectTopUpAdminDisplayCost() : $mapping->cost_price, 2) }}</td>
                             <td class="text-center">
                                 {{ $mapping->markup_type === 'percent' ? $mapping->markup_value . '%' : $mapping->cost_currency . ' ' . number_format($mapping->markup_value, 2) }}
                             </td>
                             <td class="text-center fw-semibold">
-                                {{ $mapping->cost_currency }} {{ number_format($mapping->calculateSellPrice(), 2) }}
+                                {{ $mapping->cost_currency }} {{ number_format($mapping->is_direct_topup ? $mapping->getDirectTopUpAdminDisplaySellPrice() : $mapping->calculateSellPrice(), 2) }}
                             </td>
                             <td class="text-center">
                                 @if($mapping->isSupplierFirst())
