@@ -7,6 +7,7 @@ use App\Models\DigitalProductCode;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\SupplierProductMapping;
+use App\Services\Order\OrderFulfillmentStatusService;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -14,6 +15,10 @@ use Illuminate\Support\Facades\Mail;
 
 class DigitalProductCodeService
 {
+    public function __construct(
+        private readonly OrderFulfillmentStatusService $fulfillmentStatusService,
+    ) {}
+
     /**
      * Add a single plain-text code to the pool for a product.
      * The code is AES-256-CBC encrypted before storage.
@@ -518,6 +523,7 @@ class DigitalProductCodeService
         $order->loadMissing('orderDetails');
         $this->assignCodesForOrder($order, $sourcePriority);
         $this->sendDigitalCodeEmail($order);
+        $this->fulfillmentStatusService->syncOrderFulfillmentStatus($order);
     }
 
     /**

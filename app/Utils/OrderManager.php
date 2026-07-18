@@ -1368,6 +1368,7 @@ class OrderManager
             if (($data['payment_status'] ?? '') === 'paid') {
                 try {
                     app(\App\Services\Supplier\MappedProductFulfillmentService::class)->fulfillStorefrontOrder($order);
+                    app(\App\Services\Order\OrderFulfillmentStatusService::class)->syncOrderFulfillmentStatus($order->fresh());
                 } catch (\Throwable $e) {
                     Log::error('OrderManager: digital fulfillment failed', [
                         'order_id' => $order_id,
@@ -1376,28 +1377,8 @@ class OrderManager
                 }
             }
 
-            // ── Auto-deliver fully-digital orders that are already paid ──
-            $hasDirectTopUp = collect($vendorWiseCart['cart_list'])->contains(
-                fn ($item) => ! empty($item->direct_topup_quantity ?? (is_array($item) ? ($item['direct_topup_quantity'] ?? null) : null))
-            );
-            $isFullyDigital = collect($vendorWiseCart['cart_list'])->every(
-                fn ($item) => ($item->product_type ?? $item->product?->product_type ?? '') === 'digital'
-            );
-            if ($isFullyDigital && ($data['payment_status'] ?? '') === 'paid' && ! $hasDirectTopUp) {
-                Order::where('id', $order_id)->update([
-                    'order_status' => 'delivered',
-                    'payment_status' => 'paid',
-                ]);
-                OrderDetail::where('order_id', $order_id)->update([
-                    'delivery_status' => 'delivered',
-                    'payment_status' => 'paid',
-                ]);
-                self::add_order_status_history($order_id, $getCustomerInfo['customer_id'], 'delivered', 'admin');
-
-                // Settle wallets immediately for digital delivered orders
-                $order->refresh();
-                OrderManager::getWalletManageOnOrderStatusChange($order, 'admin');
-            }
+            // ── Legacy auto-deliver block removed: OrderFulfillmentStatusService
+            // marks paid digital orders delivered only when codes/top-ups are complete.
 
             $orderPlacedNotificationEvents[] = OrderManager::getGenerateOrderNotificationInfo(
                 vendorType: $vendorWiseCart['seller_is'],

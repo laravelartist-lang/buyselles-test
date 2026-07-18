@@ -9,6 +9,8 @@ use App\Models\OrderDetail;
 use App\Models\OrderTransaction;
 use App\Models\SupplierOrder;
 use App\Models\SupplierProductMapping;
+use App\Services\Order\OrderFulfillmentStatusService;
+use App\Services\Partner\PartnerOrderRefundService;
 use App\Services\Supplier\SupplierManager;
 use App\Services\Wallet\FailedWalletOrderRefundService;
 use App\Utils\Convert;
@@ -22,6 +24,7 @@ class DirectTopUpWalletCheckoutService
         private readonly DirectTopUpService $directTopUpService,
         private readonly SupplierManager $supplierManager,
         private readonly FailedWalletOrderRefundService $walletRefundService,
+        private readonly OrderFulfillmentStatusService $fulfillmentStatusService,
     ) {}
 
     /**
@@ -171,16 +174,7 @@ class DirectTopUpWalletCheckoutService
 
     public function markDirectTopUpOrderDelivered(Order $order, int $customerId): void
     {
-        Order::where('id', $order->id)->update([
-            'order_status' => 'delivered',
-        ]);
-
-        OrderDetail::where('order_id', $order->id)->update([
-            'delivery_status' => 'delivered',
-            'payment_status' => 'paid',
-        ]);
-
-        OrderManager::add_order_status_history($order->id, $customerId, 'delivered', 'admin');
+        $this->fulfillmentStatusService->syncOrderFulfillmentStatus($order);
     }
 
     public function markDirectTopUpOrderProcessing(Order $order, int $customerId): void
@@ -199,7 +193,9 @@ class DirectTopUpWalletCheckoutService
 
     public function markDirectTopUpOrderFailed(Order $order, string $error, int $customerId): void
     {
-        $refunded = $this->refundWalletForFailedDirectTopUp($order);
+        $refunded = $order->payment_method === 'partner_wallet'
+            ? app(PartnerOrderRefundService::class)->refundPaidPartnerOrder($order, 'DirectTopUpWalletCheckoutService')
+            : $this->refundWalletForFailedDirectTopUp($order);
 
         $order->update([
             'order_status' => 'failed',

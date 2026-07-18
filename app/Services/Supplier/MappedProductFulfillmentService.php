@@ -93,7 +93,7 @@ class MappedProductFulfillmentService
 
     public function dispatchAsyncFallbackIfNeeded(Order $order): void
     {
-        if ($this->orderNeedsAsyncSupplier($order)) {
+        if ($this->orderNeedsAsyncSupplier($order) || $this->eligibilityService->orderNeedsDirectTopUpFulfillment($order)) {
             $this->fulfillmentDispatcher->dispatchForOrder($order);
         }
     }

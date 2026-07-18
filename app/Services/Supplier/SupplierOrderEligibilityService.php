@@ -5,7 +5,9 @@ namespace App\Services\Supplier;
 use App\Models\DigitalProductCode;
 use App\Models\Order;
 use App\Models\OrderDetail;
+use App\Models\SupplierOrder;
 use App\Models\SupplierProductMapping;
+use App\Services\DirectTopUp\DirectTopUpWalletCheckoutService;
 
 class SupplierOrderEligibilityService
 {
@@ -15,6 +17,30 @@ class SupplierOrderEligibilityService
 
         foreach ($order->orderDetails ?? [] as $detail) {
             if ($this->orderDetailNeedsSupplierCodeFetch($detail)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public function orderNeedsDirectTopUpFulfillment(Order $order): bool
+    {
+        if (DirectTopUpWalletCheckoutService::isDirectTopUpAlreadyFulfilled($order)) {
+            return false;
+        }
+
+        if (SupplierOrder::query()
+            ->where('order_id', $order->id)
+            ->whereIn('status', ['pending', 'processing', 'partial'])
+            ->exists()) {
+            return false;
+        }
+
+        $order->loadMissing('orderDetails');
+
+        foreach ($order->orderDetails ?? [] as $detail) {
+            if ($this->isDirectTopUpOrderLine($detail)) {
                 return true;
             }
         }

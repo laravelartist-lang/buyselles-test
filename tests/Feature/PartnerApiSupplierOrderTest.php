@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Jobs\DirectTopUpFulfillmentJob;
 use App\Jobs\SupplierCodeFetchJob;
 use App\Jobs\SupplierOrderPollJob;
 use App\Models\AdminWallet;
@@ -9,6 +10,7 @@ use App\Models\Order;
 use App\Models\OrderDetail;
 use App\Models\SupplierOrder;
 use App\Models\SupplierProductMapping;
+use App\Services\Supplier\Presets\SecretOrcaPreset;
 use App\Services\Supplier\SupplierManager;
 use Illuminate\Support\Facades\Bus;
 use Mockery;
@@ -128,6 +130,35 @@ class PartnerApiSupplierOrderTest extends TestCase
 
         $response->assertNotFound();
         $response->assertJsonPath('error', 'Product is not available in this partner catalog.');
+    }
+
+    public function test_partner_direct_topup_order_dispatches_secret_orca_fulfillment_job(): void
+    {
+        Bus::fake([DirectTopUpFulfillmentJob::class, SupplierCodeFetchJob::class, SupplierOrderPollJob::class]);
+
+        $this->seedProduct(id: 27, name: 'Bigo Diamonds');
+        $this->seedSecretOrcaDirectTopupMapping(productId: 27, bundleQuantity: 1000, region: 'EG');
+        $this->assignProductToPartnerCatalog(productId: 27, partnerPrice: 17.70);
+
+        $response = $this->postJson('/api/v1/partner/orders', [
+            'product_id' => 27,
+            'quantity' => 1,
+            'direct_topup_account_id' => '108594930',
+            'reference' => 'partner-topup-001',
+        ], $this->partnerApiHeaders());
+
+        $response->assertCreated();
+        $response->assertJsonPath('data.status', 'pending_fulfillment');
+        $response->assertJsonPath('data.quantity_fulfilled', 0);
+
+        $orderDetail = OrderDetail::query()->where('order_id', $response->json('data.order_id'))->first();
+        $this->assertSame(1000.0, (float) $orderDetail->direct_topup_quantity);
+        $this->assertSame('108594930', $orderDetail->direct_topup_account_id);
+
+        Bus::assertDispatched(DirectTopUpFulfillmentJob::class, function (DirectTopUpFulfillmentJob $job) use ($response): bool {
+            return $job->orderId === (int) $response->json('data.order_id');
+        });
+        Bus::assertNotDispatched(SupplierCodeFetchJob::class);
     }
 
     public function test_supplier_code_fetch_job_is_configured_to_run_after_commit(): void
@@ -428,6 +459,36 @@ class PartnerApiSupplierOrderTest extends TestCase
         ]);
 
         return [$productId, $denominationId];
+    }
+
+    private function seedSecretOrcaDirectTopupMapping(int $productId, float $bundleQuantity, string $region): void
+    {
+        $supplierId = $this->app['db']->table('supplier_apis')->insertGetId([
+            'name' => SecretOrcaPreset::SUPPLIER_NAME,
+            'driver' => 'generic_rest',
+            'base_url' => 'https://secretorca.test',
+            'credentials' => '{}',
+            'settings' => json_encode(SecretOrcaPreset::settings()),
+            'is_active' => true,
+            'supports_direct_top_up' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->app['db']->table('supplier_product_mappings')->insert([
+            'product_id' => $productId,
+            'supplier_api_id' => $supplierId,
+            'supplier_product_id' => '42a9fed1-b631-4fbc-8a73-c30686c75338',
+            'cost_price' => 0.0177,
+            'cost_currency' => 'USD',
+            'is_active' => true,
+            'is_direct_topup' => true,
+            'direct_topup_account_label' => 'Player ID',
+            'direct_topup_region' => $region,
+            'direct_topup_bundle_quantity' => $bundleQuantity,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
     }
 
     private function seedDenominationPartnerPrice(int $productId, float $partnerPrice): void

@@ -297,14 +297,15 @@ class ResellerApiService
                     $fulfillmentMeta['supplier_request_id'] = $fulfillment['supplier_request_id'] ?? null;
                 }
 
-                $codes = $isDirectTopUp ? [] : $this->collectOrderCodes($order);
-                $quantityFulfilled = count($codes);
-                $isFulfilled = ! $isDirectTopUp && $quantityFulfilled >= $quantity;
-                $isPending = ! $isDirectTopUp && ! $isFulfilled;
+                $order->refresh();
+                app(\App\Services\Order\OrderFulfillmentStatusService::class)->syncOrderFulfillmentStatus($order);
 
-                $order->update([
-                    'order_status' => $isFulfilled ? 'delivered' : 'processing',
-                ]);
+                $order = $order->fresh(['orderDetails']);
+                $codes = $this->collectOrderCodes($order);
+                $quantityFulfilled = count($codes);
+                $quantityRequested = (int) $order->orderDetails->sum('qty');
+                $isFulfilled = $order->order_status === 'delivered';
+                $isPending = ! $isFulfilled;
 
                 $supplierPayload = $quote['supplier'] ?? null;
                 if (is_array($supplierPayload) && $fulfillmentMeta['supplier_request_id']) {
@@ -321,7 +322,7 @@ class ResellerApiService
                         'total_cost' => $totalCost,
                         'pricing' => $this->formatOrderPricing($quote),
                         'supplier' => $supplierPayload,
-                        'status' => $isFulfilled ? 'fulfilled' : 'pending_fulfillment',
+                        'status' => $isFulfilled ? 'fulfilled' : ($isPending ? 'pending_fulfillment' : $order->order_status),
                         'reference' => $reference,
                         'order_detail_id' => $orderDetail->id,
                         'codes' => $codes,
