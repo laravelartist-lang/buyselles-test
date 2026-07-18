@@ -216,6 +216,7 @@ class SupplierManager
 
         $mappings = SupplierProductMapping::where('product_id', $product->id)
             ->active()
+            ->where('is_direct_topup', false)
             ->byPriority()
             ->with('supplierApi')
             ->get();
@@ -280,6 +281,7 @@ class SupplierManager
         $order->loadMissing('orderDetails');
 
         $anyFulfilled = false;
+        $codesInserted = false;
         $errors = [];
 
         foreach ($order->orderDetails as $detail) {
@@ -296,7 +298,9 @@ class SupplierManager
 
             $needed = max(0, (int) $detail->qty - $alreadyAssigned);
 
-            $product = Product::find($productId);
+            $product = Product::query()
+                ->withoutGlobalScope(Product::STOREFRONT_SCOPE)
+                ->find($productId);
             if (! $product) {
                 continue;
             }
@@ -312,6 +316,7 @@ class SupplierManager
 
             if ($result['inserted'] > 0) {
                 $anyFulfilled = true;
+                $codesInserted = true;
             } elseif ($result['supplier_order_id']) {
                 $anyFulfilled = true;
 
@@ -328,7 +333,7 @@ class SupplierManager
             }
         }
 
-        if ($anyFulfilled) {
+        if ($codesInserted) {
             $this->codeService->assignAndNotify($order);
         }
 
@@ -384,7 +389,9 @@ class SupplierManager
                 continue;
             }
 
-            $product = Product::find($productId);
+            $product = Product::query()
+                ->withoutGlobalScope(Product::STOREFRONT_SCOPE)
+                ->find($productId);
             if (! $product) {
                 continue;
             }
@@ -636,7 +643,7 @@ class SupplierManager
      * Fetch available stock for a product-supplier mapping via the configured driver.
      * Results are cached briefly to avoid hammering supplier APIs on cart renders.
      */
-    public function getAvailableStockForMapping(SupplierProductMapping $mapping): int
+    public function getAvailableStockForMapping(SupplierProductMapping $mapping, bool $useCache = true): int
     {
         $supplier = $mapping->supplierApi;
 
@@ -644,10 +651,7 @@ class SupplierManager
             return 0;
         }
 
-        $cacheKey = 'supplier_stock:'.$mapping->id;
-        $ttl = (int) config('supplier.stock_cache_ttl', 60);
-
-        return (int) Cache::remember($cacheKey, $ttl, function () use ($mapping, $supplier): int {
+        $fetch = function () use ($mapping, $supplier): int {
             try {
                 if (! $this->rateLimiter->attempt($supplier->id, $supplier->rate_limit_per_minute)) {
                     return 0;
@@ -662,7 +666,16 @@ class SupplierManager
 
                 return 0;
             }
-        });
+        };
+
+        if (! $useCache) {
+            return $fetch();
+        }
+
+        $cacheKey = 'supplier_stock:'.$mapping->id;
+        $ttl = (int) config('supplier.stock_cache_ttl', 60);
+
+        return (int) Cache::remember($cacheKey, $ttl, $fetch);
     }
 
     /**

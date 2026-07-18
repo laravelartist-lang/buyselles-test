@@ -157,7 +157,12 @@ class PartnerApiDocumentationExamplesService
             'seller_type' => $product['seller_type'] ?? 'in_house',
             'fulfillment_type' => $product['fulfillment_type'] ?? 'local_codes',
             'supplier' => ($product['fulfillment_type'] ?? null) === 'supplier_codes'
-                ? ($product['supplier'] ?? 'bamboo')
+                ? ($product['supplier'] ?? [
+                    'id' => 1,
+                    'name' => 'Example Supplier',
+                    'driver' => 'bamboo',
+                    'sku' => 'sku-example',
+                ])
                 : null,
             'requires_account_id' => false,
             'direct_topup' => null,

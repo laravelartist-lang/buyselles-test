@@ -2,7 +2,7 @@
     "info": {
         "name": "Buyselles Partner API v1",
         "_postman_id": "buyselles-partner-api-v1",
-        "description": "Complete Partner/Reseller API for Buyselles.com marketplace.\n\n**Authentication:** Every request requires two headers:\n- `X-API-KEY` — your API key\n- `X-API-SECRET` — your API secret\n\n**Base URL variable:** Set `{{base_url}}` in the environment (e.g. `http://localhost:8000`).\n\n**Catalog:** In-house products by default. Pass `include_vendor=1` to include vendor products. Supplier-mapped products (Bamboo, Golf API) appear as in-house SKUs with `fulfillment_type: supplier_codes`.\n\n**Permissions required per endpoint:**\n- List/view products → `products.list`\n- Create order → `orders.create`\n- View order → `orders.view`\n- Balance → `balance.view`\n\n**Escrow:** Every order holds funds in the vendor's `pending_balance` for 48 hours before auto-releasing to `available_balance`.\n\n**Idempotency:** Send `X-Idempotency-Key` on POST /orders to prevent double-charging on retries.",
+        "description": "Complete Partner/Reseller API for Buyselles.com marketplace.\n\n## Setup (2 steps)\n\n1. Collection **Variables**: set `base_url`, `api_key`, `api_secret`\n2. Open a request → **Params** tab → fill the values → Send\n\n**No JSON body needed** — all POST data is sent as URL params (query string).\n\n**Check `order_requirements` on product detail** (`GET /products/{id}`) — only fill params listed for your product's `fulfillment_type` and `pricing_type`.\n\n| Request | Use when |\n|---------|----------|\n| Create Order (simple) | Fixed price, supplier codes (Bamboo), or optional denomination on fixed products |\n| Create Order (denomination) | `pricing.type` is `denominations` (required selection) |\n| Create Order (direct top-up) | `fulfillment_type` is `direct_topup` |",
         "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
     },
     "variable": [
@@ -10,29 +10,73 @@
             "key": "base_url",
             "value": "http://localhost:8000",
             "type": "string",
-            "description": "Change to your server URL"
+            "description": "Your Buyselles server URL"
         },
         {
             "key": "api_key",
             "value": "",
-            "type": "string"
+            "type": "string",
+            "description": "Partner API key (X-API-KEY header)"
         },
         {
             "key": "api_secret",
             "value": "",
-            "type": "string"
+            "type": "string",
+            "description": "Partner API secret (X-API-SECRET header)"
         },
         {
-            "key": "last_order_id",
+            "key": "product_id",
             "value": "",
             "type": "string",
-            "description": "Auto-populated after a successful order creation"
+            "description": "Product ID from GET /products — used in detail, quote, and order requests"
         },
         {
-            "key": "last_product_id",
+            "key": "quantity",
+            "value": "1",
+            "type": "string",
+            "description": "Order/quote quantity (1–100)"
+        },
+        {
+            "key": "order_reference",
+            "value": "postman-order-001",
+            "type": "string",
+            "description": "Your internal order reference (optional)"
+        },
+        {
+            "key": "supplier_denomination_id",
             "value": "",
             "type": "string",
-            "description": "Set manually with a product ID found from the products list"
+            "description": "Optional for fixed products — required only when pricing.type is denominations. pricing.denominations[].id from GET /products/{id}"
+        },
+        {
+            "key": "custom_amount",
+            "value": "50",
+            "type": "string",
+            "description": "Face value for variable denominations (within min/max from product detail)"
+        },
+        {
+            "key": "expected_total",
+            "value": "",
+            "type": "string",
+            "description": "Required when pricing.type is denominations or fulfillment_type is direct_topup — copy data.total from quote"
+        },
+        {
+            "key": "direct_topup_account_id",
+            "value": "",
+            "type": "string",
+            "description": "Required for direct top-up products — player/account ID to credit"
+        },
+        {
+            "key": "order_id",
+            "value": "",
+            "type": "string",
+            "description": "Order ID for GET /orders/{id}"
+        },
+        {
+            "key": "product_search",
+            "value": "steam",
+            "type": "string",
+            "description": "Search keyword for List Products — Search"
         }
     ],
     "auth": {
@@ -272,8 +316,8 @@
                                     "// Auto-save first product ID for later requests",
                                     "const j = pm.response.json();",
                                     "if (j.data && j.data.length > 0) {",
-                                    "    pm.collectionVariables.set('last_product_id', j.data[0].id);",
-                                    "    console.log('Saved product ID: ' + j.data[0].id);",
+                                    "    pm.collectionVariables.set('product_id', String(j.data[0].id));",
+                                    "    console.log('Saved product_id: ' + j.data[0].id);",
                                     "}"
                                 ],
                                 "type": "text/javascript"
@@ -304,7 +348,7 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/v1/partner/products?search=steam",
+                            "raw": "{{base_url}}/api/v1/partner/products?search={{product_search}}",
                             "host": [
                                 "{{base_url}}"
                             ],
@@ -317,7 +361,7 @@
                             "query": [
                                 {
                                     "key": "search",
-                                    "value": "steam"
+                                    "value": "{{product_search}}"
                                 }
                             ]
                         },
@@ -339,7 +383,7 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/v1/partner/products/{{last_product_id}}",
+                            "raw": "{{base_url}}/api/v1/partner/products/{{product_id}}",
                             "host": [
                                 "{{base_url}}"
                             ],
@@ -348,10 +392,10 @@
                                 "v1",
                                 "partner",
                                 "products",
-                                "{{last_product_id}}"
+                                "{{product_id}}"
                             ]
                         },
-                        "description": "Get full details of a single product including real-time stock count, description, and pricing.\n\n`{{last_product_id}}` is auto-set from the List Products test script. Or replace with a numeric product ID."
+                        "description": "Get full details of a single product including pricing and order_requirements.\n\nSet `{{product_id}}` in collection variables, then send this request.\n\nWhen `pricing.type` is `denominations`, copy `pricing.denominations[].id` into `{{supplier_denomination_id}}`. On fixed Bamboo products, denomination is optional unless order_requirements says otherwise."
                     },
                     "event": [
                         {
@@ -362,9 +406,19 @@
                                     "pm.test('Has product data', () => {",
                                     "    const j = pm.response.json();",
                                     "    pm.expect(j.data).to.have.property('id');",
-                                    "    pm.expect(j.data).to.have.property('available_stock');",
-                                    "    console.log('Stock available: ' + j.data.available_stock);",
-                                    "});"
+                                    "    console.log('pricing type: ' + (j.data.pricing?.type || 'n/a'));",
+                                    "});",
+                                    "const j = pm.response.json();",
+                                    "if (j.data?.pricing?.type === 'denominations' && Array.isArray(j.data.pricing.denominations)) {",
+                                    "    const denom = j.data.pricing.denominations.find(d => d.available) || j.data.pricing.denominations[0];",
+                                    "    if (denom?.id) {",
+                                    "        pm.collectionVariables.set('supplier_denomination_id', String(denom.id));",
+                                    "        console.log('Saved supplier_denomination_id: ' + denom.id + ' (' + (denom.name || denom.type) + ')');",
+                                    "    }",
+                                    "    if (denom?.type === 'variable' && denom.min_face_value) {",
+                                    "        pm.collectionVariables.set('custom_amount', String(denom.min_face_value));",
+                                    "    }",
+                                    "}"
                                 ],
                                 "type": "text/javascript"
                             }
@@ -425,6 +479,131 @@
                             }
                         }
                     ]
+                },
+                {
+                    "name": "Quote Product (simple)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "X-API-KEY",
+                                "value": "{{api_key}}"
+                            },
+                            {
+                                "key": "X-API-SECRET",
+                                "value": "{{api_secret}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/partner/products/{{product_id}}/quote?quantity={{quantity}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "partner",
+                                "products",
+                                "{{product_id}}",
+                                "quote"
+                            ],
+                            "query": [
+                                {
+                                    "key": "quantity",
+                                    "value": "{{quantity}}",
+                                    "description": "Required. 1–100"
+                                },
+                                {
+                                    "key": "supplier_denomination_id",
+                                    "value": "{{supplier_denomination_id}}",
+                                    "description": "Optional on fixed products with synced denominations",
+                                    "disabled": true
+                                }
+                            ]
+                        },
+                        "description": "Quote for fixed-price, supplier-code (Bamboo), or direct top-up products. Only `quantity` is required. Optionally enable `supplier_denomination_id` on fixed products with synced denominations."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                                    "const j = pm.response.json();",
+                                    "if (j.data?.total !== undefined) {",
+                                    "    pm.collectionVariables.set('expected_total', String(j.data.total));",
+                                    "    console.log('Saved expected_total: ' + j.data.total);",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "Quote Product (denomination)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "X-API-KEY",
+                                "value": "{{api_key}}"
+                            },
+                            {
+                                "key": "X-API-SECRET",
+                                "value": "{{api_secret}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/partner/products/{{product_id}}/quote?quantity={{quantity}}&supplier_denomination_id={{supplier_denomination_id}}&custom_amount={{custom_amount}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "partner",
+                                "products",
+                                "{{product_id}}",
+                                "quote"
+                            ],
+                            "query": [
+                                {
+                                    "key": "quantity",
+                                    "value": "{{quantity}}",
+                                    "description": "Required. 1–100"
+                                },
+                                {
+                                    "key": "supplier_denomination_id",
+                                    "value": "{{supplier_denomination_id}}",
+                                    "description": "Required when pricing.type is denominations"
+                                },
+                                {
+                                    "key": "custom_amount",
+                                    "value": "{{custom_amount}}",
+                                    "description": "Variable denominations only — face value within min/max",
+                                    "disabled": true
+                                }
+                            ]
+                        },
+                        "description": "Quote when `pricing.type` is `denominations`. Set `supplier_denomination_id` from product detail. Enable `custom_amount` for variable denominations."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                                    "const j = pm.response.json();",
+                                    "if (j.data?.total !== undefined) {",
+                                    "    pm.collectionVariables.set('expected_total', String(j.data.total));",
+                                    "    console.log('Saved expected_total: ' + j.data.total);",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ]
                 }
             ]
         },
@@ -432,7 +611,7 @@
             "name": "3. Orders",
             "item": [
                 {
-                    "name": "Create Order",
+                    "name": "Create Order (simple)",
                     "request": {
                         "method": "POST",
                         "header": [
@@ -445,26 +624,13 @@
                                 "value": "{{api_secret}}"
                             },
                             {
-                                "key": "Content-Type",
-                                "value": "application/json"
-                            },
-                            {
                                 "key": "X-Idempotency-Key",
                                 "value": "order-{{$guid}}",
-                                "description": "Optional but recommended — prevents double-charging on retry. Use a unique value per order attempt."
+                                "description": "Prevents double-charging on retry"
                             }
                         ],
-                        "body": {
-                            "mode": "raw",
-                            "raw": "{\n  \"product_id\": {{last_product_id}},\n  \"quantity\": 1,\n  \"reference\": \"my-internal-ref-001\"\n}",
-                            "options": {
-                                "raw": {
-                                    "language": "json"
-                                }
-                            }
-                        },
                         "url": {
-                            "raw": "{{base_url}}/api/v1/partner/orders",
+                            "raw": "{{base_url}}/api/v1/partner/orders?product_id={{product_id}}&quantity={{quantity}}&reference={{order_reference}}",
                             "host": [
                                 "{{base_url}}"
                             ],
@@ -473,9 +639,185 @@
                                 "v1",
                                 "partner",
                                 "orders"
+                            ],
+                            "query": [
+                                {
+                                    "key": "product_id",
+                                    "value": "{{product_id}}",
+                                    "description": "Required. Product ID from list/detail"
+                                },
+                                {
+                                    "key": "quantity",
+                                    "value": "{{quantity}}",
+                                    "description": "Required. 1–100"
+                                },
+                                {
+                                    "key": "reference",
+                                    "value": "{{order_reference}}",
+                                    "description": "Optional. Your internal order reference"
+                                }
                             ]
                         },
-                        "description": "Place a digital product order. On success:\n- Wallet is debited immediately\n- Digital codes are assigned and returned in the response\n- Vendor receives funds in `pending_balance` (48-hour escrow)\n- After 48h, auto-released to `available_balance`\n\n**Idempotency:** Send any unique string in `X-Idempotency-Key`. If you retry with the same key, you get the original response — no double charge.\n\n**Required permission:** `orders.create`\n\n**Body fields:**\n- `product_id` *(required)* — ID from the products list\n- `quantity` *(required)* — 1 to 100\n- `reference` *(optional)* — your own order reference"
+                        "description": "Fixed-price or supplier-code (Bamboo) products — `product_id` + `quantity` only. Optionally add `supplier_denomination_id` when order_requirements lists it as optional."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status 201 (created)', () => pm.response.to.have.status(201));",
+                                    "const j = pm.response.json();",
+                                    "if (j.data && j.data.order_id) {",
+                                    "    pm.collectionVariables.set('order_id', String(j.data.order_id));",
+                                    "    console.log('Saved order_id: ' + j.data.order_id);",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "Create Order (denomination)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "X-API-KEY",
+                                "value": "{{api_key}}"
+                            },
+                            {
+                                "key": "X-API-SECRET",
+                                "value": "{{api_secret}}"
+                            },
+                            {
+                                "key": "X-Idempotency-Key",
+                                "value": "order-{{$guid}}",
+                                "description": "Prevents double-charging on retry"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/partner/orders?product_id={{product_id}}&quantity={{quantity}}&reference={{order_reference}}&supplier_denomination_id={{supplier_denomination_id}}&custom_amount={{custom_amount}}&expected_total={{expected_total}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "partner",
+                                "orders"
+                            ],
+                            "query": [
+                                {
+                                    "key": "product_id",
+                                    "value": "{{product_id}}",
+                                    "description": "Required. Product ID from list/detail"
+                                },
+                                {
+                                    "key": "quantity",
+                                    "value": "{{quantity}}",
+                                    "description": "Required. 1–100"
+                                },
+                                {
+                                    "key": "reference",
+                                    "value": "{{order_reference}}",
+                                    "description": "Optional. Your internal order reference"
+                                },
+                                {
+                                    "key": "supplier_denomination_id",
+                                    "value": "{{supplier_denomination_id}}",
+                                    "description": "Required when pricing.type is denominations"
+                                },
+                                {
+                                    "key": "custom_amount",
+                                    "value": "{{custom_amount}}",
+                                    "description": "Variable denomination only — face value",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "expected_total",
+                                    "value": "{{expected_total}}",
+                                    "description": "From Quote response (data.total)"
+                                }
+                            ]
+                        },
+                        "description": "Use when `pricing.type` is `denominations`. Run **Quote Product (denomination)** first, copy `data.total` to `expected_total`."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status 201 (created)', () => pm.response.to.have.status(201));",
+                                    "const j = pm.response.json();",
+                                    "if (j.data && j.data.order_id) {",
+                                    "    pm.collectionVariables.set('order_id', String(j.data.order_id));",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "Create Order (direct top-up)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "X-API-KEY",
+                                "value": "{{api_key}}"
+                            },
+                            {
+                                "key": "X-API-SECRET",
+                                "value": "{{api_secret}}"
+                            },
+                            {
+                                "key": "X-Idempotency-Key",
+                                "value": "order-{{$guid}}",
+                                "description": "Prevents double-charging on retry"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/partner/orders?product_id={{product_id}}&quantity={{quantity}}&reference={{order_reference}}&direct_topup_account_id={{direct_topup_account_id}}&expected_total={{expected_total}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "partner",
+                                "orders"
+                            ],
+                            "query": [
+                                {
+                                    "key": "product_id",
+                                    "value": "{{product_id}}",
+                                    "description": "Required. Product ID from list/detail"
+                                },
+                                {
+                                    "key": "quantity",
+                                    "value": "{{quantity}}",
+                                    "description": "Required. Must be 1 for direct top-up"
+                                },
+                                {
+                                    "key": "reference",
+                                    "value": "{{order_reference}}",
+                                    "description": "Optional. Your internal order reference"
+                                },
+                                {
+                                    "key": "direct_topup_account_id",
+                                    "value": "{{direct_topup_account_id}}",
+                                    "description": "Required — player/account ID to credit"
+                                },
+                                {
+                                    "key": "expected_total",
+                                    "value": "{{expected_total}}",
+                                    "description": "From Quote response (data.total)"
+                                }
+                            ]
+                        },
+                        "description": "Direct top-up products (`fulfillment_type: direct_topup`). Run **Quote Product (simple)** first for `expected_total`."
                     },
                     "event": [
                         {
@@ -495,7 +837,7 @@
                                     "});",
                                     "// Save order ID for subsequent requests",
                                     "if (j.data && j.data.order_id) {",
-                                    "    pm.collectionVariables.set('last_order_id', j.data.order_id);",
+                                    "    pm.collectionVariables.set('order_id', String(j.data.order_id));",
                                     "    console.log('Saved order_id: ' + j.data.order_id);",
                                     "}"
                                 ],
@@ -544,26 +886,13 @@
                                 "value": "{{api_secret}}"
                             },
                             {
-                                "key": "Content-Type",
-                                "value": "application/json"
-                            },
-                            {
                                 "key": "X-Idempotency-Key",
                                 "value": "idempotency-test-fixed-key-abc123",
                                 "description": "Fixed key — send twice to verify idempotency (no double charge)"
                             }
                         ],
-                        "body": {
-                            "mode": "raw",
-                            "raw": "{\n  \"product_id\": {{last_product_id}},\n  \"quantity\": 1,\n  \"reference\": \"idempotency-test\"\n}",
-                            "options": {
-                                "raw": {
-                                    "language": "json"
-                                }
-                            }
-                        },
                         "url": {
-                            "raw": "{{base_url}}/api/v1/partner/orders",
+                            "raw": "{{base_url}}/api/v1/partner/orders?product_id={{product_id}}&quantity={{quantity}}&reference={{order_reference}}-idempotency",
                             "host": [
                                 "{{base_url}}"
                             ],
@@ -572,6 +901,20 @@
                                 "v1",
                                 "partner",
                                 "orders"
+                            ],
+                            "query": [
+                                {
+                                    "key": "product_id",
+                                    "value": "{{product_id}}"
+                                },
+                                {
+                                    "key": "quantity",
+                                    "value": "{{quantity}}"
+                                },
+                                {
+                                    "key": "reference",
+                                    "value": "{{order_reference}}-idempotency"
+                                }
                             ]
                         },
                         "description": "Send this request TWICE with the same `X-Idempotency-Key`. The second response should include `\"idempotent_replay\": true` and return the same order ID with no additional charge."
@@ -613,23 +956,10 @@
                             {
                                 "key": "X-API-SECRET",
                                 "value": "{{api_secret}}"
-                            },
-                            {
-                                "key": "Content-Type",
-                                "value": "application/json"
                             }
                         ],
-                        "body": {
-                            "mode": "raw",
-                            "raw": "{\n  \"product_id\": 999999,\n  \"quantity\": 1\n}",
-                            "options": {
-                                "raw": {
-                                    "language": "json"
-                                }
-                            }
-                        },
                         "url": {
-                            "raw": "{{base_url}}/api/v1/partner/orders",
+                            "raw": "{{base_url}}/api/v1/partner/orders?product_id=999999&quantity=1",
                             "host": [
                                 "{{base_url}}"
                             ],
@@ -638,6 +968,16 @@
                                 "v1",
                                 "partner",
                                 "orders"
+                            ],
+                            "query": [
+                                {
+                                    "key": "product_id",
+                                    "value": "999999"
+                                },
+                                {
+                                    "key": "quantity",
+                                    "value": "1"
+                                }
                             ]
                         },
                         "description": "Send a non-existent product_id — should return 422 validation error (fails the `exists:products,id` rule)."
@@ -666,23 +1006,10 @@
                             {
                                 "key": "X-API-SECRET",
                                 "value": "{{api_secret}}"
-                            },
-                            {
-                                "key": "Content-Type",
-                                "value": "application/json"
                             }
                         ],
-                        "body": {
-                            "mode": "raw",
-                            "raw": "{\n  \"product_id\": {{last_product_id}},\n  \"quantity\": 0\n}",
-                            "options": {
-                                "raw": {
-                                    "language": "json"
-                                }
-                            }
-                        },
                         "url": {
-                            "raw": "{{base_url}}/api/v1/partner/orders",
+                            "raw": "{{base_url}}/api/v1/partner/orders?product_id={{product_id}}&quantity=0",
                             "host": [
                                 "{{base_url}}"
                             ],
@@ -691,6 +1018,16 @@
                                 "v1",
                                 "partner",
                                 "orders"
+                            ],
+                            "query": [
+                                {
+                                    "key": "product_id",
+                                    "value": "{{product_id}}"
+                                },
+                                {
+                                    "key": "quantity",
+                                    "value": "0"
+                                }
                             ]
                         }
                     },
@@ -721,7 +1058,7 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/v1/partner/orders/{{last_order_id}}",
+                            "raw": "{{base_url}}/api/v1/partner/orders/{{order_id}}",
                             "host": [
                                 "{{base_url}}"
                             ],
@@ -730,10 +1067,10 @@
                                 "v1",
                                 "partner",
                                 "orders",
-                                "{{last_order_id}}"
+                                "{{order_id}}"
                             ]
                         },
-                        "description": "Retrieve a specific order with its full code list. `{{last_order_id}}` is auto-set by the Create Order test script.\n\nCodes are returned decrypted in this response.\n\n**Required permission:** `orders.view`"
+                        "description": "Retrieve an order with its codes.\n\nSet `{{order_id}}` in collection variables (saved automatically after a successful Create Order)."
                     },
                     "event": [
                         {

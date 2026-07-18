@@ -76,7 +76,7 @@ class PartnerApiProductCatalogTest extends TestCase
         $response->assertJsonCount(1, 'data');
         $response->assertJsonPath('data.0.id', 5);
         $response->assertJsonPath('data.0.fulfillment_type', 'supplier_codes');
-        $response->assertJsonPath('data.0.supplier', 'bamboo');
+        $response->assertJsonPath('data.0.supplier.driver', 'bamboo');
     }
 
     public function test_unassigned_product_detail_returns_404(): void

@@ -25,6 +25,8 @@
         <env name="DB_DATABASE" value=":memory:"/>
         <env name="MAIL_DRIVER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
+        <env name="PARTNER_SYNC_FULFILLMENT_TIMEOUT" value="5"/>
+        <env name="PARTNER_SYNC_POLL_INTERVAL_MS" value="100"/>
         <env name="SESSION_DRIVER" value="array"/>
     </php>
 </phpunit>

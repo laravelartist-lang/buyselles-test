@@ -326,8 +326,9 @@ class PartnerCatalogController extends Controller
         $hasVariableFormula = $denominations->contains('type', 'variable')
             && $request->filled('variable_price_type')
             && $request->filled('variable_price_value');
+        $hasVariableDenomination = $denominations->contains('type', 'variable');
 
-        if (! $hasFixedPrice && ! $hasVariableFormula) {
+        if (! $hasFixedPrice && ! $hasVariableFormula && ! $hasVariableDenomination) {
             throw ValidationException::withMessages([
                 'partner_price' => 'Configure at least one denomination price or a variable pricing formula.',
             ]);

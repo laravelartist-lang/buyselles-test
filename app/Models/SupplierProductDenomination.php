@@ -90,6 +90,34 @@ class SupplierProductDenomination extends Model
     }
 
     /**
+     * Minimum selectable amount, matching storefront logic.
+     */
+    public function resolveMinimumAmount(?SupplierProductMapping $mapping = null): float
+    {
+        if ((float) ($this->min_face_value ?? 0) > 0) {
+            return (float) $this->min_face_value;
+        }
+
+        $mapping ??= $this->relationLoaded('mapping') ? $this->mapping : $this->mapping()->first();
+
+        return (float) ($mapping?->min_amount ?? 0);
+    }
+
+    /**
+     * Maximum selectable amount, matching storefront logic.
+     */
+    public function resolveMaximumAmount(?SupplierProductMapping $mapping = null): float
+    {
+        if ((float) ($this->max_face_value ?? 0) > 0) {
+            return (float) $this->max_face_value;
+        }
+
+        $mapping ??= $this->relationLoaded('mapping') ? $this->mapping : $this->mapping()->first();
+
+        return (float) ($mapping?->max_amount ?? 0);
+    }
+
+    /**
      * Calculate the sell price for this denomination using the parent mapping's markup.
      * For fixed denominations, uses the face_value.
      * For variable denominations, requires passing the customer-chosen amount.

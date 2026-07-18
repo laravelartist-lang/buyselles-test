@@ -3,6 +3,7 @@
 namespace App\Services\Partner;
 
 use App\Models\CustomerWallet;
+use App\Models\Order;
 use App\Models\ResellerApiKey;
 use App\Models\SellerWallet;
 use App\Models\User;
@@ -71,6 +72,34 @@ class PartnerWalletService
     public function usesCustomerWallet(ResellerApiKey $key): bool
     {
         return $key->user_id !== null && $key->seller_id === null;
+    }
+
+    /**
+     * Credit the linked account wallet when a partner API order is refunded.
+     */
+    public function creditForOrderRefund(Order $order, float $amount): void
+    {
+        if ($amount <= 0) {
+            return;
+        }
+
+        if ($order->seller_id) {
+            SellerWallet::query()
+                ->where('seller_id', $order->seller_id)
+                ->increment('total_earning', $amount);
+
+            return;
+        }
+
+        if ($order->customer_id) {
+            CustomerManager::create_wallet_transaction(
+                user_id: (int) $order->customer_id,
+                amount: $amount,
+                transaction_type: 'order_refund',
+                reference: 'Partner API order refund',
+                order_ids: [$order->id],
+            );
+        }
     }
 
     private function debitVendorWallet(int $sellerId, float $amount): void

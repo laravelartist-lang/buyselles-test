@@ -62,7 +62,7 @@ class PartnerCatalogPricingService
             );
         }
 
-        if ($mapping !== null && $mapping->activeDenominations->isNotEmpty()) {
+        if ($mapping !== null && $mapping->requiresDenominationSelection()) {
             throw new InvalidArgumentException('A supplier denomination is required for this product.');
         }
 
@@ -122,21 +122,18 @@ class PartnerCatalogPricingService
             throw new InvalidArgumentException('A custom amount is required for this denomination.');
         }
 
-        $minimum = (float) ($denomination->min_face_value ?? 0);
-        $maximum = (float) ($denomination->max_face_value ?? 0);
+        $minimum = $denomination->resolveMinimumAmount($mapping);
+        $maximum = $denomination->resolveMaximumAmount($mapping);
 
         if (($minimum > 0 && $customAmount < $minimum) || ($maximum > 0 && $customAmount > $maximum)) {
             throw new InvalidArgumentException('The custom amount is outside the allowed range.');
         }
 
-        if (! $catalogItem->hasVariablePriceFormula()) {
-            throw new InvalidArgumentException('This product has no partner pricing formula.');
-        }
-
-        $formulaValue = (float) $catalogItem->variable_price_value;
-        $unitPrice = $catalogItem->variable_price_type === PartnerCatalogItem::VARIABLE_PRICE_PERCENT
-            ? $customAmount * (1 + ($formulaValue / 100))
-            : $customAmount + $formulaValue;
+        $unitPrice = $this->resolveVariableDenominationUnitPrice(
+            catalogItem: $catalogItem,
+            denomination: $denomination,
+            customAmount: $customAmount,
+        );
 
         return $this->buildQuote(
             catalogItem: $catalogItem,
@@ -146,6 +143,29 @@ class PartnerCatalogPricingService
             denominationId: $denomination->id,
             customAmount: $customAmount,
         );
+    }
+
+    private function resolveVariableDenominationUnitPrice(
+        PartnerCatalogItem $catalogItem,
+        SupplierProductDenomination $denomination,
+        float $customAmount,
+    ): float {
+        if ($catalogItem->hasVariablePriceFormula()) {
+            $formulaValue = (float) $catalogItem->variable_price_value;
+
+            return $catalogItem->variable_price_type === PartnerCatalogItem::VARIABLE_PRICE_PERCENT
+                ? $customAmount * (1 + ($formulaValue / 100))
+                : $customAmount + $formulaValue;
+        }
+
+        $denomination->loadMissing('mapping');
+        $unitPrice = $denomination->calculateSellPrice($customAmount);
+
+        if ($unitPrice <= 0) {
+            throw new InvalidArgumentException('Unable to calculate partner price for this denomination.');
+        }
+
+        return $unitPrice;
     }
 
     private function requiredPartnerPrice(PartnerCatalogItem $catalogItem): float

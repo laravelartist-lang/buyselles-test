@@ -3,8 +3,6 @@
 namespace Tests\Feature;
 
 use App\Models\SupplierProductMapping;
-use App\Services\Supplier\SupplierManager;
-use Mockery;
 use Tests\Concerns\ManagesTestDatabaseSchema;
 use Tests\Concerns\SetsUpPartnerApiTestSchema;
 use Tests\TestCase;
@@ -22,50 +20,37 @@ class PartnerApiSupplierStockTest extends TestCase
         $this->seedActivePartnerApiKey();
     }
 
-    public function test_supplier_mapped_product_uses_supplier_stock_in_listing(): void
+    public function test_supplier_mapped_product_hides_available_stock_in_listing(): void
     {
         $this->seedProduct(id: 10, name: 'Bamboo Mapped');
         $this->seedSupplierMapping(productId: 10, driver: 'bamboo');
-
-        $manager = Mockery::mock(SupplierManager::class);
-        $manager->shouldReceive('getAvailableStockForMapping')
-            ->once()
-            ->with(Mockery::type(SupplierProductMapping::class))
-            ->andReturn(42);
-
-        $this->app->instance(SupplierManager::class, $manager);
+        $this->assignProductToPartnerCatalog(productId: 10, partnerPrice: 10);
 
         $response = $this->getJson('/api/v1/partner/products', $this->partnerApiHeaders());
 
         $response->assertOk();
-        $response->assertJsonPath('data.0.available_stock', 42);
+        $response->assertJsonPath('data.0.available_stock', null);
         $response->assertJsonPath('data.0.fulfillment_type', 'supplier_codes');
     }
 
-    public function test_supplier_mapped_product_includes_local_code_pool_in_stock(): void
+    public function test_supplier_mapped_product_with_local_pool_still_hides_stock_in_listing(): void
     {
         $this->seedProduct(id: 12, name: 'Hybrid Stock');
         $this->seedSupplierMapping(productId: 12, driver: 'bamboo');
+        $this->assignProductToPartnerCatalog(productId: 12, partnerPrice: 10);
         $this->seedDigitalCode(productId: 12, plainCode: 'HYBRID-LOCAL-1');
         $this->seedDigitalCode(productId: 12, plainCode: 'HYBRID-LOCAL-2');
-
-        $manager = Mockery::mock(SupplierManager::class);
-        $manager->shouldReceive('getAvailableStockForMapping')
-            ->once()
-            ->with(Mockery::type(SupplierProductMapping::class))
-            ->andReturn(5);
-
-        $this->app->instance(SupplierManager::class, $manager);
 
         $response = $this->getJson('/api/v1/partner/products', $this->partnerApiHeaders());
 
         $response->assertOk();
-        $response->assertJsonPath('data.0.available_stock', 7);
+        $response->assertJsonPath('data.0.available_stock', null);
     }
 
     public function test_local_product_uses_local_code_pool_stock(): void
     {
         $this->seedProduct(id: 11, name: 'Local Codes');
+        $this->assignProductToPartnerCatalog(productId: 11, partnerPrice: 10);
         $this->seedDigitalCode(productId: 11, plainCode: 'LOCAL-001');
         $this->seedDigitalCode(productId: 11, plainCode: 'LOCAL-002');
 
@@ -112,6 +97,7 @@ class PartnerApiSupplierStockTest extends TestCase
             'product_id' => $productId,
             'supplier_api_id' => $supplierId,
             'supplier_product_id' => 'sku-'.$productId,
+            'code_source_priority' => SupplierProductMapping::CODE_SOURCE_LOCAL_FIRST,
             'is_active' => true,
             'is_direct_topup' => false,
             'created_at' => now(),

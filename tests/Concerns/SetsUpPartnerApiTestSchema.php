@@ -178,8 +178,12 @@ trait SetsUpPartnerApiTestSchema
             $table->string('markup_type')->default('percent');
             $table->decimal('markup_value', 24, 4)->default(0);
             $table->integer('priority')->default(1);
+            $table->string('code_source_priority', 32)->default('local_first');
             $table->boolean('is_active')->default(true);
             $table->boolean('is_customizable')->default(false);
+            $table->decimal('min_amount', 10, 2)->nullable();
+            $table->decimal('max_amount', 10, 2)->nullable();
+            $table->timestamp('last_synced_at')->nullable();
             $table->boolean('is_direct_topup')->default(false);
             $table->string('direct_topup_account_label')->nullable();
             $table->string('direct_topup_region', 2)->nullable();
@@ -192,6 +196,7 @@ trait SetsUpPartnerApiTestSchema
             $table->unsignedBigInteger('product_id')->index();
             $table->unsignedBigInteger('seller_id')->nullable();
             $table->text('code')->nullable();
+            $table->text('pin')->nullable();
             $table->string('code_hash')->nullable();
             $table->string('serial_number')->nullable();
             $table->date('expiry_date')->nullable();
@@ -213,6 +218,10 @@ trait SetsUpPartnerApiTestSchema
             $table->string('payment_status')->default('paid');
             $table->string('order_status')->default('processing');
             $table->decimal('order_amount', 24, 4)->default(0);
+            $table->decimal('admin_commission', 24, 10)->default(0);
+            $table->decimal('customer_service_fee', 24, 10)->default(0);
+            $table->string('customer_service_fee_type')->nullable();
+            $table->string('seller_is')->nullable();
             $table->string('order_type')->default('default');
             $table->text('order_note')->nullable();
             $table->integer('is_guest')->default(0);
@@ -228,6 +237,10 @@ trait SetsUpPartnerApiTestSchema
             $table->decimal('price', 24, 4)->default(0);
             $table->decimal('custom_amount', 24, 4)->nullable();
             $table->unsignedBigInteger('supplier_denomination_id')->nullable();
+            $table->unsignedBigInteger('partner_supplier_api_id')->nullable();
+            $table->unsignedBigInteger('partner_supplier_product_mapping_id')->nullable();
+            $table->decimal('partner_supplier_cost_total', 24, 10)->default(0);
+            $table->decimal('partner_admin_margin', 24, 10)->default(0);
             $table->text('direct_topup_account_id')->nullable();
             $table->decimal('direct_topup_quantity', 24, 4)->nullable();
             $table->decimal('tax', 24, 4)->default(0);
@@ -236,6 +249,48 @@ trait SetsUpPartnerApiTestSchema
             $table->string('product_type')->nullable();
             $table->string('digital_product_type')->nullable();
             $table->string('payment_status')->nullable();
+            $table->string('delivery_status')->nullable();
+            $table->timestamps();
+        });
+
+        $this->recreateTable('admin_wallets', function (Blueprint $table): void {
+            $table->id();
+            $table->unsignedBigInteger('admin_id')->default(1);
+            $table->decimal('withdrawn', 24, 4)->default(0);
+            $table->decimal('commission_earned', 24, 4)->default(0);
+            $table->decimal('inhouse_earning', 24, 4)->default(0);
+            $table->decimal('delivery_charge_earned', 24, 4)->default(0);
+            $table->decimal('pending_amount', 24, 4)->default(0);
+            $table->timestamps();
+        });
+
+        $this->recreateTable('order_transactions', function (Blueprint $table): void {
+            $table->id();
+            $table->string('transaction_id')->nullable();
+            $table->unsignedBigInteger('customer_id')->nullable();
+            $table->unsignedBigInteger('seller_id')->nullable();
+            $table->unsignedBigInteger('shop_id')->nullable();
+            $table->string('seller_is')->nullable();
+            $table->unsignedBigInteger('order_id')->nullable();
+            $table->decimal('order_amount', 24, 4)->default(0);
+            $table->decimal('seller_amount', 24, 4)->default(0);
+            $table->decimal('admin_commission', 24, 4)->default(0);
+            $table->string('received_by')->nullable();
+            $table->string('status')->nullable();
+            $table->decimal('delivery_charge', 24, 4)->default(0);
+            $table->decimal('tax', 24, 4)->default(0);
+            $table->string('delivered_by')->nullable();
+            $table->string('payment_method')->nullable();
+            $table->timestamps();
+        });
+
+        $this->recreateTable('order_status_histories', function (Blueprint $table): void {
+            $table->id();
+            $table->unsignedBigInteger('order_id')->nullable();
+            $table->unsignedBigInteger('user_id')->nullable();
+            $table->string('user_type')->nullable();
+            $table->string('status')->nullable();
+            $table->text('cause')->nullable();
             $table->timestamps();
         });
 
@@ -305,6 +360,30 @@ trait SetsUpPartnerApiTestSchema
             $table->decimal('cost_price', 24, 4)->nullable();
             $table->boolean('is_active')->default(true);
             $table->integer('sort_order')->default(0);
+            $table->timestamps();
+        });
+
+        $this->setUpSupplierOrdersTable();
+    }
+
+    protected function setUpSupplierOrdersTable(): void
+    {
+        $this->recreateTable('supplier_orders', function (Blueprint $table): void {
+            $table->id();
+            $table->unsignedBigInteger('supplier_api_id')->nullable();
+            $table->unsignedBigInteger('supplier_product_mapping_id')->nullable();
+            $table->unsignedBigInteger('order_id')->nullable();
+            $table->unsignedBigInteger('order_detail_id')->nullable();
+            $table->string('supplier_order_id')->nullable();
+            $table->unsignedInteger('quantity')->default(1);
+            $table->decimal('cost_per_unit', 24, 4)->default(0);
+            $table->decimal('total_cost', 24, 4)->default(0);
+            $table->string('cost_currency', 3)->default('USD');
+            $table->string('status')->default('processing');
+            $table->text('codes_received')->nullable();
+            $table->timestamp('fulfilled_at')->nullable();
+            $table->text('failed_reason')->nullable();
+            $table->unsignedInteger('attempt_count')->default(1);
             $table->timestamps();
         });
     }

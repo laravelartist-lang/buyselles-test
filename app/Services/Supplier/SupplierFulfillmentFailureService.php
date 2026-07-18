@@ -4,6 +4,7 @@ namespace App\Services\Supplier;
 
 use App\Models\Order;
 use App\Models\OrderDetail;
+use App\Services\Partner\PartnerOrderRefundService;
 use App\Services\Wallet\FailedWalletOrderRefundService;
 use App\Utils\OrderManager;
 
@@ -11,6 +12,7 @@ class SupplierFulfillmentFailureService
 {
     public function __construct(
         private readonly FailedWalletOrderRefundService $walletRefundService,
+        private readonly PartnerOrderRefundService $partnerOrderRefundService,
     ) {}
 
     public function markOrderFailed(Order $order, string $error, ?int $customerId = null): void
@@ -19,6 +21,13 @@ class SupplierFulfillmentFailureService
             $order,
             'SupplierFulfillmentFailureService'
         );
+
+        if (! $refunded) {
+            $refunded = $this->partnerOrderRefundService->refundPaidPartnerOrder(
+                $order,
+                'SupplierFulfillmentFailureService'
+            );
+        }
 
         $order->update([
             'order_status' => 'failed',

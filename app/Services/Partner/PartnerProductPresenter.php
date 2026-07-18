@@ -11,6 +11,7 @@ class PartnerProductPresenter
     public function __construct(
         private readonly PartnerProductStockResolver $stockResolver,
         private readonly DirectTopUpService $directTopUpService,
+        private readonly PartnerOrderRequirementsResolver $orderRequirementsResolver,
     ) {}
 
     /**
@@ -33,13 +34,14 @@ class PartnerProductPresenter
             'slug' => $product->slug,
             'category_id' => $product->category_id,
             'pricing' => $this->pricing($catalogItem),
-            'available_stock' => $fulfillmentType === 'direct_topup'
+            'order_requirements' => $this->orderRequirementsResolver->resolve($catalogItem),
+            'available_stock' => $fulfillmentType === 'direct_topup' || $fulfillmentType === 'supplier_codes'
                 ? null
-                : $this->stockResolver->resolve($product),
+                : $this->stockResolver->localAvailableCount((int) $product->id),
             'thumbnail' => $product->thumbnail_full_url ?? null,
             'seller_type' => $this->sellerType($product),
             'fulfillment_type' => $fulfillmentType,
-            'supplier' => $this->supplierDriver($product),
+            'supplier' => $this->supplier($product),
             'requires_account_id' => $fulfillmentType === 'direct_topup',
             'direct_topup' => $this->directTopUp($catalogItem),
         ];
@@ -87,7 +89,7 @@ class PartnerProductPresenter
 
     public function fulfillmentType(Product $product): string
     {
-        if ($product->supplierMapping?->is_direct_topup) {
+        if ($this->directTopUpService->isDirectTopUpProduct($product)) {
             return 'direct_topup';
         }
 
@@ -96,7 +98,10 @@ class PartnerProductPresenter
             : 'local_codes';
     }
 
-    public function supplierDriver(Product $product): ?string
+    /**
+     * @return array<string, mixed>|null
+     */
+    public function supplier(Product $product): ?array
     {
         $mapping = $product->supplierMapping?->is_direct_topup
             ? $product->supplierMapping
@@ -106,7 +111,21 @@ class PartnerProductPresenter
             return null;
         }
 
-        return $mapping->supplierApi->driver;
+        return [
+            'id' => $mapping->supplierApi->id,
+            'name' => $mapping->supplierApi->name,
+            'driver' => $mapping->supplierApi->driver,
+            'sku' => filled($mapping->supplier_product_id)
+                ? (string) $mapping->supplier_product_id
+                : null,
+        ];
+    }
+
+    public function supplierDriver(Product $product): ?string
+    {
+        $supplier = $this->supplier($product);
+
+        return $supplier['driver'] ?? null;
     }
 
     /**
@@ -125,53 +144,82 @@ class PartnerProductPresenter
             ];
         }
 
-        if ($denominations->isEmpty()) {
+        if ($mapping !== null && $mapping->requiresDenominationSelection()) {
             return [
-                'type' => 'fixed',
+                'type' => 'denominations',
                 'currency' => $catalogItem->currency,
-                'unit_price' => $catalogItem->partner_price !== null ? (float) $catalogItem->partner_price : null,
+                'denominations' => $this->mapDenominations($catalogItem, $mapping, $denominations),
             ];
         }
 
-        return [
-            'type' => 'denominations',
+        $payload = [
+            'type' => 'fixed',
             'currency' => $catalogItem->currency,
-            'denominations' => $denominations
-                ->map(function ($denomination) use ($catalogItem): array {
-                    $price = $catalogItem->activeDenominationPrices
-                        ->firstWhere('supplier_product_denomination_id', $denomination->id);
+            'unit_price' => $catalogItem->partner_price !== null ? (float) $catalogItem->partner_price : null,
+        ];
 
-                    if ($denomination->isFixed()) {
-                        return [
-                            'id' => $denomination->id,
-                            'type' => 'fixed',
-                            'name' => $denomination->name,
-                            'face_value' => (float) $denomination->face_value,
-                            'face_value_currency' => $denomination->face_value_currency,
-                            'partner_price' => $price !== null ? (float) $price->partner_price : null,
-                            'available' => $price !== null,
-                        ];
-                    }
+        if ($denominations->isNotEmpty()) {
+            $payload['denominations'] = $this->mapDenominations($catalogItem, $mapping, $denominations);
+        }
 
+        return $payload;
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, \App\Models\SupplierProductDenomination>  $denominations
+     * @return array<int, array<string, mixed>>
+     */
+    private function mapDenominations(
+        PartnerCatalogItem $catalogItem,
+        ?\App\Models\SupplierProductMapping $mapping,
+        $denominations,
+    ): array {
+        return $denominations
+            ->map(function ($denomination) use ($catalogItem, $mapping): array {
+                $price = $catalogItem->activeDenominationPrices
+                    ->firstWhere('supplier_product_denomination_id', $denomination->id);
+
+                if ($denomination->isFixed()) {
                     return [
                         'id' => $denomination->id,
-                        'type' => 'variable',
+                        'type' => 'fixed',
                         'name' => $denomination->name,
-                        'min_face_value' => (float) $denomination->min_face_value,
-                        'max_face_value' => (float) $denomination->max_face_value,
+                        'face_value' => (float) $denomination->face_value,
                         'face_value_currency' => $denomination->face_value_currency,
-                        'price_formula' => $catalogItem->hasVariablePriceFormula()
-                            ? [
-                                'type' => $catalogItem->variable_price_type,
-                                'value' => (float) $catalogItem->variable_price_value,
-                            ]
-                            : null,
-                        'available' => $catalogItem->hasVariablePriceFormula(),
+                        'partner_price' => $price !== null ? (float) $price->partner_price : null,
+                        'available' => $price !== null,
                     ];
-                })
-                ->values()
-                ->all(),
-        ];
+                }
+
+                $payload = [
+                    'id' => $denomination->id,
+                    'type' => 'variable',
+                    'name' => $denomination->name,
+                    'min_face_value' => $denomination->resolveMinimumAmount($mapping),
+                    'max_face_value' => $denomination->resolveMaximumAmount($mapping),
+                    'face_value_currency' => $denomination->face_value_currency,
+                    'available' => true,
+                    'price_source' => $catalogItem->hasVariablePriceFormula()
+                        ? 'partner_formula'
+                        : 'supplier_markup',
+                ];
+
+                if ($catalogItem->hasVariablePriceFormula()) {
+                    $payload['price_formula'] = [
+                        'type' => $catalogItem->variable_price_type,
+                        'value' => (float) $catalogItem->variable_price_value,
+                    ];
+                } elseif ($mapping !== null) {
+                    $payload['supplier_markup'] = [
+                        'type' => $mapping->markup_type,
+                        'value' => (float) $mapping->markup_value,
+                    ];
+                }
+
+                return $payload;
+            })
+            ->values()
+            ->all();
     }
 
     /**

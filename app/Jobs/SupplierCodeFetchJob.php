@@ -34,6 +34,7 @@ class SupplierCodeFetchJob implements ShouldQueue
         public readonly int $orderId,
     ) {
         $this->onQueue('fulfillment');
+        $this->afterCommit();
     }
 
     public function handle(

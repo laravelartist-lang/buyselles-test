@@ -4,8 +4,6 @@ namespace App\Utils;
 
 use App\Events\OrderEditDuePaymentEvent;
 use App\Events\OrderPlacedEvent;
-use App\Jobs\DirectTopUpFulfillmentJob;
-use App\Jobs\SupplierCodeFetchJob;
 use App\Models\Admin;
 use App\Models\AdminWallet;
 use App\Models\BusinessSetting;
@@ -30,7 +28,6 @@ use App\Models\ShippingMethod;
 use App\Models\ShippingType;
 use App\Models\Shop;
 use App\Models\Storage;
-use App\Models\SupplierProductMapping;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Models\WalletTransaction;
@@ -1370,17 +1367,13 @@ class OrderManager
             // ── Assign digital product codes when order is paid at creation ──
             if (($data['payment_status'] ?? '') === 'paid') {
                 try {
-                    app(DigitalProductCodeService::class)->assignAndNotify($order);
+                    app(\App\Services\Supplier\MappedProductFulfillmentService::class)->fulfillStorefrontOrder($order);
                 } catch (\Throwable $e) {
-                    Log::error('OrderManager: digital code assignment/email failed', [
+                    Log::error('OrderManager: digital fulfillment failed', [
                         'order_id' => $order_id,
                         'error' => $e->getMessage(),
                     ]);
                 }
-
-                // ── Dispatch supplier fetch for any unfulfilled digital codes ──
-                self::dispatchSupplierFallbackIfNeeded($order);
-                self::dispatchDirectTopUpIfNeeded($order);
             }
 
             // ── Auto-deliver fully-digital orders that are already paid ──
@@ -2717,7 +2710,7 @@ class OrderManager
 
     /**
      * Check if any digital order details still need codes and have supplier mappings.
-     * If so, dispatch a SupplierCodeFetchJob to fetch codes from external suppliers.
+     * If so, dispatch supplier fulfillment jobs via the shared dispatcher.
      *
      * This is called directly from generateOrder() because order creation uses
      * DB::table('orders')->insertGetId() which bypasses Eloquent observers.
@@ -2725,61 +2718,10 @@ class OrderManager
     private static function dispatchSupplierFallbackIfNeeded(Order $order): void
     {
         try {
-            $eligibilityService = app(\App\Services\Supplier\SupplierOrderEligibilityService::class);
-
-            if ($eligibilityService->orderNeedsSupplierCodeFetch($order)) {
-                SupplierCodeFetchJob::dispatch($order->id);
-                Log::info('OrderManager: dispatched SupplierCodeFetchJob for unfulfilled codes', [
-                    'order_id' => $order->id,
-                ]);
-            }
+            app(\App\Services\Supplier\MappedProductFulfillmentService::class)
+                ->dispatchAsyncFallbackIfNeeded($order);
         } catch (\Throwable $e) {
             Log::error('OrderManager: supplier fallback check failed', [
-                'order_id' => $order->id,
-                'error' => $e->getMessage(),
-            ]);
-        }
-    }
-
-    /**
-     * Dispatch direct top-up fulfillment for paid orders created via insertGetId
-     * (Eloquent OrderObserver::created does not run on that path).
-     */
-    private static function dispatchDirectTopUpIfNeeded(Order $order): void
-    {
-        try {
-            if (\App\Services\DirectTopUp\DirectTopUpWalletCheckoutService::isDirectTopUpAlreadyFulfilled($order)) {
-                return;
-            }
-
-            $order->loadMissing('orderDetails');
-
-            foreach ($order->orderDetails as $detail) {
-                if ($detail->direct_topup_quantity === null) {
-                    continue;
-                }
-
-                if (self::resolveDirectTopUpAccountId($detail) === null) {
-                    continue;
-                }
-
-                $hasMapping = SupplierProductMapping::query()
-                    ->where('product_id', $detail->product_id)
-                    ->where('is_active', true)
-                    ->whereHas('supplierApi', fn ($q) => $q->where('is_active', true)->where('supports_direct_top_up', true))
-                    ->exists();
-
-                if ($hasMapping) {
-                    DirectTopUpFulfillmentJob::dispatch($order->id);
-                    Log::info('OrderManager: dispatched DirectTopUpFulfillmentJob for paid order', [
-                        'order_id' => $order->id,
-                    ]);
-
-                    return;
-                }
-            }
-        } catch (\Throwable $e) {
-            Log::error('OrderManager: direct top-up dispatch failed', [
                 'order_id' => $order->id,
                 'error' => $e->getMessage(),
             ]);

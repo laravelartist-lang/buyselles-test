@@ -107,6 +107,7 @@ class SupplierMappingInHouseProductsTest extends TestCase
             $table->string('markup_type')->default('percent');
             $table->decimal('markup_value', 24, 4)->default(0);
             $table->integer('priority')->default(0);
+            $table->string('code_source_priority', 32)->default('local_first');
             $table->boolean('is_active')->default(true);
             $table->timestamps();
         });

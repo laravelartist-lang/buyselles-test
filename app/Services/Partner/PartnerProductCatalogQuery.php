@@ -27,6 +27,7 @@ class PartnerProductCatalogQuery
      * @return array{
      *     in_house_local: int|null,
      *     supplier_mapped: int|null,
+     *     supplier_denomination: int|null,
      *     vendor: int|null
      * }
      */
@@ -50,6 +51,14 @@ class PartnerProductCatalogQuery
             ->orderBy('id')
             ->value('product_id');
 
+        $supplierDenomination = (clone $baseQuery)
+            ->whereHas('product.supplierMapping', fn (Builder $query) => $query
+                ->where('is_active', true)
+                ->where('is_direct_topup', false)
+                ->whereHas('activeDenominations'))
+            ->orderBy('id')
+            ->value('product_id');
+
         $vendor = (clone $baseQuery)
             ->whereHas('product', fn (Builder $query) => $query->where('added_by', 'seller'))
             ->orderBy('id')
@@ -58,6 +67,7 @@ class PartnerProductCatalogQuery
         return [
             'in_house_local' => $inHouseLocal !== null ? (int) $inHouseLocal : null,
             'supplier_mapped' => $supplierMapped !== null ? (int) $supplierMapped : null,
+            'supplier_denomination' => $supplierDenomination !== null ? (int) $supplierDenomination : null,
             'vendor' => $vendor !== null ? (int) $vendor : null,
         ];
     }

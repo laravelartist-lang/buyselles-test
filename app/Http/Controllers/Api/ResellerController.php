@@ -3,17 +3,18 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Services\Partner\PartnerOrderRequestValidator;
 use App\Services\Partner\PartnerWalletService;
 use App\Services\ResellerApiService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Validator;
 
 class ResellerController extends Controller
 {
     public function __construct(
         private readonly ResellerApiService $resellerService,
         private readonly PartnerWalletService $partnerWallet,
+        private readonly PartnerOrderRequestValidator $orderRequestValidator,
     ) {}
 
     /**
@@ -74,27 +75,31 @@ class ResellerController extends Controller
             return response()->json(['error' => 'Permission denied.'], 403);
         }
 
-        $validator = Validator::make($request->all(), [
-            'quantity' => 'nullable|integer|min:1|max:100',
-            'supplier_denomination_id' => 'nullable|integer|exists:supplier_product_denominations,id',
-            'custom_amount' => 'nullable|numeric|min:0.0000000001',
-        ]);
+        $this->orderRequestValidator->mergeNormalizedRequest($request);
 
-        if ($validator->fails()) {
-            return response()->json(['errors' => $validator->errors()], 422);
+        $validation = $this->orderRequestValidator->validateQuoteForProduct(
+            resellerKey: $resellerKey,
+            productId: $id,
+            input: $request->all(),
+        );
+
+        if (isset($validation['errors']) || isset($validation['error'])) {
+            return response()->json(
+                array_filter([
+                    'error' => $validation['error'] ?? null,
+                    'errors' => $validation['errors'] ?? null,
+                ]),
+                $validation['status'] ?? 422,
+            );
         }
 
         try {
             $quote = $this->resellerService->quoteProduct(
                 resellerKey: $resellerKey,
                 productId: $id,
-                quantity: (int) $request->input('quantity', 1),
-                denominationId: $request->filled('supplier_denomination_id')
-                    ? (int) $request->input('supplier_denomination_id')
-                    : null,
-                customAmount: $request->filled('custom_amount')
-                    ? (float) $request->input('custom_amount')
-                    : null,
+                quantity: $validation['quantity'],
+                denominationId: $validation['denomination_id'],
+                customAmount: $validation['custom_amount'],
             );
         } catch (\InvalidArgumentException $e) {
             return response()->json(['error' => $e->getMessage()], 422);
@@ -119,36 +124,33 @@ class ResellerController extends Controller
             return response()->json(['error' => 'Permission denied.'], 403);
         }
 
-        $validator = Validator::make($request->all(), [
-            'product_id' => 'required|integer|exists:products,id',
-            'quantity' => 'required|integer|min:1|max:100',
-            'supplier_denomination_id' => 'nullable|integer|exists:supplier_product_denominations,id',
-            'custom_amount' => 'nullable|numeric|min:0.0000000001',
-            'direct_topup_account_id' => 'nullable|string|max:255',
-            'expected_total' => 'nullable|numeric|min:0.0000000001',
-            'reference' => 'nullable|string|max:255',
-        ]);
+        $this->orderRequestValidator->mergeNormalizedRequest($request);
 
-        if ($validator->fails()) {
-            return response()->json(['errors' => $validator->errors()], 422);
+        $validation = $this->orderRequestValidator->validateOrderPayload(
+            resellerKey: $resellerKey,
+            input: $request->all(),
+        );
+
+        if (isset($validation['errors']) || isset($validation['error'])) {
+            return response()->json(
+                array_filter([
+                    'error' => $validation['error'] ?? null,
+                    'errors' => $validation['errors'] ?? null,
+                ]),
+                $validation['status'] ?? 422,
+            );
         }
 
         $result = $this->resellerService->createOrder(
             resellerKey: $resellerKey,
-            productId: $request->input('product_id'),
-            quantity: $request->input('quantity'),
-            reference: $request->input('reference'),
+            productId: $validation['product_id'],
+            quantity: $validation['quantity'],
+            reference: $validation['reference'],
             idempotencyKey: $request->header('X-Idempotency-Key'),
-            denominationId: $request->filled('supplier_denomination_id')
-                ? (int) $request->input('supplier_denomination_id')
-                : null,
-            customAmount: $request->filled('custom_amount')
-                ? (float) $request->input('custom_amount')
-                : null,
-            directTopUpAccountId: $request->input('direct_topup_account_id'),
-            expectedTotal: $request->filled('expected_total')
-                ? (float) $request->input('expected_total')
-                : null,
+            denominationId: $validation['denomination_id'],
+            customAmount: $validation['custom_amount'],
+            directTopUpAccountId: $validation['direct_topup_account_id'],
+            expectedTotal: $validation['expected_total'],
         );
 
         if (isset($result['error'])) {

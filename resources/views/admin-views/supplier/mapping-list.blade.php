@@ -52,6 +52,7 @@
                             <th class="text-center">{{ translate('cost') }}</th>
                             <th class="text-center">{{ translate('markup') }}</th>
                             <th class="text-center">{{ translate('sell_price') }}</th>
+                            <th class="text-center">{{ translate('code_fulfillment_source') }}</th>
                             <th class="text-center">{{ translate('priority') }}</th>
                             <th class="text-center">{{ translate('status') }}</th>
                             <th class="text-center">{{ translate('action') }}</th>
@@ -78,6 +79,13 @@
                             </td>
                             <td class="text-center fw-semibold">
                                 {{ $mapping->cost_currency }} {{ number_format($mapping->calculateSellPrice(), 2) }}
+                            </td>
+                            <td class="text-center">
+                                @if($mapping->isSupplierFirst())
+                                    <span class="badge bg-primary">{{ translate('supplier_api_first') }}</span>
+                                @else
+                                    <span class="badge bg-secondary">{{ translate('local_pool_first') }}</span>
+                                @endif
                             </td>
                             <td class="text-center">{{ $mapping->priority }}</td>
                             <td>
@@ -119,7 +127,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="10" class="text-center py-4">
+                            <td colspan="11" class="text-center py-4">
                                 <div class="d-flex flex-column align-items-center gap-2">
                                     <i class="fi fi-sr-inbox-in fs-1 text-muted"></i>
                                     <span class="text-muted">{{ translate('no_mappings_found') }}</span>

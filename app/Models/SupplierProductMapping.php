@@ -22,6 +22,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string $markup_type percent|flat
  * @property float $markup_value
  * @property int $priority
+ * @property string $code_source_priority local_first|supplier_first
  * @property bool $is_active
  * @property bool $is_customizable
  * @property bool $is_direct_topup
@@ -39,6 +40,10 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  */
 class SupplierProductMapping extends Model
 {
+    public const CODE_SOURCE_LOCAL_FIRST = 'local_first';
+
+    public const CODE_SOURCE_SUPPLIER_FIRST = 'supplier_first';
+
     protected $fillable = [
         'product_id',
         'supplier_api_id',
@@ -51,6 +56,7 @@ class SupplierProductMapping extends Model
         'markup_type',
         'markup_value',
         'priority',
+        'code_source_priority',
         'is_active',
         'is_customizable',
         'is_direct_topup',
@@ -70,6 +76,7 @@ class SupplierProductMapping extends Model
             'cost_price' => 'decimal:10',
             'markup_value' => 'decimal:2',
             'priority' => 'integer',
+            'code_source_priority' => 'string',
             'is_active' => 'boolean',
             'is_customizable' => 'boolean',
             'is_direct_topup' => 'boolean',
@@ -134,6 +141,44 @@ class SupplierProductMapping extends Model
     }
 
     // ─── Helpers ─────────────────────────────────────────────────────────
+
+    public function isSupplierFirst(): bool
+    {
+        return $this->code_source_priority === self::CODE_SOURCE_SUPPLIER_FIRST;
+    }
+
+    public function isLocalFirst(): bool
+    {
+        return ! $this->isSupplierFirst();
+    }
+
+    /**
+     * Whether the partner must choose a supplier denomination (and possibly custom amount)
+     * before ordering. Matches storefront behavior: only required when variable amount
+     * is enabled on the mapping or a variable denomination exists.
+     */
+    public function requiresDenominationSelection(): bool
+    {
+        if ($this->is_customizable) {
+            return true;
+        }
+
+        if ($this->relationLoaded('activeDenominations')) {
+            return $this->activeDenominations->contains(fn (SupplierProductDenomination $denomination): bool => $denomination->isVariable());
+        }
+
+        return $this->variableDenomination()->exists();
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public function codeSourcePriorityOrder(): array
+    {
+        return $this->isSupplierFirst()
+            ? ['supplier_api', 'manual']
+            : ['manual', 'supplier_api'];
+    }
 
     /**
      * Calculate the suggested sell price based on cost + markup.

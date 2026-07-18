@@ -126,15 +126,17 @@ class OrderEditService
         $products = [];
         foreach ($order?->details as $details) {
             $product = json_decode($details->product_details, true);
-            $activeProduct = $productList?->firstWhere('id', $details['product_id']) ?? $product;
+            $dbProduct = $productList?->firstWhere('id', $details['product_id']);
+            $activeProduct = $dbProduct ?? $product;
 
-            $currentStock = $activeProduct ? max(0, $activeProduct['current_stock']) : $product['current_stock'];
-            $variations = is_array($activeProduct['variation']) ? $activeProduct['variation'] : json_decode($activeProduct['variation'], true);
+            $currentStock = max(0, (int) data_get($dbProduct, 'current_stock', data_get($product, 'current_stock', 0)));
+            $variationRaw = data_get($dbProduct, 'variation', data_get($product, 'variation', []));
+            $variations = is_array($variationRaw) ? $variationRaw : (json_decode($variationRaw ?? '[]', true) ?? []);
             $firstVariation = collect($variations)->first(function ($variation) use ($details) {
-                return $variation['type'] == $details['variant'];
+                return ($variation['type'] ?? null) == $details['variant'];
             });
 
-            $unitPrice = $activeProduct ? $activeProduct['unit_price'] : $details['price'];
+            $unitPrice = data_get($dbProduct, 'unit_price', data_get($product, 'unit_price', $details['price'] ?? 0));
 
             if ($details['variant'] && $firstVariation) {
                 $currentStock = $firstVariation['qty'] ?? 0;
@@ -152,8 +154,8 @@ class OrderEditService
             $isQuantityEditable = (bool) ($checkActiveProduct);
 
             if ($checkActiveProduct) {
-                $detailsProductVariation = json_decode($product['variation'], true);
-                $activeProductVariation = json_decode($checkActiveProduct['variation'] ?? '', true);
+                $detailsProductVariation = json_decode(data_get($product, 'variation', '[]') ?: '[]', true) ?? [];
+                $activeProductVariation = json_decode(data_get($checkActiveProduct, 'variation', '[]') ?: '[]', true) ?? [];
                 if (count($activeProductVariation) > 0) {
                     $isQuantityEditable = collect($activeProductVariation)->filter(function ($item) use ($details) {
                         return $item['type'] == $details['variant'];
@@ -197,7 +199,7 @@ class OrderEditService
                     'shipping_method_id' => $details['shipping_method_id'],
                     'variant' => $details['variant'],
                     'variation' => $details['variation'],
-                    'discount_type' => $activeProduct ? $activeProduct['discount_type'] : ($product['discount_type'] ?? ''),
+                    'discount_type' => data_get($dbProduct, 'discount_type', data_get($product, 'discount_type', '')),
                     'is_stock_decreased' => $details['is_stock_decreased'],
                     'refund_request' => $details['refund_request'],
                     'refund_started_at' => now(),

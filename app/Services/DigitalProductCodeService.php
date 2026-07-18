@@ -214,7 +214,7 @@ class DigitalProductCodeService
      * Assigns exactly $detail->qty codes per detail so multi-quantity orders are fulfilled correctly.
      * Idempotent — already-fully-assigned details are skipped.
      */
-    public function assignCodesForOrder(Order $order): void
+    public function assignCodesForOrder(Order $order, ?array $defaultSourcePriority = null): void
     {
         if (! $order->orderDetails) {
             return;
@@ -238,6 +238,18 @@ class DigitalProductCodeService
                 continue;
             }
 
+            $mapping = SupplierProductMapping::query()
+                ->where('product_id', $productId)
+                ->where('is_active', true)
+                ->where('is_direct_topup', false)
+                ->whereHas('supplierApi', fn ($query) => $query->where('is_active', true))
+                ->orderBy('priority')
+                ->first();
+
+            $sourcePriority = $defaultSourcePriority
+                ?? $mapping?->codeSourcePriorityOrder()
+                ?? ['manual', 'supplier_api'];
+
             // How many codes are already assigned for this order detail?
             $alreadyAssigned = DigitalProductCode::query()
                 ->where('order_detail_id', $detail->id)
@@ -252,18 +264,41 @@ class DigitalProductCodeService
 
             for ($i = 0; $i < $needed; $i++) {
                 try {
-                    DB::transaction(function () use ($productId, $detail, $order): void {
-                        /** @var DigitalProductCode|null $record */
-                        $record = DigitalProductCode::query()
-                            ->where('product_id', $productId)
-                            ->where('status', 'available')
-                            ->where('is_active', true)
-                            ->where(function ($q): void {
-                                $q->whereNull('expiry_date')
-                                    ->orWhereDate('expiry_date', '>=', now()->toDateString());
-                            })
-                            ->lockForUpdate()
-                            ->first();
+                    DB::transaction(function () use ($productId, $detail, $order, $sourcePriority): void {
+                        $record = null;
+
+                        foreach ($sourcePriority as $source) {
+                            /** @var DigitalProductCode|null $candidate */
+                            $candidate = DigitalProductCode::query()
+                                ->where('product_id', $productId)
+                                ->where('source', $source)
+                                ->where('status', 'available')
+                                ->where('is_active', true)
+                                ->where(function ($q): void {
+                                    $q->whereNull('expiry_date')
+                                        ->orWhereDate('expiry_date', '>=', now()->toDateString());
+                                })
+                                ->lockForUpdate()
+                                ->first();
+
+                            if ($candidate !== null) {
+                                $record = $candidate;
+                                break;
+                            }
+                        }
+
+                        if ($record === null) {
+                            $record = DigitalProductCode::query()
+                                ->where('product_id', $productId)
+                                ->where('status', 'available')
+                                ->where('is_active', true)
+                                ->where(function ($q): void {
+                                    $q->whereNull('expiry_date')
+                                        ->orWhereDate('expiry_date', '>=', now()->toDateString());
+                                })
+                                ->lockForUpdate()
+                                ->first();
+                        }
 
                         if (! $record) {
                             // No code available — leave remaining units for manual fulfilment / re-stock
@@ -478,10 +513,10 @@ class DigitalProductCodeService
      * Assign codes for a paid order and send customer email in one call.
      * Safe to call from non-Eloquent contexts (e.g. OrderManager raw insert).
      */
-    public function assignAndNotify(Order $order): void
+    public function assignAndNotify(Order $order, ?array $sourcePriority = null): void
     {
         $order->loadMissing('orderDetails');
-        $this->assignCodesForOrder($order);
+        $this->assignCodesForOrder($order, $sourcePriority);
         $this->sendDigitalCodeEmail($order);
     }
 

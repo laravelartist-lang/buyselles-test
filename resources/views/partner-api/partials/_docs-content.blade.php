@@ -99,7 +99,8 @@ Accept: application/json</pre>
                 </table>
                 <div class="fw-semibold mb-2">Product response fields <span class="text-muted small">(sanitized example — structure matches live API)</span></div>
 <pre class="code-block">{!! e($apiExampleFormatter->formatJson($apiExamples['catalog_field_sample'])) !!}</pre>
-                <p class="text-muted small mt-2">Charge price is always <code>pricing.unit_price</code> (or denomination / top-up bundle price). Optional quote: <code>POST /products/{id}/quote</code>.</p>
+                <p class="text-muted small mt-2">Charge price is always <code>pricing.total</code> (catalog subtotal + service fee when enabled). Use <code>POST /products/{id}/quote</code> for the full settlement breakdown: <code>catalog_subtotal</code>, <code>service_fee</code>, <code>supplier_cost_total</code>, <code>admin_margin</code>, and <code>supplier</code> metadata.</p>
+                <p class="text-muted small">Each product includes <code>order_requirements</code> — read this before quote or order to see which params apply (<code>product_id</code>, <code>quantity</code>, optional denomination or direct top-up fields). Supplier-code products (Bamboo) never require <code>direct_topup_account_id</code>.</p>
             </div>
 
             {{-- ── Endpoints ───────────────────────────────────────────── --}}
@@ -162,7 +163,7 @@ Accept: application/json</pre>
                         <span class="text-muted ms-2 small">— {{ translate('get_product_details') }}</span>
                     </div>
                     <div class="endpoint-body">
-                        <p class="text-muted mb-3">{{ translate('product_detail_endpoint_description') }}</p>
+                        <p class="text-muted mb-3">{{ translate('product_detail_endpoint_description') }} The response includes <code>order_requirements</code> describing required and optional params for quote and order on this product.</p>
                         <div class="fw-semibold mb-2">{{ translate('response_example') }} <span class="badge bg-success text-white">200</span> <span class="text-muted small">— sanitized example for GET /api/v1/partner/products/{{ $sampleProductId }}</span></div>
 <pre class="code-block">{!! e($apiExampleFormatter->formatJson($apiExamples['product_detail'])) !!}</pre>
                         <div class="fw-semibold mb-2 mt-3">{{ translate('error_example') }} <span class="badge bg-danger text-white">404</span></div>
@@ -199,7 +200,8 @@ Accept: application/json</pre>
                                 <tr><td><code>X-Idempotency-Key</code></td><td>Recommended</td><td>Any unique string per order attempt (UUID recommended)</td></tr>
                             </tbody>
                         </table>
-                        <div class="fw-semibold mb-2">{{ translate('request_body') }} (JSON)</div>
+                        <div class="fw-semibold mb-2">{{ translate('request_body') }} (JSON or query params)</div>
+                        <p class="text-muted small">Required fields depend on the product — check <code>order_requirements</code> on product detail. Empty optional params (e.g. <code>supplier_denomination_id=</code>) are treated as absent.</p>
                         <table class="table table-sm table-bordered mb-3">
                             <thead class="table-light">
                                 <tr><th>{{ translate('field') }}</th><th>{{ translate('type') }}</th><th>{{ translate('required') }}</th><th>{{ translate('description') }}</th></tr>
@@ -208,6 +210,10 @@ Accept: application/json</pre>
                                 <tr><td><code>product_id</code></td><td>integer</td><td>Yes</td><td>{{ translate('id_from_products_list') }}</td></tr>
                                 <tr><td><code>quantity</code></td><td>integer</td><td>Yes</td><td>{{ translate('number_of_codes_1_to_100') }}</td></tr>
                                 <tr><td><code>reference</code></td><td>string</td><td>No</td><td>{{ translate('your_internal_reference_for_tracking') }}</td></tr>
+                                <tr><td><code>supplier_denomination_id</code></td><td>integer</td><td>When pricing.type is denominations; optional on fixed products with listed denominations</td><td>From <code>pricing.denominations[].id</code></td></tr>
+                                <tr><td><code>custom_amount</code></td><td>number</td><td>Variable denominations</td><td>Face value within min/max</td></tr>
+                                <tr><td><code>expected_total</code></td><td>number</td><td>Denomination / direct top-up</td><td>Copy <code>data.total</code> from quote</td></tr>
+                                <tr><td><code>direct_topup_account_id</code></td><td>string</td><td>Direct top-up only</td><td>Player/account ID — not used for supplier-code (Bamboo) products</td></tr>
                             </tbody>
                         </table>
 <pre class="code-block">POST /api/v1/partner/orders

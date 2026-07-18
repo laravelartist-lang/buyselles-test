@@ -10962,6 +10962,10 @@ return [
 	"last_checked" => "Last checked",
 	"health_status" => "Health status",
 	"lower_number_=_higher_priority" => "Lower number = higher priority",
+	"code_fulfillment_source" => "Code fulfillment source",
+	"local_pool_first" => "Local pool first",
+	"supplier_api_first" => "Supplier API first",
+	"code_fulfillment_source_help" => "Choose whether paid orders should consume local codes first or purchase from the supplier API first. The other source is used only for any remaining quantity.",
 	"rate_limit_per_minute" => "Rate limit per minute",
 	"customer_user_id" => "Customer user id",
 	"descriptive_name_for_this_key" => "Descriptive name for this key",
@@ -11733,4 +11737,7 @@ return [
 	"enter_a_valid_partner_price" => "Enter a valid partner price",
 	"partner_catalog_item_removed" => "Partner catalog item removed",
 	"all_types" => "All types",
+	"global_catalog_help" => "Global catalog help",
+	"api_request_logs" => "Api request logs",
+	"Partner_API_order" => "Partner API order",
 ];

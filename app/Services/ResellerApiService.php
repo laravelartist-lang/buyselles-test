@@ -2,23 +2,20 @@
 
 namespace App\Services;
 
-use App\Jobs\DirectTopUpFulfillmentJob;
-use App\Jobs\ReleasePartnerEscrowJob;
-use App\Jobs\SupplierCodeFetchJob;
 use App\Models\DigitalProductCode;
 use App\Models\Order;
 use App\Models\OrderDetail;
 use App\Models\PartnerCatalogItem;
 use App\Models\PartnerOrderIdempotency;
 use App\Models\ResellerApiKey;
-use App\Models\SellerWallet;
 use App\Services\DirectTopUp\DirectTopUpService;
-use App\Services\Partner\PartnerCatalogPricingService;
+use App\Services\Partner\PartnerOrderQuoteService;
+use App\Services\Partner\PartnerOrderSettlementService;
 use App\Services\Partner\PartnerProductCatalogQuery;
 use App\Services\Partner\PartnerProductPresenter;
 use App\Services\Partner\PartnerProductStockResolver;
 use App\Services\Partner\PartnerWalletService;
-use App\Services\Supplier\SupplierOrderEligibilityService;
+use App\Services\Supplier\MappedProductFulfillmentService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -30,10 +27,11 @@ class ResellerApiService
     public function __construct(
         private readonly PartnerProductCatalogQuery $catalogQuery,
         private readonly PartnerProductPresenter $productPresenter,
-        private readonly PartnerCatalogPricingService $catalogPricing,
+        private readonly PartnerOrderQuoteService $orderQuote,
+        private readonly PartnerOrderSettlementService $orderSettlement,
         private readonly PartnerProductStockResolver $stockResolver,
         private readonly DigitalProductCodeService $codeService,
-        private readonly SupplierOrderEligibilityService $supplierOrderEligibilityService,
+        private readonly MappedProductFulfillmentService $mappedProductFulfillment,
         private readonly PartnerWalletService $partnerWallet,
         private readonly DirectTopUpService $directTopUpService,
     ) {}
@@ -111,7 +109,7 @@ class ResellerApiService
             return null;
         }
 
-        return $this->catalogPricing->quote(
+        return $this->orderQuote->quote(
             catalogItem: $catalogItem,
             quantity: $quantity,
             denominationId: $denominationId,
@@ -152,7 +150,7 @@ class ResellerApiService
         }
 
         $product = $previewItem->product;
-        $isDirectTopUp = (bool) $product->supplierMapping?->is_direct_topup;
+        $isDirectTopUp = $this->directTopUpService->isDirectTopUpProduct($product);
 
         if ($isDirectTopUp) {
             $bundleQuantity = $this->directTopUpService->resolveBundleQuantity($product);
@@ -170,7 +168,8 @@ class ResellerApiService
                 ];
             }
         } else {
-            $availableCount = $this->stockResolver->resolve($product);
+            $mapping = $this->stockResolver->resolveActiveCodeMapping($product);
+            $availableCount = $this->stockResolver->resolveForOrder($product, $mapping);
 
             if ($availableCount < $quantity) {
                 return [
@@ -183,7 +182,7 @@ class ResellerApiService
         }
 
         try {
-            return DB::transaction(function () use (
+            $result = DB::transaction(function () use (
                 $resellerKey,
                 $productId,
                 $quantity,
@@ -204,13 +203,13 @@ class ResellerApiService
                     return ['error' => 'Product is not available in this partner catalog.', 'status' => 404];
                 }
 
-                $quote = $this->catalogPricing->quote(
+                $quote = $this->orderQuote->quote(
                     catalogItem: $catalogItem,
                     quantity: $quantity,
                     denominationId: $denominationId,
                     customAmount: $customAmount,
                 );
-                $totalCost = $quote['subtotal'];
+                $totalCost = (float) $quote['total'];
 
                 if ($expectedTotal !== null && abs($expectedTotal - $totalCost) >= 0.0000001) {
                     return [
@@ -234,7 +233,7 @@ class ResellerApiService
                 }
 
                 $product = $catalogItem->product;
-                $isDirectTopUp = (bool) $product->supplierMapping?->is_direct_topup;
+                $isDirectTopUp = $this->directTopUpService->isDirectTopUpProduct($product);
 
                 $order = Order::withoutEvents(function () use ($resellerKey, $totalCost, $reference) {
                     return Order::create([
@@ -262,6 +261,10 @@ class ResellerApiService
                     'price' => $quote['unit_price'],
                     'custom_amount' => $quote['custom_amount'],
                     'supplier_denomination_id' => $quote['denomination_id'],
+                    'partner_supplier_api_id' => $quote['supplier']['id'] ?? null,
+                    'partner_supplier_product_mapping_id' => $quote['supplier']['mapping_id'] ?? null,
+                    'partner_supplier_cost_total' => (float) $quote['supplier_cost_total'],
+                    'partner_admin_margin' => (float) $quote['admin_margin'],
                     'direct_topup_account_id' => $isDirectTopUp ? trim((string) $directTopUpAccountId) : null,
                     'direct_topup_quantity' => $isDirectTopUp
                         ? $this->directTopUpService->resolveBundleQuantity($product)
@@ -271,34 +274,42 @@ class ResellerApiService
                     'product_type' => 'digital',
                     'digital_product_type' => $product->digital_product_type,
                     'payment_status' => 'paid',
+                    'delivery_status' => 'pending',
                 ]);
+
+                $this->orderSettlement->settle($order, $orderDetail, $quote, $product);
 
                 $order->load('orderDetails');
 
-                if ($isDirectTopUp) {
-                    DirectTopUpFulfillmentJob::dispatch($order->id);
-                } else {
-                    $this->codeService->assignAndNotify($order);
+                $fulfillmentMeta = [
+                    'supplier_order_id' => null,
+                    'supplier_request_id' => null,
+                ];
 
-                    if ($this->supplierOrderEligibilityService->orderNeedsSupplierCodeFetch($order)) {
-                        SupplierCodeFetchJob::dispatch($order->id);
+                if (! $isDirectTopUp) {
+                    $fulfillment = $this->mappedProductFulfillment->fulfillPartnerOrder($order);
+
+                    if ($fulfillment['failed']) {
+                        throw new \RuntimeException((string) ($fulfillment['error'] ?? 'Supplier fulfillment failed.'));
                     }
+
+                    $fulfillmentMeta['supplier_order_id'] = $fulfillment['supplier_order_id'] ?? null;
+                    $fulfillmentMeta['supplier_request_id'] = $fulfillment['supplier_request_id'] ?? null;
                 }
 
                 $codes = $isDirectTopUp ? [] : $this->collectOrderCodes($order);
                 $quantityFulfilled = count($codes);
                 $isFulfilled = ! $isDirectTopUp && $quantityFulfilled >= $quantity;
+                $isPending = ! $isDirectTopUp && ! $isFulfilled;
 
                 $order->update([
                     'order_status' => $isFulfilled ? 'delivered' : 'processing',
                 ]);
 
-                $sellerId = $product->user_id;
-                SellerWallet::where('seller_id', $sellerId)
-                    ->increment('pending_balance', $totalCost);
-
-                ReleasePartnerEscrowJob::dispatch($order->id, $sellerId, $totalCost)
-                    ->delay(now()->addHours(48));
+                $supplierPayload = $quote['supplier'] ?? null;
+                if (is_array($supplierPayload) && $fulfillmentMeta['supplier_request_id']) {
+                    $supplierPayload['request_id'] = $fulfillmentMeta['supplier_request_id'];
+                }
 
                 $result = [
                     'data' => [
@@ -308,11 +319,13 @@ class ResellerApiService
                         'quantity_requested' => $quantity,
                         'quantity_fulfilled' => $quantityFulfilled,
                         'total_cost' => $totalCost,
-                        'pricing' => $quote,
+                        'pricing' => $this->formatOrderPricing($quote),
+                        'supplier' => $supplierPayload,
                         'status' => $isFulfilled ? 'fulfilled' : 'pending_fulfillment',
                         'reference' => $reference,
                         'order_detail_id' => $orderDetail->id,
                         'codes' => $codes,
+                        'supplier_order_id' => $fulfillmentMeta['supplier_order_id'],
                     ],
                 ];
 
@@ -327,6 +340,22 @@ class ResellerApiService
 
                 return $result;
             });
+
+            if (! isset($result['error']) && isset($result['data']['order_id'])) {
+                $order = Order::query()->with('orderDetails')->find((int) $result['data']['order_id']);
+
+                if ($order !== null) {
+                    $this->mappedProductFulfillment->dispatchAsyncFallbackIfNeeded($order);
+                }
+            }
+
+            return $result;
+        } catch (\RuntimeException $e) {
+            return [
+                'error' => $e->getMessage(),
+                'code' => 'supplier_fulfillment_failed',
+                'status' => 502,
+            ];
         } catch (InvalidArgumentException $e) {
             return ['error' => $e->getMessage(), 'status' => 422];
         } catch (\Throwable $e) {
@@ -365,6 +394,9 @@ class ResellerApiService
         $codes = $this->collectOrderCodes($order);
         $quantityRequested = (int) $order->orderDetails->sum('qty');
         $quantityFulfilled = count($codes);
+        $detail = $order->orderDetails->first();
+        $snapshot = $detail !== null ? json_decode((string) $detail->product_details, true) : null;
+        $quote = is_array($snapshot['pricing'] ?? null) ? $snapshot['pricing'] : null;
 
         return [
             'order_id' => $order->id,
@@ -376,13 +408,47 @@ class ResellerApiService
             'quantity_requested' => $quantityRequested,
             'quantity_fulfilled' => $quantityFulfilled,
             'total' => (float) $order->order_amount,
+            'pricing' => $quote !== null
+                ? $this->formatOrderPricing($quote)
+                : [
+                    'catalog_subtotal' => (float) ($order->order_amount - ($order->customer_service_fee ?? 0)),
+                    'service_fee' => (float) ($order->customer_service_fee ?? 0),
+                    'service_fee_type' => $order->customer_service_fee_type,
+                    'supplier_cost' => (float) ($detail?->partner_supplier_cost_total ?? 0),
+                    'admin_margin' => (float) ($order->admin_commission ?? 0),
+                    'total' => (float) $order->order_amount,
+                ],
+            'supplier' => $quote['supplier'] ?? null,
             'created_at' => $order->created_at?->toIso8601String(),
-            'items' => $order->orderDetails->map(fn ($detail) => [
-                'product_id' => $detail->product_id,
-                'quantity' => $detail->qty,
-                'price' => (float) $detail->price,
+            'items' => $order->orderDetails->map(fn ($orderDetail) => [
+                'product_id' => $orderDetail->product_id,
+                'quantity' => $orderDetail->qty,
+                'price' => (float) $orderDetail->price,
             ])->all(),
             'codes' => $codes,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $quote
+     * @return array<string, mixed>
+     */
+    private function formatOrderPricing(array $quote): array
+    {
+        return [
+            'price_type' => $quote['price_type'] ?? null,
+            'currency' => $quote['currency'] ?? null,
+            'unit_price' => (float) ($quote['unit_price'] ?? 0),
+            'quantity' => (int) ($quote['quantity'] ?? 1),
+            'catalog_subtotal' => (float) ($quote['catalog_subtotal'] ?? $quote['subtotal'] ?? 0),
+            'subtotal' => (float) ($quote['catalog_subtotal'] ?? $quote['subtotal'] ?? 0),
+            'service_fee' => (float) ($quote['service_fee'] ?? 0),
+            'service_fee_type' => $quote['service_fee_type'] ?? null,
+            'supplier_cost' => (float) ($quote['supplier_cost_total'] ?? 0),
+            'admin_margin' => (float) ($quote['admin_margin'] ?? 0),
+            'total' => (float) ($quote['total'] ?? 0),
+            'denomination_id' => $quote['denomination_id'] ?? null,
+            'custom_amount' => isset($quote['custom_amount']) ? (float) $quote['custom_amount'] : null,
         ];
     }
 

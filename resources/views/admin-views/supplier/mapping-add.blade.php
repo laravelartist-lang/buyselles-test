@@ -103,6 +103,10 @@
                         </div>
                     </div>
 
+                    @include('admin-views.supplier.partials._mapping-code-source-priority', [
+                        'selected' => old('code_source_priority', \App\Models\SupplierProductMapping::CODE_SOURCE_LOCAL_FIRST),
+                    ])
+
                     {{-- ─── Customizable / Variable Amount ──────────────────────────── --}}
                     <div class="col-lg-12">
                         <hr class="my-2">
