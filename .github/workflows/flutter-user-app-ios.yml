@@ -1,0 +1,48 @@
+name: Build User App (iOS)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'mobile/user_app/**'
+      - '.github/workflows/flutter-user-app-ios.yml'
+
+concurrency:
+  group: flutter-user-app-ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-ios:
+    name: Build iOS (no signing)
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: mobile/user_app
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Verify Flutter SDK
+        run: flutter --version
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build iOS app (unsigned)
+        run: flutter build ios --release --no-codesign
+
+      - name: Upload unsigned build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: user-app-ios-unsigned
+          path: mobile/user_app/build/ios/iphoneos/Runner.app
+          if-no-files-found: error
+          retention-days: 7
