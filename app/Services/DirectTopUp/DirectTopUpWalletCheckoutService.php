@@ -13,6 +13,7 @@ use App\Services\Order\OrderFulfillmentStatusService;
 use App\Services\Partner\PartnerOrderRefundService;
 use App\Services\Supplier\SupplierManager;
 use App\Services\Wallet\FailedWalletOrderRefundService;
+use App\Utils\CartManager;
 use App\Utils\Convert;
 use App\Utils\CustomerManager;
 use App\Utils\OrderManager;
@@ -229,6 +230,11 @@ class DirectTopUpWalletCheckoutService
      */
     private function cancelUnpaidCheckoutOrders(array $orderIds, string $error, int $customerId): void
     {
+        $deferred = session('deferred_checkout_completion');
+        if (is_array($deferred) && ! empty($deferred['cart_group_ids'])) {
+            CartManager::cartCleanByCartGroupIds(cartGroupIDs: $deferred['cart_group_ids']);
+        }
+
         OrderManager::discardDeferredCheckout();
 
         foreach ($orderIds as $orderId) {

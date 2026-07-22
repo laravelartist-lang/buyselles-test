@@ -199,8 +199,9 @@
 
                                         {{-- Hidden wallet payment form (no modal) --}}
                                         @if (auth('customer')->check() && $wallet_status == 1)
-                                            <form id="wallet_payment_form" action="{{ route('checkout-complete-wallet') }}" method="get" class="d-none">
+                                            <form id="wallet_payment_form" action="{{ route('checkout-complete-wallet') }}" method="post" class="d-none">
                                                 @csrf
+                                                <input type="hidden" name="idempotency_key" value="{{ session('customer_wallet_checkout_idempotency_key', (string) \Illuminate\Support\Str::uuid()) }}">
                                             </form>
                                         @endif
 

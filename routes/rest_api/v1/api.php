@@ -329,6 +329,7 @@ Route::group(['prefix' => 'v1', 'middleware' => ['api_lang']], function () {
         Route::group(['prefix' => 'order'], function () {
             Route::controller(OrderController::class)->group(function () {
                 Route::get('place-by-wallet', 'placeOrderByWallet');
+                Route::post('place-by-wallet', 'placeOrderByWallet');
                 Route::get('refund', 'refund_request');
                 Route::post('refund-store', 'store_refund');
                 Route::get('refund-details', 'refund_details');

@@ -91,8 +91,9 @@ function checkoutFromPayment() {
     // Wallet payment: submit hidden form directly — no modal.
     // Balance validation happens server-side in the controller.
     if (checked_button_id === 'wallet_payment') {
-        $(".action-checkout-function").removeAttr("disabled").removeClass("disabled");
-        $('#wallet_payment_form').submit();
+        const $walletForm = $('#wallet_payment_form');
+        $walletForm.find('button[type="submit"], input[type="submit"]').prop('disabled', true);
+        $walletForm.trigger('submit');
         return;
     }
     $("#" + checked_button_id + "_form").submit();

@@ -326,8 +326,9 @@
                     @php $couponAmount = session()->has('coupon_discount') ? session('coupon_discount') : 0; @endphp
                     @php $totalAmount = $amount; @endphp
                     @php $remain_balance = $customer_balance - $totalAmount; @endphp
-                    <form action="{{ route('checkout-complete-wallet') }}" method="get" class="needs-validation">
+                    <form action="{{ route('checkout-complete-wallet') }}" method="post" class="needs-validation">
                         @csrf
+                        <input type="hidden" name="idempotency_key" value="{{ session('customer_wallet_checkout_idempotency_key', (string) \Illuminate\Support\Str::uuid()) }}">
                         <div class="modal-body">
                             <div class="form-row">
                                 <div class="form-group col-12">

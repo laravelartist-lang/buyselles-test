@@ -35,7 +35,6 @@ use App\Models\User;
 use App\Models\Wishlist;
 use App\Services\CustomerServiceFeeService;
 use App\Services\DigitalCodeCustomerExportService;
-use App\Services\DirectTopUp\DirectTopUpWalletCheckoutService;
 use App\Services\ProductService;
 use App\Services\RecaptchaService;
 use App\Services\ShopService;
@@ -47,7 +46,6 @@ use App\Traits\SmsGateway;
 use App\Utils\BrandManager;
 use App\Utils\CartManager;
 use App\Utils\CategoryManager;
-use App\Utils\Convert;
 use App\Utils\CustomerManager;
 use App\Utils\Helpers;
 use App\Utils\OrderManager;
@@ -1035,88 +1033,26 @@ class WebController extends Controller
             return isset($response['redirect']) ? redirect($response['redirect']) : redirect('/');
         }
 
-        $vendorWiseCartList = OrderManager::processOrderGenerateData(data: [
-            'coupon_code' => session('coupon_code') ?? '',
-            'requestObj' => $request,
-        ]);
-        $vendorCollection = collect($vendorWiseCartList);
-        $amountBeforeServiceFee = (float) (
-            $vendorCollection->sum('order_amount_with_tax')
-            - $vendorCollection->sum('refer_and_earn_discount')
-        );
-        $paymentAmount = app(CustomerServiceFeeService::class)
-            ->calculateCheckoutPayable(amountBeforeServiceFee: $amountBeforeServiceFee)['payable_amount'];
+        app(\App\Services\Order\CustomerCheckoutGuardService::class)
+            ->ensureWebWalletCheckoutIdempotencyKey($request);
 
-        $user = Helpers::getCustomerInformation($request);
-        if (round($paymentAmount, 4) > round($user->wallet_balance, 4)) {
-            Toastr::warning(translate('Inefficient_balance_in_your_wallet_to_pay_for_this_order').'!!');
+        $result = app(\App\Services\Order\CustomerWalletCheckoutService::class)->placeOrder($request);
+        $payload = $result['payload'];
 
-            return back();
-        } else {
-            $cart_group_ids = CartManager::get_cart_group_ids(type: 'checked');
-            $carts = Cart::whereHas('product', function ($query) {
-                return $query->active();
-            })->with('product')
-                ->whereIn('cart_group_id', $cart_group_ids)
-                ->where(['is_checked' => 1])->get();
-
-            $productStockCheck = CartManager::product_stock_check($carts);
-            if (! $productStockCheck) {
-                Toastr::error(translate('the_following_items_in_your_cart_are_currently_out_of_stock'));
-
-                return redirect()->route('shop-cart');
+        if ($result['http_status'] !== 200) {
+            $message = $payload['message'] ?? translate('Something_went_wrong');
+            Toastr::error($message);
+            if ($result['http_status'] === 422) {
+                session()->flash('direct_topup_checkout_error', $message);
             }
 
-            $verifyStatus = OrderManager::verifyCartListMinimumOrderAmount($request);
-            if ($verifyStatus['status'] == 0) {
-                Toastr::info(translate('check_minimum_order_amount_requirement'));
+            return redirect()->route('shop-cart');
+        }
 
-                return redirect()->route('shop-cart');
-            }
+        $order_ids = $payload['order_ids'] ?? [];
 
-            $directTopUpCheckout = app(DirectTopUpWalletCheckoutService::class);
-            $requiresFulfillmentBeforePayment = $directTopUpCheckout->requiresFulfillmentBeforePayment($carts);
-
-            $order_ids = OrderManager::generateOrder(data: [
-                'order_status' => $requiresFulfillmentBeforePayment ? 'pending' : 'confirmed',
-                'payment_method' => 'pay_by_wallet',
-                'payment_status' => $requiresFulfillmentBeforePayment ? 'unpaid' : 'paid',
-                'defer_checkout_completion' => $requiresFulfillmentBeforePayment,
-                'transaction_ref' => '',
-                'coupon_code' => session('coupon_code'),
-                'address_id' => session('address_id'),
-                'billing_address_id' => session('billing_address_id'),
-                'requestObj' => $request,
-            ]);
-
-            if ($requiresFulfillmentBeforePayment) {
-                $checkoutResult = $directTopUpCheckout->completeWalletPaymentAfterFulfillment(
-                    $order_ids,
-                    (int) $user->id,
-                    $paymentAmount
-                );
-
-                if (! $checkoutResult['success']) {
-                    Toastr::error($checkoutResult['error']);
-                    session()->flash('direct_topup_checkout_error', $checkoutResult['error']);
-
-                    return redirect()->route('shop-cart');
-                }
-
-                if ($checkoutResult['pending'] ?? false) {
-                    Toastr::success(translate('direct_topup_order_processing'));
-                }
-            } elseif ($directTopUpCheckout->requiresFulfillmentBeforePayment($carts)) {
-                Toastr::error(translate('direct_topup_fulfillment_failed'));
-
-                return redirect()->route('shop-cart');
-            } else {
-                CustomerManager::create_wallet_transaction($user->id, Convert::default($paymentAmount), 'order_place', 'order payment', [], $order_ids);
-            }
-
-            foreach ($order_ids as $order_id) {
-                OrderManager::generateReferBonusForFirstOrder(orderId: $order_id);
-            }
+        foreach ($order_ids as $order_id) {
+            OrderManager::generateReferBonusForFirstOrder(orderId: $order_id);
         }
 
         if (session()->has('payment_mode') && session('payment_mode') == 'app') {

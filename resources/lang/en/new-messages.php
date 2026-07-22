@@ -3580,6 +3580,7 @@ return [
     'cart' => 'Cart',
     'cart_empty' => 'Cart empty',
     'cart_is_empty' => 'Cart is empty',
+    'checkout_already_in_progress' => 'A checkout is already in progress. Please wait a moment and try again.',
     'cart_key_or_ID_is_required' => 'Cart key or ID is required',
     'cart_list' => 'Cart list',
     'cart_updated' => 'Cart updated',

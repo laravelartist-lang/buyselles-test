@@ -136,7 +136,7 @@ Route::group(['namespace' => 'Web', 'middleware' => ['maintenance_mode', 'guestC
         Route::post('digital-product-download-otp-verify', 'getDigitalProductDownloadOtpVerify')->name('digital-product-download-otp-verify');
         Route::post('digital-product-download-otp-reset', 'getDigitalProductDownloadOtpReset')->name('digital-product-download-otp-reset');
         Route::get('pay-offline-method-list', 'pay_offline_method_list')->name('pay-offline-method-list')->middleware('guestCheck');
-        Route::get('checkout-complete-wallet', 'checkout_complete_wallet')->name('checkout-complete-wallet');
+        Route::match(['get', 'post'], 'checkout-complete-wallet', 'checkout_complete_wallet')->name('checkout-complete-wallet');
 
         Route::post('subscription', 'subscription')->name('subscription');
         Route::get('search-shop', 'search_shop')->name('search-shop');

@@ -91,10 +91,28 @@ class CheckoutRepository implements CheckoutRepositoryInterface{
 
 
   @override
-  Future<ApiResponseModel> walletPaymentPlaceOrder(String? addressID, String? couponCode,String? couponDiscountAmount, String? billingAddressId, String? orderNote, bool? isCheckCreateAccount, String? password) async {
-    int isCheckAccount = isCheckCreateAccount! ? 1: 0;
+  Future<ApiResponseModel> walletPaymentPlaceOrder(String? addressID, String? couponCode,String? couponDiscountAmount, String? billingAddressId, String? orderNote, bool? isCheckCreateAccount, String? password, {String? idempotencyKey}) async {
+    final isCheckAccount = isCheckCreateAccount! ? 1 : 0;
     try {
-      final response = await dioClient!.get('${AppConstants.walletPayment}?address_id=$addressID&coupon_code=$couponCode&coupon_discount=$couponDiscountAmount&billing_address_id=$billingAddressId&order_note=$orderNote&guest_id=${Provider.of<AuthController>(Get.context!, listen: false).getGuestToken()}&is_guest=${Provider.of<AuthController>(Get.context!, listen: false).isLoggedIn()? 0 :1}&is_check_create_account=$isCheckAccount&password=$password',);
+      final response = await dioClient!.post(
+        AppConstants.walletPayment,
+        data: {
+          'address_id': addressID,
+          'coupon_code': couponCode,
+          'coupon_discount': couponDiscountAmount,
+          'billing_address_id': billingAddressId,
+          'order_note': orderNote,
+          'guest_id': Provider.of<AuthController>(Get.context!, listen: false).getGuestToken(),
+          'is_guest': Provider.of<AuthController>(Get.context!, listen: false).isLoggedIn() ? 0 : 1,
+          'is_check_create_account': isCheckAccount,
+          'password': password,
+          'idempotency_key': idempotencyKey,
+        },
+        options: Options(headers: {
+          if (idempotencyKey != null && idempotencyKey.isNotEmpty)
+            'X-Idempotency-Key': idempotencyKey,
+        }),
+      );
       return ApiResponseModel.withSuccess(response);
     } catch (e) {
       return ApiResponseModel.withError(ApiErrorHandler.getMessage(e));

@@ -18,12 +18,10 @@ use App\Models\RefundRequest;
 use App\Models\Setting;
 use App\Models\ShippingAddress;
 use App\Models\User;
-use App\Services\CustomerServiceFeeService;
 use App\Services\OrderService;
 use App\Traits\CommonTrait;
 use App\Traits\FileManagerTrait;
 use App\Utils\CartManager;
-use App\Utils\Convert;
 use App\Utils\CustomerManager;
 use App\Utils\Helpers;
 use App\Utils\ImageManager;
@@ -371,117 +369,9 @@ class OrderController extends Controller
 
     public function placeOrderByWallet(Request $request): JsonResponse
     {
-        $cartGroupIds = CartManager::get_cart_group_ids(request: $request, type: 'checked');
-        $carts = Cart::whereHas('product', function ($query) {
-            return $query->active();
-        })->with('product')->whereIn('cart_group_id', $cartGroupIds)->where(['is_checked' => 1])->get();
+        $result = app(\App\Services\Order\CustomerWalletCheckoutService::class)->placeOrder($request);
 
-        $product_stock = CartManager::product_stock_check($carts);
-        if (! $product_stock) {
-            $digitalErrors = app(\App\Services\DigitalProductCodeService::class)->getDigitalStockErrors($carts);
-            $errorMsg = ! empty($digitalErrors)
-                ? implode(' | ', $digitalErrors)
-                : translate('The_following_items_in_your_cart_are_currently_out_of_stock');
-
-            return response()->json(['message' => $errorMsg], 403);
-        }
-
-        $verifyStatus = OrderManager::verifyCartListMinimumOrderAmount($request);
-        if ($verifyStatus['status'] == 0) {
-            return response()->json(['message' => 'Check minimum order amount requirement'], 403);
-        }
-
-        $vendorWiseCartList = OrderManager::processOrderGenerateData(data: [
-            'coupon_code' => $request['coupon_code'] ?? '',
-            'requestObj' => $request,
-        ]);
-        $vendorCollection = collect($vendorWiseCartList);
-        $amountBeforeServiceFee = (float) (
-            $vendorCollection->sum('order_amount_with_tax')
-            - $vendorCollection->sum('refer_and_earn_discount')
-        );
-        $paymentAmount = app(CustomerServiceFeeService::class)
-            ->calculateCheckoutPayable(amountBeforeServiceFee: $amountBeforeServiceFee)['payable_amount'];
-
-        $user = Helpers::getCustomerInformation($request);
-        if (round($paymentAmount, 4) > round($user->wallet_balance, 4)) {
-            return response()->json(['message' => 'inefficient balance in your wallet to pay for this order'], 403);
-        } else {
-            $physical_product = false;
-            foreach ($carts as $cart) {
-                if ($cart->product_type == 'physical') {
-                    $physical_product = true;
-                }
-            }
-
-            if ($physical_product) {
-                $zip_restrict_status = getWebConfig(name: 'delivery_zip_code_area_restriction');
-                $country_restrict_status = getWebConfig(name: 'delivery_country_restriction');
-
-                if ($request->has('billing_address_id') && $request['billing_address_id']) {
-                    $shipping_address = ShippingAddress::where(['customer_id' => $request->user()->id, 'id' => $request->input('billing_address_id')])->first();
-
-                    if (! $shipping_address) {
-                        return response()->json(['message' => translate('address_not_found')], 403);
-                    } elseif ($country_restrict_status && ! self::delivery_country_exist_check($shipping_address->country)) {
-                        return response()->json(['message' => translate('Delivery_unavailable_for_this_country')], 403);
-                    } elseif ($zip_restrict_status && ! self::delivery_zipcode_exist_check($shipping_address->zip)) {
-                        return response()->json(['message' => translate('Delivery_unavailable_for_this_zip_code_area')], 403);
-                    }
-                }
-            }
-
-            $directTopUpCheckout = app(\App\Services\DirectTopUp\DirectTopUpWalletCheckoutService::class);
-            $requiresFulfillmentBeforePayment = $directTopUpCheckout->requiresFulfillmentBeforePayment($carts);
-
-            $orderIds = OrderManager::generateOrder(data: [
-                'is_guest' => 0,
-                'guest_id' => 0,
-                'customer_id' => $user['id'],
-                'order_status' => $requiresFulfillmentBeforePayment ? 'pending' : 'confirmed',
-                'payment_method' => 'pay_by_wallet',
-                'payment_status' => $requiresFulfillmentBeforePayment ? 'unpaid' : 'paid',
-                'defer_checkout_completion' => $requiresFulfillmentBeforePayment,
-                'transaction_ref' => '',
-                'address_id' => $request['address_id'],
-                'billing_address_id' => $request['billing_address_id'],
-                'payment_note' => $request['payment_note'],
-                'order_note' => $request['order_note'],
-                'coupon_code' => $request['coupon_code'],
-                'requestObj' => $request,
-            ]);
-
-            if ($requiresFulfillmentBeforePayment) {
-                $checkoutResult = $directTopUpCheckout->completeWalletPaymentAfterFulfillment(
-                    $orderIds,
-                    (int) $user['id'],
-                    $paymentAmount
-                );
-
-                if (! $checkoutResult['success']) {
-                    return response()->json([
-                        'message' => $checkoutResult['error'],
-                    ], 422);
-                }
-            } elseif ($directTopUpCheckout->requiresFulfillmentBeforePayment($carts)) {
-                return response()->json([
-                    'message' => translate('direct_topup_fulfillment_failed'),
-                ], 422);
-            } else {
-                CustomerManager::create_wallet_transaction($user->id, Convert::default($paymentAmount), 'order_place', 'order payment', [], $orderIds);
-            }
-
-            $firstOrder = ! empty($orderIds) ? Order::query()->find($orderIds[0]) : null;
-            $orderStatus = $firstOrder?->order_status;
-            $pendingFulfillment = in_array($orderStatus, ['pending', 'processing'], true);
-
-            return response()->json([
-                'messages' => translate('order_placed_successfully'),
-                'order_ids' => $orderIds,
-                'order_status' => $orderStatus,
-                'pending_fulfillment' => $pendingFulfillment,
-            ], 200);
-        }
+        return response()->json($result['payload'], $result['http_status']);
     }
 
     public function refund_request(Request $request): JsonResponse

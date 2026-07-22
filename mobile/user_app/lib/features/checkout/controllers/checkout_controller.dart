@@ -64,10 +64,27 @@ class CheckoutController with ChangeNotifier {
 
 
 
+  String? _walletCheckoutIdempotencyKey;
+
+  String _walletCheckoutIdempotencyKeyValue() {
+    _walletCheckoutIdempotencyKey ??=
+        '${DateTime.now().microsecondsSinceEpoch}-${identityHashCode(this)}';
+
+    return _walletCheckoutIdempotencyKey!;
+  }
+
+  void _resetWalletCheckoutIdempotencyKey() {
+    _walletCheckoutIdempotencyKey = null;
+  }
+
   Future<void> placeOrder({required Function callback, String? addressID,
         String? couponCode, String? couponAmount,
         String? billingAddressId, String? orderNote, String? transactionId,
         String? paymentNote, int? id, String? name,bool isfOffline = false, bool wallet = false}) async {
+    if (_isLoading) {
+      return;
+    }
+
     for(TextEditingController textEditingController in inputFieldControllerList) {
       inputValueList.add(textEditingController.text.trim());
 
@@ -80,7 +97,16 @@ class CheckoutController with ChangeNotifier {
     isfOffline?
     apiResponse = await checkoutServiceInterface.offlinePaymentPlaceOrder(addressID, couponCode, couponAmount, billingAddressId, orderNote, keyList, inputValueList, offlineMethodSelectedId, offlineMethodSelectedName, paymentNote, _isCheckCreateAccount, passwordController.text.trim()):
     wallet?
-    apiResponse = await checkoutServiceInterface.walletPaymentPlaceOrder(addressID, couponCode, couponAmount, billingAddressId, orderNote, _isCheckCreateAccount, passwordController.text.trim()):
+    apiResponse = await checkoutServiceInterface.walletPaymentPlaceOrder(
+      addressID,
+      couponCode,
+      couponAmount,
+      billingAddressId,
+      orderNote,
+      _isCheckCreateAccount,
+      passwordController.text.trim(),
+      idempotencyKey: _walletCheckoutIdempotencyKeyValue(),
+    ):
 
     apiResponse = await checkoutServiceInterface.cashOnDeliveryPlaceOrder(
       addressID: addressID,
@@ -96,7 +122,6 @@ class CheckoutController with ChangeNotifier {
 
     if (apiResponse.response != null && apiResponse.response!.statusCode == 200) {
       _isCheckCreateAccount = false;
-      _isLoading = false;
       _addressIndex = null;
       _billingAddressIndex = null;
       sameAsBilling = false;
@@ -106,6 +131,8 @@ class CheckoutController with ChangeNotifier {
 
       String message = apiResponse.response!.data.toString();
       callback(true, message, extractId(apiResponse.response!.data['order_ids'].toString()), _newUser);
+      _resetWalletCheckoutIdempotencyKey();
+      _isLoading = false;
     } else {
       _isLoading = false;
      ApiChecker.checkApi(apiResponse);
