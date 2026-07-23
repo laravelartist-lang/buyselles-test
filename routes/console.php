@@ -4,7 +4,6 @@ use App\Console\Commands\MarkExpiredDigitalCodesCommand;
 use App\Console\Commands\SyncExchangeRatesCommand;
 use App\Jobs\AutoReleaseEscrowJob;
 use App\Jobs\SupplierHealthCheckJob;
-use App\Jobs\SupplierStockSyncJob;
 use App\Jobs\SyncSupplierMappingPricesJob;
 use Illuminate\Support\Facades\Schedule;
 
@@ -18,11 +17,10 @@ Schedule::command(SyncExchangeRatesCommand::class)->dailyAt('00:00');
 // Refresh mapped supplier cost prices from live API data.
 Schedule::job(new SyncSupplierMappingPricesJob)->dailyAt('01:00');
 
-// Sync stock levels from supplier APIs for all active auto-restock mappings.
-Schedule::job(new SupplierStockSyncJob)->everyFifteenMinutes();
-
 // Ping all active suppliers to monitor health/availability.
 Schedule::job(new SupplierHealthCheckJob)->everyFiveMinutes();
+
+// Supplier stock sync (fetch_stock) is manual-only via admin "Sync Prices" — not scheduled.
 
 // Auto-release escrows past their release deadline (no active dispute).
 Schedule::job(new AutoReleaseEscrowJob)->hourly();
