@@ -152,12 +152,13 @@ class CustomerAPIAuthController extends Controller
                 $temporaryToken = Str::random(40);
                 $phoneVerification = getLoginConfig(key: 'phone_verification') ?? 0;
                 $emailVerification = getLoginConfig(key: 'email_verification') ?? 0;
-                $emailVerification = ! $phoneVerification ? $emailVerification : 0;
 
                 if (
                     ($phoneVerification && ! $user['is_phone_verified']) ||
                     ($emailVerification && ! $user['is_email_verified'])
                 ) {
+                    auth()->logout();
+
                     return response()->json([
                         'temporary_token' => $temporaryToken,
                         'status' => false,
@@ -256,10 +257,7 @@ class CustomerAPIAuthController extends Controller
         }
 
         $token = (config('app.mode') == 'live') ? rand(100000, 999999) : 123456;
-        $this->phoneOrEmailVerificationRepo->updateOrCreate(params: ['phone_or_email' => $request['phone']], value: [
-            'phone_or_email' => $request['phone'],
-            'token' => $token,
-        ]);
+        $this->storeCustomerOtpVerification($request['phone'], $token);
 
         $response = SMSModule::sendCentralizedSMS($request['phone'], $token);
         if (config('app.mode') == 'dev') {
@@ -310,10 +308,7 @@ class CustomerAPIAuthController extends Controller
 
             $token = (config('app.mode') == 'live') ? rand(100000, 999999) : 123456;
 
-            $this->phoneOrEmailVerificationRepo->updateOrCreate(params: ['phone_or_email' => $request['email']], value: [
-                'phone_or_email' => $request['email'],
-                'token' => $token,
-            ]);
+            $this->storeCustomerOtpVerification($request['email'], $token);
 
             try {
                 $emailServices = getWebConfig(name: 'mail_config');
@@ -364,7 +359,7 @@ class CustomerAPIAuthController extends Controller
             return response()->json(['errors' => Helpers::validationErrorProcessor($validator)], 403);
         }
 
-        $verify = $this->phoneOrEmailVerificationRepo->getFirstWhere(params: ['phone_or_email' => $request['phone'], 'token' => $request['token']]);
+        $verify = $this->phoneOrEmailVerificationRepo->getFirstWhere(params: ['phone_or_email' => $request['phone'], 'token' => (string) $request['token']]);
         $verificationData = $this->phoneOrEmailVerificationRepo->getFirstWhere(params: ['phone_or_email' => $request['phone']]);
 
         $verifyStatus = $this->checkCustomerOTPBlockTimeOrInvalid(verificationData: $verificationData, identity: $request['phone']);
@@ -377,6 +372,7 @@ class CustomerAPIAuthController extends Controller
         }
 
         if (isset($verify)) {
+            $this->resetCustomerOTPAttempts($request['phone']);
             $user = $this->customerRepo->getFirstWhere(params: ['phone' => $request['phone']]);
 
             if (! $user) {
@@ -424,6 +420,8 @@ class CustomerAPIAuthController extends Controller
             return response()->json(['message' => translate('OTP verified!'), 'token' => $token, 'status' => true], 200);
         }
 
+        $this->recordCustomerOTPFailedAttempt($request['phone']);
+
         return response()->json(['errors' => [
             ['code' => 'token', 'message' => translate('OTP_is_not_matched')],
         ]], 403);
@@ -444,7 +442,7 @@ class CustomerAPIAuthController extends Controller
         $maxOTPHitTime = getWebConfig(name: 'otp_resend_time') ?? 60; // seconds
         $tempBlockTime = getWebConfig(name: 'temporary_block_time') ?? 600; // seconds
 
-        $verify = $this->phoneOrEmailVerificationRepo->getFirstWhere(params: ['phone_or_email' => $request['email'], 'token' => $request['token']]);
+        $verify = $this->phoneOrEmailVerificationRepo->getFirstWhere(params: ['phone_or_email' => $request['email'], 'token' => (string) $request['token']]);
         $verificationData = $this->phoneOrEmailVerificationRepo->getFirstWhere(params: ['phone_or_email' => $request['email']]);
 
         $verifyStatus = $this->checkCustomerOTPBlockTimeOrInvalid(verificationData: $verificationData, identity: $request['email']);
@@ -457,6 +455,7 @@ class CustomerAPIAuthController extends Controller
         }
 
         if (isset($verify)) {
+            $this->resetCustomerOTPAttempts($request['email']);
             $user = $this->customerRepo->getFirstWhere(params: ['email' => $request['email']]);
 
             if (! $user) {
@@ -506,6 +505,8 @@ class CustomerAPIAuthController extends Controller
 
             return response()->json(['message' => translate('OTP_verified'), 'token' => $token, 'status' => true], 200);
         }
+
+        $this->recordCustomerOTPFailedAttempt($request['email']);
 
         return response()->json(['errors' => [
             ['code' => 'otp', 'message' => translate('OTP_is_not_matched!')],
@@ -634,11 +635,14 @@ class CustomerAPIAuthController extends Controller
         $responseData = $response->json();
 
         if (isset($responseData['error'])) {
+            $this->recordCustomerOTPFailedAttempt($request['phoneNumber']);
             $errors = [];
             $errors[] = ['code' => '403', 'message' => translate(strtolower($responseData['error']['message']))];
 
             return response()->json(['errors' => $errors], 403);
         }
+
+        $this->resetCustomerOTPAttempts($request['phoneNumber']);
 
         $user = $this->customerRepo->getByIdentity(filters: ['identity' => $responseData['phoneNumber']]);
 
@@ -676,7 +680,7 @@ class CustomerAPIAuthController extends Controller
             return response()->json(['errors' => Helpers::validationErrorProcessor($validator)], 403);
         }
 
-        $verify = $this->phoneOrEmailVerificationRepo->getFirstWhere(params: ['phone_or_email' => $request['phone'], 'token' => $request['token']]);
+        $verify = $this->phoneOrEmailVerificationRepo->getFirstWhere(params: ['phone_or_email' => $request['phone'], 'token' => (string) $request['token']]);
         $verificationData = $this->phoneOrEmailVerificationRepo->getFirstWhere(params: ['phone_or_email' => $request['phone']]);
 
         $verifyStatus = $this->checkCustomerOTPBlockTimeOrInvalid(verificationData: $verificationData, identity: $request['phone']);
@@ -689,6 +693,7 @@ class CustomerAPIAuthController extends Controller
         }
 
         if (isset($verify)) {
+            $this->resetCustomerOTPAttempts($request['phone']);
             $this->phoneOrEmailVerificationRepo->delete(params: ['phone_or_email' => $request['phone']]);
             $temporaryToken = Str::random(40);
 
@@ -713,6 +718,8 @@ class CustomerAPIAuthController extends Controller
 
             return response()->json(['token' => $token, 'status' => true], 200);
         }
+
+        $this->recordCustomerOTPFailedAttempt($request['phone']);
 
         return response()->json(['errors' => [
             ['code' => 'token', 'message' => translate('OTP is not matched!')],
@@ -988,11 +995,7 @@ class CustomerAPIAuthController extends Controller
                 'created_at' => now(),
             ]);
 
-            DB::table('phone_or_email_verifications')->insert([
-                'phone_or_email' => $request['email_or_phone'],
-                'token' => $token,
-                'created_at' => now(),
-            ]);
+            $this->storeCustomerOtpVerification($request['email_or_phone'], $token);
 
             if ($request['type'] == 'phone') {
                 $response = SMSModule::sendCentralizedSMS($customer['phone'], $token);
@@ -1071,12 +1074,16 @@ class CustomerAPIAuthController extends Controller
             ], 403);
         }
 
-        $verify = $this->phoneOrEmailVerificationRepo->getFirstWhere(params: ['phone_or_email' => $request['email_or_phone'], 'token' => $request['token']]);
+        $verify = $this->phoneOrEmailVerificationRepo->getFirstWhere(params: ['phone_or_email' => $request['email_or_phone'], 'token' => (string) $request['token']]);
         if (! $verify) {
+            $this->recordCustomerOTPFailedAttempt($request['email_or_phone']);
+
             return response()->json(['errors' => [
                 ['code' => 'token', 'message' => translate('OTP_is_not_matched')],
             ]], 403);
         }
+
+        $this->resetCustomerOTPAttempts($request['email_or_phone']);
         $this->phoneOrEmailVerificationRepo->delete(params: ['phone_or_email' => $request['email_or_phone']]);
 
         if ($request['type'] == 'phone') {

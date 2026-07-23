@@ -384,6 +384,18 @@ class SupplierManager
                 continue;
             }
 
+            if (SupplierOrder::query()
+                ->where('order_detail_id', $detail->id)
+                ->whereIn('status', ['failed', 'refunded'])
+                ->exists()) {
+                Log::info('SupplierManager: skipping direct top-up retry after terminal supplier attempt', [
+                    'order_id' => $order->id,
+                    'order_detail_id' => $detail->id,
+                ]);
+
+                continue;
+            }
+
             $productId = $detail->product_id;
             if (! $productId) {
                 continue;

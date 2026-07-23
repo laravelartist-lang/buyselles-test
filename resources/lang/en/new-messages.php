@@ -11742,4 +11742,5 @@ return [
     'api_request_logs' => 'Api request logs',
     'Partner_API_order' => 'Partner API order',
     'direct_topup_mapping_not_found' => 'Direct topup mapping not found',
+    'Token_sent_failed' => 'Token sent failed',
 ];

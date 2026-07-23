@@ -307,7 +307,7 @@ class AuthController with ChangeNotifier {
         );
       }
 
-      responseModel = ResponseModel('verification', token != null);
+      responseModel = ResponseModel('verification', token != null && token.isNotEmpty);
       // callback(true, token, temporaryToken, message);
       notifyListeners();
     } else {

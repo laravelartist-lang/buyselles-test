@@ -341,7 +341,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                           toNavigateScreen: widget.fromPage,
                                           onLoginSuccess: widget.onLoginSuccess
                                         ).then((status) async {
-                                          if (status.isSuccess) {
+                                          if (status.isSuccess && authProvider.isLoggedIn()) {
                                             if (authProvider.isActiveRememberMe) {
                                               authProvider.saveUserEmailAndPassword(UserLogData(
                                                 countryCode:  countryCode,

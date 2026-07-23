@@ -224,7 +224,6 @@ class CustomerAuthController extends Controller
 
         $phoneVerification = getLoginConfig(key: 'phone_verification');
         $emailVerification = getLoginConfig(key: 'email_verification');
-        $emailVerification = ! $phoneVerification ? $emailVerification : 0;
 
         if ($phoneVerification && $user['phone'] && ! $user['is_phone_verified'] || $emailVerification && $user['email'] && ! $user['is_email_verified']) {
             $this->getCustomerVerificationCheck($request, $user, $phoneVerification, $emailVerification);

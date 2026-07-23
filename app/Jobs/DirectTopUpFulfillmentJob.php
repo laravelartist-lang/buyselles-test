@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Models\Order;
 use App\Services\DirectTopUp\DirectTopUpWalletCheckoutService;
 use App\Services\Supplier\SupplierManager;
+use App\Services\Supplier\SupplierOrderEligibilityService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -33,11 +34,21 @@ class DirectTopUpFulfillmentJob implements ShouldQueue
     public function handle(
         SupplierManager $manager,
         DirectTopUpWalletCheckoutService $walletCheckoutService,
+        SupplierOrderEligibilityService $eligibilityService,
     ): void {
         $order = Order::find($this->orderId);
 
         if (! $order) {
             Log::warning('DirectTopUpFulfillmentJob: order not found', ['order_id' => $this->orderId]);
+
+            return;
+        }
+
+        if ($eligibilityService->orderHasTerminalFulfillmentStatus($order)) {
+            Log::info('DirectTopUpFulfillmentJob: terminal order status, skipping', [
+                'order_id' => $this->orderId,
+                'order_status' => $order->order_status,
+            ]);
 
             return;
         }
@@ -48,8 +59,10 @@ class DirectTopUpFulfillmentJob implements ShouldQueue
             return;
         }
 
-        if (DirectTopUpWalletCheckoutService::isDirectTopUpAlreadyFulfilled($order)) {
-            Log::info('DirectTopUpFulfillmentJob: already fulfilled, skipping', ['order_id' => $this->orderId]);
+        if (! $eligibilityService->orderNeedsDirectTopUpFulfillment($order)) {
+            Log::info('DirectTopUpFulfillmentJob: no direct top-up fulfillment needed, skipping', [
+                'order_id' => $this->orderId,
+            ]);
 
             return;
         }
@@ -113,6 +126,10 @@ class DirectTopUpFulfillmentJob implements ShouldQueue
         $order = Order::find($this->orderId);
 
         if ($order === null) {
+            return;
+        }
+
+        if (app(SupplierOrderEligibilityService::class)->orderHasTerminalFulfillmentStatus($order)) {
             return;
         }
 

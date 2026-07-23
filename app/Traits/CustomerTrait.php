@@ -122,12 +122,8 @@ trait CustomerTrait
         }
 
         if ($verificationData['is_temp_blocked'] == 1 && Carbon::parse($verificationData['created_at'])->DiffInSeconds() >= $tempBlockTime) {
-            $this->phoneOrEmailVerificationRepo->updateOrCreate(params: ['phone_or_email' => $identity], value: [
-                'otp_hit_count' => 0,
-                'is_temp_blocked' => 0,
-                'temp_block_time' => null,
-                'updated_at' => now(),
-            ]);
+            $this->resetCustomerOTPAttempts($identity);
+            $verificationData = $this->phoneOrEmailVerificationRepo->getFirstWhere(params: ['phone_or_email' => $identity]);
         }
 
         if ($verificationData['otp_hit_count'] >= $maxOTPHit && Carbon::parse($verificationData['updated_at'])->DiffInSeconds() < $maxOTPHitTime && $verificationData['is_temp_blocked'] == 0) {
@@ -135,7 +131,7 @@ trait CustomerTrait
                 'is_temp_blocked' => 1,
                 'temp_block_time' => now(),
             ]);
-            $time = $tempBlockTime - Carbon::parse($verificationData['temp_block_time'])->DiffInSeconds();
+            $time = $tempBlockTime - Carbon::parse($verificationData['temp_block_time'] ?? now())->DiffInSeconds();
 
             return [
                 'status' => 1,
@@ -144,17 +140,54 @@ trait CustomerTrait
             ];
         }
 
-        $verificationNewData = $this->phoneOrEmailVerificationRepo->getFirstWhere(params: ['phone_or_email' => $identity]);
-        $this->phoneOrEmailVerificationRepo->updateOrCreate(params: ['phone_or_email' => $identity], value: [
-            'otp_hit_count' => ($verificationNewData['otp_hit_count'] + 1),
-            'updated_at' => now(),
-        ]);
-
         return [
             'status' => 0,
             'code' => 'valid_otp',
             'message' => translate('OTP_is_not_matched'),
         ];
+    }
+
+    public function recordCustomerOTPFailedAttempt(?string $identity): void
+    {
+        if ($identity === null || $identity === '') {
+            return;
+        }
+
+        $verificationData = $this->phoneOrEmailVerificationRepo->getFirstWhere(params: ['phone_or_email' => $identity]);
+
+        if ($verificationData === null) {
+            return;
+        }
+
+        $this->phoneOrEmailVerificationRepo->updateOrCreate(params: ['phone_or_email' => $identity], value: [
+            'otp_hit_count' => ((int) ($verificationData['otp_hit_count'] ?? 0)) + 1,
+            'updated_at' => now(),
+        ]);
+    }
+
+    public function resetCustomerOTPAttempts(?string $identity): void
+    {
+        if ($identity === null || $identity === '') {
+            return;
+        }
+
+        $this->phoneOrEmailVerificationRepo->updateOrCreate(params: ['phone_or_email' => $identity], value: [
+            'otp_hit_count' => 0,
+            'is_temp_blocked' => 0,
+            'temp_block_time' => null,
+            'updated_at' => now(),
+        ]);
+    }
+
+    public function storeCustomerOtpVerification(string $identity, string|int $token): void
+    {
+        $this->phoneOrEmailVerificationRepo->updateOrCreate(params: ['phone_or_email' => $identity], value: [
+            'phone_or_email' => $identity,
+            'token' => (string) $token,
+            'otp_hit_count' => 0,
+            'is_temp_blocked' => 0,
+            'temp_block_time' => null,
+        ]);
     }
 
     public function checkPasswordResetOTPBlockTimeOrInvalid(object|array|null $verificationData, ?string $identity): array

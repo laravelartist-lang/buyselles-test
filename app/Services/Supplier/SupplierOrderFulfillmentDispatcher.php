@@ -5,9 +5,6 @@ namespace App\Services\Supplier;
 use App\Jobs\DirectTopUpFulfillmentJob;
 use App\Jobs\SupplierCodeFetchJob;
 use App\Models\Order;
-use App\Models\SupplierOrder;
-use App\Models\SupplierProductMapping;
-use App\Services\DirectTopUp\DirectTopUpWalletCheckoutService;
 use Illuminate\Support\Facades\Log;
 
 class SupplierOrderFulfillmentDispatcher
@@ -57,54 +54,14 @@ class SupplierOrderFulfillmentDispatcher
     private function dispatchDirectTopUpIfNeeded(Order $order): void
     {
         try {
-            if (DirectTopUpWalletCheckoutService::isDirectTopUpAlreadyFulfilled($order)) {
+            if (! $this->supplierOrderEligibilityService->orderNeedsDirectTopUpFulfillment($order)) {
                 return;
             }
 
-            if (SupplierOrder::query()
-                ->where('order_id', $order->id)
-                ->whereIn('status', ['pending', 'processing', 'partial'])
-                ->exists()) {
-                return;
-            }
-
-            $order->loadMissing('orderDetails');
-
-            if (! $order->orderDetails) {
-                return;
-            }
-
-            $needsDirectTopUp = false;
-
-            foreach ($order->orderDetails as $detail) {
-                if ($detail->direct_topup_quantity === null || empty($detail->direct_topup_account_id)) {
-                    continue;
-                }
-
-                $productId = $detail->product_id;
-
-                if (! $productId) {
-                    continue;
-                }
-
-                $hasMapping = SupplierProductMapping::query()
-                    ->where('product_id', $productId)
-                    ->where('is_active', true)
-                    ->whereHas('supplierApi', fn ($q) => $q->where('is_active', true)->where('supports_direct_top_up', true))
-                    ->exists();
-
-                if ($hasMapping) {
-                    $needsDirectTopUp = true;
-                    break;
-                }
-            }
-
-            if ($needsDirectTopUp) {
-                DirectTopUpFulfillmentJob::dispatch($order->id);
-                Log::info('SupplierOrderFulfillmentDispatcher: dispatched DirectTopUpFulfillmentJob', [
-                    'order_id' => $order->id,
-                ]);
-            }
+            DirectTopUpFulfillmentJob::dispatch($order->id);
+            Log::info('SupplierOrderFulfillmentDispatcher: dispatched DirectTopUpFulfillmentJob', [
+                'order_id' => $order->id,
+            ]);
         } catch (\Throwable $e) {
             Log::error('SupplierOrderFulfillmentDispatcher: direct top-up dispatch failed', [
                 'order_id' => $order->id,

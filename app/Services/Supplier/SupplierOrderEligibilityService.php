@@ -11,6 +11,41 @@ use App\Services\DirectTopUp\DirectTopUpWalletCheckoutService;
 
 class SupplierOrderEligibilityService
 {
+    /** @var string[] */
+    private const TERMINAL_ORDER_STATUSES = [
+        'delivered',
+        'failed',
+        'canceled',
+        'returned',
+    ];
+
+    /** @var string[] */
+    private const ACTIVE_SUPPLIER_ORDER_STATUSES = [
+        'pending',
+        'processing',
+        'partial',
+    ];
+
+    /** @var string[] */
+    private const TERMINAL_SUPPLIER_ORDER_STATUSES = [
+        'fulfilled',
+        'failed',
+        'refunded',
+    ];
+
+    public function orderHasTerminalFulfillmentStatus(Order $order): bool
+    {
+        return in_array($order->order_status, self::TERMINAL_ORDER_STATUSES, true);
+    }
+
+    public function orderDetailHasTerminalSupplierAttempt(int $orderDetailId): bool
+    {
+        return SupplierOrder::query()
+            ->where('order_detail_id', $orderDetailId)
+            ->whereIn('status', self::TERMINAL_SUPPLIER_ORDER_STATUSES)
+            ->exists();
+    }
+
     public function orderNeedsSupplierCodeFetch(Order $order): bool
     {
         $order->loadMissing('orderDetails');
@@ -26,13 +61,17 @@ class SupplierOrderEligibilityService
 
     public function orderNeedsDirectTopUpFulfillment(Order $order): bool
     {
+        if ($this->orderHasTerminalFulfillmentStatus($order)) {
+            return false;
+        }
+
         if (DirectTopUpWalletCheckoutService::isDirectTopUpAlreadyFulfilled($order)) {
             return false;
         }
 
         if (SupplierOrder::query()
             ->where('order_id', $order->id)
-            ->whereIn('status', ['pending', 'processing', 'partial'])
+            ->whereIn('status', self::ACTIVE_SUPPLIER_ORDER_STATUSES)
             ->exists()) {
             return false;
         }
@@ -40,9 +79,15 @@ class SupplierOrderEligibilityService
         $order->loadMissing('orderDetails');
 
         foreach ($order->orderDetails ?? [] as $detail) {
-            if ($this->isDirectTopUpOrderLine($detail)) {
-                return true;
+            if (! $this->isDirectTopUpOrderLine($detail)) {
+                continue;
             }
+
+            if ($this->orderDetailHasTerminalSupplierAttempt((int) $detail->id)) {
+                continue;
+            }
+
+            return true;
         }
 
         return false;

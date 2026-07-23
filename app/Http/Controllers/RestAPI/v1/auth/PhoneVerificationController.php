@@ -10,7 +10,6 @@ use App\Utils\SMSModule;
 use Carbon\Carbon;
 use Carbon\CarbonInterval;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 
 class PhoneVerificationController extends Controller
@@ -34,13 +33,17 @@ class PhoneVerificationController extends Controller
             ], 200);
         }
 
-        $token = (config('app.mode') == 'live') ? rand(1000, 9999) : 1234;
-        DB::table('phone_or_email_verifications')->insert([
-            'phone_or_email' => $request['phone'],
-            'token' => $token,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+        $token = (config('app.mode') == 'live') ? rand(100000, 999999) : 123456;
+        PhoneOrEmailVerification::updateOrCreate(
+            ['phone_or_email' => $request['phone']],
+            [
+                'phone_or_email' => $request['phone'],
+                'token' => (string) $token,
+                'otp_hit_count' => 0,
+                'is_temp_blocked' => 0,
+                'temp_block_time' => null,
+            ],
+        );
 
         $response = SMSModule::sendCentralizedSMS($request['phone'], $token);
         $otp_resend_time = getWebConfig(name: 'otp_resend_time') > 0 ? getWebConfig(name: 'otp_resend_time') : 0;
@@ -77,7 +80,7 @@ class PhoneVerificationController extends Controller
         }
 
         if ($time_differance == 0) {
-            $new_token = (config('app.mode') == 'live') ? rand(1000, 9999) : 1234;
+            $new_token = (config('app.mode') == 'live') ? rand(100000, 999999) : 123456;
             if ($token) {
                 $token->token = $new_token;
                 $token->otp_hit_count = 0;

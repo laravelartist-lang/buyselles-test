@@ -10,7 +10,6 @@ use App\Utils\Helpers;
 use Carbon\Carbon;
 use Carbon\CarbonInterval;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 
 class EmailVerificationController extends Controller
@@ -32,13 +31,17 @@ class EmailVerificationController extends Controller
             ], 200);
         }
 
-        $token = rand(1000, 9999);
-        DB::table('phone_or_email_verifications')->insert([
-            'phone_or_email' => $request['email'],
-            'token' => $token,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+        $token = (config('app.mode') == 'live') ? rand(100000, 999999) : 123456;
+        PhoneOrEmailVerification::updateOrCreate(
+            ['phone_or_email' => $request['email']],
+            [
+                'phone_or_email' => $request['email'],
+                'token' => (string) $token,
+                'otp_hit_count' => 0,
+                'is_temp_blocked' => 0,
+                'temp_block_time' => null,
+            ],
+        );
 
         $otp_resend_time = 0;
         $emailServices_smtp = getWebConfig(name: 'mail_config');
@@ -100,7 +103,7 @@ class EmailVerificationController extends Controller
         }
 
         if ($user && $time_differance == 0) {
-            $generate_new_token = rand(1000, 9999);
+            $generate_new_token = (config('app.mode') == 'live') ? rand(100000, 999999) : 123456;
             if ($token) {
                 $token->token = $generate_new_token;
                 $token->otp_hit_count = 0;
