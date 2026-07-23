@@ -4,6 +4,7 @@ namespace App\Listeners;
 
 use App\Events\OrderPlacedEvent;
 use App\Models\ReferralCustomer;
+use App\Services\Order\OrderPlacedEmailService;
 use App\Traits\EmailTemplateTrait;
 use App\Traits\PushNotificationTrait;
 
@@ -11,13 +12,9 @@ class OrderPlacedListener
 {
     use EmailTemplateTrait, PushNotificationTrait;
 
-    /**
-     * Create the event listener.
-     */
-    public function __construct()
-    {
-        //
-    }
+    public function __construct(
+        private readonly OrderPlacedEmailService $orderPlacedEmailService,
+    ) {}
 
     /**
      * Handle the event.
@@ -37,6 +34,18 @@ class OrderPlacedListener
     {
         $email = $event->email;
         $data = $event->data;
+
+        if ($this->orderPlacedEmailService->shouldSkipCustomerOrderPlaceMail($data)) {
+            return;
+        }
+
+        $orderId = (int) ($data['orderId'] ?? 0);
+        if (($data['templateName'] ?? '') === OrderPlacedEmailService::CUSTOMER_TEMPLATE && $orderId > 0) {
+            if (! $this->orderPlacedEmailService->reserveSend($orderId)) {
+                return;
+            }
+        }
+
         try {
             $this->sendingMail(sendMailTo: $email, userType: $data['userType'], templateName: $data['templateName'], data: $data);
         } catch (\Exception $exception) {

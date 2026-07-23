@@ -107,6 +107,8 @@ class CustomerWalletCheckoutService
     private function processWalletCheckout(Request $request, Collection $carts, object $user, float $paymentAmount): array
     {
         $requiresFulfillmentBeforePayment = $this->directTopUpCheckout->requiresFulfillmentBeforePayment($carts);
+        $deferOrderPlacedEmail = ! $requiresFulfillmentBeforePayment
+            && $this->cartRequiresDeferredOrderPlacedEmail($carts);
 
         $orderIds = OrderManager::generateOrder(data: [
             'is_guest' => 0,
@@ -115,7 +117,7 @@ class CustomerWalletCheckoutService
             'order_status' => $requiresFulfillmentBeforePayment ? 'pending' : 'confirmed',
             'payment_method' => 'pay_by_wallet',
             'payment_status' => $requiresFulfillmentBeforePayment ? 'unpaid' : 'paid',
-            'defer_checkout_completion' => $requiresFulfillmentBeforePayment,
+            'defer_checkout_completion' => $requiresFulfillmentBeforePayment || $deferOrderPlacedEmail,
             'transaction_ref' => '',
             'address_id' => $request->input('address_id', session('address_id')),
             'billing_address_id' => $request->input('billing_address_id', session('billing_address_id')),
@@ -174,6 +176,22 @@ class CustomerWalletCheckoutService
                 'pending_fulfillment' => $pendingFulfillment,
             ],
         ];
+    }
+
+    /**
+     * @param  Collection<int, Cart>  $carts
+     */
+    private function cartRequiresDeferredOrderPlacedEmail(Collection $carts): bool
+    {
+        if ($carts->isEmpty()) {
+            return false;
+        }
+
+        return $carts->every(function (Cart $cart): bool {
+            $productType = $cart->product_type ?? $cart->product?->product_type;
+
+            return $productType === 'digital';
+        });
     }
 
     /**

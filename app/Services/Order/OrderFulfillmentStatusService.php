@@ -214,6 +214,9 @@ class OrderFulfillmentStatusService
 
         if ($status === 'delivered' && $order->payment_method !== 'partner_wallet') {
             OrderManager::getWalletManageOnOrderStatusChange($order->fresh(), 'admin');
+            OrderManager::completeDeferredCheckoutIfPending();
+            app(\App\Services\Order\OrderPlacedEmailService::class)
+                ->sendCustomerOrderPlacedEmailIfEligible($order->id);
         }
     }
 }

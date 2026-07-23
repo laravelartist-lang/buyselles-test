@@ -122,4 +122,40 @@ class CustomerWalletCheckoutIdempotencyTest extends TestCase
         $this->assertTrue($result['idempotent_replay'] ?? false);
         $this->assertSame([501], $result['payload']['order_ids']);
     }
+
+    public function test_duplicate_checkout_processor_runs_once_so_order_placed_side_effects_are_not_doubled(): void
+    {
+        $guard = app(CustomerCheckoutGuardService::class);
+        $request = Request::create('/api/v1/customer/order/place-by-wallet', 'POST', [
+            'idempotency_key' => 'wallet-email-dedup-key',
+        ]);
+        $request->setUserResolver(static fn () => (object) ['id' => 55]);
+
+        $carts = new Collection([
+            new Cart([
+                'id' => 2,
+                'product_id' => 11,
+                'quantity' => 1,
+                'cart_group_id' => 'group-2',
+            ]),
+        ]);
+
+        $orderPlacedDispatches = 0;
+        $processor = static function () use (&$orderPlacedDispatches): array {
+            $orderPlacedDispatches++;
+
+            return [
+                'http_status' => 200,
+                'payload' => [
+                    'message' => 'ok',
+                    'order_ids' => [9100],
+                ],
+            ];
+        };
+
+        $guard->executeWalletCheckout($request, $carts, $processor);
+        $guard->executeWalletCheckout($request, $carts, $processor);
+
+        $this->assertSame(1, $orderPlacedDispatches);
+    }
 }

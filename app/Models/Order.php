@@ -135,6 +135,7 @@ class Order extends Model
         'customer_service_fee',
         'customer_service_fee_type',
         'dispute_status',
+        'order_placed_email_sent_at',
         'updated_at',
     ];
 
@@ -166,6 +167,7 @@ class Order extends Model
         'shipping_address' => 'string',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
+        'order_placed_email_sent_at' => 'datetime',
         'discount_amount' => 'float',
         'discount_type' => 'string',
         'coupon_code' => 'string',

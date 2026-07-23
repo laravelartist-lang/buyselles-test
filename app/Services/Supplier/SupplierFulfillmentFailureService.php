@@ -46,5 +46,7 @@ class SupplierFulfillmentFailureService
             'failed',
             'admin'
         );
+
+        OrderManager::abortDeferredCheckout();
     }
 }

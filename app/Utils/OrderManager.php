@@ -33,6 +33,7 @@ use App\Models\User;
 use App\Models\WalletTransaction;
 use App\Services\DigitalProductCodeService;
 use App\Services\EscrowService;
+use App\Services\Order\OrderPlacedEmailService;
 use App\Traits\CommonTrait;
 use App\Traits\CustomerTrait;
 use App\Traits\PdfGenerator;
@@ -1428,6 +1429,8 @@ class OrderManager
                     'referral_user_id' => ($user != 'offline') ? ($user['id'] ?? null) : null,
                 ],
             ]);
+
+            self::finalizeDeferredCheckoutIfReady($orderPlacedIds);
         } else {
             self::dispatchDeferredCheckoutSideEffects(
                 notificationEvents: $orderPlacedNotificationEvents,
@@ -1451,6 +1454,8 @@ class OrderManager
         array $cartGroupIds,
         ?int $referralUserId = null,
     ): void {
+        $mailEvents = app(OrderPlacedEmailService::class)->filterMailEvents($mailEvents);
+
         if ($referralUserId) {
             ReferralCustomer::where('user_id', $referralUserId)->update(['is_used' => 1]);
         }
@@ -1476,16 +1481,12 @@ class OrderManager
             CartManager::cartCleanByCartGroupIds(cartGroupIDs: $cartGroupIds);
         }
 
-        session()->forget('coupon_code');
-        session()->forget('coupon_type');
-        session()->forget('coupon_bearer');
-        session()->forget('coupon_discount');
-        session()->forget('coupon_seller_id');
+        self::forgetCheckoutCouponSession();
     }
 
     public static function completeDeferredCheckout(): void
     {
-        $deferred = session('deferred_checkout_completion');
+        $deferred = session()->pull('deferred_checkout_completion');
 
         if (! is_array($deferred)) {
             return;
@@ -1497,13 +1498,94 @@ class OrderManager
             cartGroupIds: $deferred['cart_group_ids'] ?? [],
             referralUserId: $deferred['referral_user_id'] ?? null,
         );
+    }
 
-        session()->forget('deferred_checkout_completion');
+    public static function completeDeferredCheckoutIfPending(): void
+    {
+        if (session()->has('deferred_checkout_completion')) {
+            self::completeDeferredCheckout();
+        }
     }
 
     public static function discardDeferredCheckout(): void
     {
         session()->forget('deferred_checkout_completion');
+    }
+
+    /**
+     * @param  array<int, int|string>  $orderIds
+     */
+    public static function finalizeDeferredCheckoutIfReady(array $orderIds): void
+    {
+        if ($orderIds === [] || ! session()->has('deferred_checkout_completion')) {
+            return;
+        }
+
+        $orders = Order::query()->whereIn('id', $orderIds)->get();
+
+        if ($orders->isEmpty()) {
+            return;
+        }
+
+        if ($orders->contains(fn (Order $order): bool => in_array($order->order_status, ['failed', 'canceled'], true))) {
+            self::abortDeferredCheckout();
+
+            return;
+        }
+
+        $allDigital = $orders->every(fn (Order $order): bool => self::orderContainsOnlyDigitalProducts($order));
+
+        if ($allDigital) {
+            if ($orders->every(fn (Order $order): bool => $order->order_status === 'delivered')) {
+                self::completeDeferredCheckout();
+            }
+
+            return;
+        }
+
+        if ($orders->every(fn (Order $order): bool => in_array($order->order_status, ['delivered', 'confirmed'], true))) {
+            self::completeDeferredCheckout();
+        }
+    }
+
+    public static function abortDeferredCheckout(): void
+    {
+        $deferred = session()->pull('deferred_checkout_completion');
+
+        if (! is_array($deferred)) {
+            return;
+        }
+
+        $cartGroupIds = $deferred['cart_group_ids'] ?? [];
+        if ($cartGroupIds !== []) {
+            CartManager::cartCleanByCartGroupIds(cartGroupIDs: $cartGroupIds);
+        }
+
+        self::forgetCheckoutCouponSession();
+    }
+
+    public static function orderContainsOnlyDigitalProducts(Order $order): bool
+    {
+        $details = $order->relationLoaded('details') ? $order->details : $order->details()->get();
+
+        if ($details->isEmpty()) {
+            return false;
+        }
+
+        return $details->every(function (OrderDetail $detail): bool {
+            $productDetails = json_decode($detail->product_details ?? '{}');
+
+            return is_object($productDetails) && ($productDetails->product_type ?? null) === 'digital';
+        });
+    }
+
+    private static function forgetCheckoutCouponSession(): void
+    {
+        session()->forget('coupon_code');
+        session()->forget('coupon_type');
+        session()->forget('coupon_bearer');
+        session()->forget('coupon_discount');
+        session()->forget('coupon_seller_id');
     }
 
     public static function getLoyaltyPointKeys(): array
