@@ -4,6 +4,7 @@ namespace App\Services\Supplier;
 
 use App\Contracts\SupplierDriverInterface;
 use App\DTOs\Supplier\BalanceResult;
+use App\Enums\SupplierOrderPlacementIntent;
 use App\Jobs\SupplierOrderPollJob;
 use App\Models\DigitalProductCode;
 use App\Models\Order;
@@ -244,7 +245,14 @@ class SupplierManager
             }
 
             try {
-                $result = $this->placeSupplierOrder($supplier, $mapping, $quantity, $customAmount, $denomination);
+                $result = $this->placeSupplierOrder(
+                    supplier: $supplier,
+                    mapping: $mapping,
+                    quantity: $quantity,
+                    customAmount: $customAmount,
+                    denomination: $denomination,
+                    intent: SupplierOrderPlacementIntent::CustomerFulfillment,
+                );
 
                 if ($result['inserted'] > 0 || $result['supplier_order_id']) {
                     return $result;
@@ -718,7 +726,9 @@ class SupplierManager
 
     /**
      * Sync stock for a specific product-supplier mapping.
-     * Checks remote stock, auto-restocks if below threshold.
+     * Checks remote stock and updates cost price. Does not place supplier orders —
+     * automatic pre-stocking (auto_restock) was removed 2026-07-13 after it created
+     * thousands of supplier API orders with no customer checkout.
      */
     public function syncStock(SupplierProductMapping $mapping): void
     {
@@ -905,7 +915,15 @@ class SupplierManager
         int $quantity,
         ?float $customAmount = null,
         ?SupplierProductDenomination $denomination = null,
+        SupplierOrderPlacementIntent $intent = SupplierOrderPlacementIntent::CustomerFulfillment,
     ): array {
+        if ($intent !== SupplierOrderPlacementIntent::CustomerFulfillment) {
+            throw new \LogicException(
+                'Supplier API place_order is only allowed for customer fulfillment. '
+                .'Scheduled stock sync must not place supplier orders.'
+            );
+        }
+
         // When a denomination is selected, use its supplier_product_id instead of the mapping's
         $supplierProductId = $denomination?->supplier_product_id ?? $mapping->supplier_product_id;
 
