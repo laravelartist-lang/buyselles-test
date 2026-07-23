@@ -2,7 +2,9 @@
 
 namespace Tests\Unit;
 
+use App\Providers\MailConfigServiceProvider;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
 use Tests\Concerns\ManagesTestDatabaseSchema;
 use Tests\TestCase;
@@ -34,7 +36,16 @@ class MailConfigHelperTest extends TestCase
             ],
             [
                 'type' => 'mail_config_sendgrid',
-                'value' => json_encode(['status' => '1', 'host' => 'smtp.sendgrid.net', 'username' => 'apikey']),
+                'value' => json_encode([
+                    'status' => '1',
+                    'host' => 'smtp.sendgrid.net',
+                    'port' => '587',
+                    'username' => 'apikey',
+                    'password' => 'secret-key',
+                    'encryption' => 'TLS',
+                    'email_id' => 'support@example.com',
+                    'name' => 'Example',
+                ]),
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
@@ -44,6 +55,46 @@ class MailConfigHelperTest extends TestCase
 
         $this->assertTrue(isMailConfigActive());
         $this->assertSame('smtp.sendgrid.net', getActiveMailConfig()['host']);
+    }
+
+    public function test_mail_config_service_provider_applies_legacy_and_mailer_settings(): void
+    {
+        Config::set('mail.driver', 'smtp');
+        Config::set('mail.username', 'legacy-user');
+        Config::set('mail.host', 'legacy-host.test');
+
+        DB::table('business_settings')->insert([
+            [
+                'type' => 'mail_config',
+                'value' => json_encode(['status' => 0]),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'type' => 'mail_config_sendgrid',
+                'value' => json_encode([
+                    'status' => '1',
+                    'host' => 'smtp.sendgrid.net',
+                    'port' => '587',
+                    'username' => 'apikey',
+                    'password' => 'secret-key',
+                    'encryption' => 'TLS',
+                    'email_id' => 'support@example.com',
+                    'name' => 'Example',
+                ]),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
+
+        clearWebConfigCacheKeys();
+
+        (new MailConfigServiceProvider($this->app))->boot();
+
+        $this->assertSame('apikey', config('mail.username'));
+        $this->assertSame('smtp.sendgrid.net', config('mail.host'));
+        $this->assertSame('apikey', config('mail.mailers.smtp.username'));
+        $this->assertSame('support@example.com', config('mail.from.address'));
     }
 
     public function test_get_active_mail_config_returns_null_when_both_providers_are_disabled(): void
