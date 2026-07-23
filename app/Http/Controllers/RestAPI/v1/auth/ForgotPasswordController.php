@@ -159,10 +159,14 @@ class ForgotPasswordController extends Controller
             ], 403);
         }
 
-        $verify = $this->passwordResetRepo->getFirstWhere(params: ['identity' => $request['email_or_phone'], 'token' => $request['reset_token']]);
+        $verify = $this->passwordResetRepo->getFirstWhere(params: ['identity' => $request['email_or_phone'], 'token' => (string) $request['reset_token']]);
         if ($verify) {
+            $this->resetPasswordResetAttempts($request['email_or_phone']);
+
             return response()->json(['message' => translate('otp_verified')], 200);
         }
+
+        $this->recordPasswordResetFailedAttempt($request['email_or_phone']);
 
         return response()->json([
             'errors' => [

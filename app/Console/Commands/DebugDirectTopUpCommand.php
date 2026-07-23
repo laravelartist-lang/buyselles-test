@@ -146,6 +146,15 @@ class DebugDirectTopUpCommand extends Command
                 return self::FAILURE;
             }
 
+            if (app(\App\Services\Supplier\SupplierOrderEligibilityService::class)->orderHasTerminalFulfillmentStatus($order)) {
+                $this->error('Order is in a terminal status ('.$order->order_status.') — fulfillment cannot be retried.');
+                $this->comment('The customer must place a new order to try again. Use --force only for intentional manual supplier debugging.');
+
+                if (! $this->option('force')) {
+                    return self::FAILURE;
+                }
+            }
+
             if (
                 ! $this->option('force')
                 && DirectTopUpWalletCheckoutService::isDirectTopUpAlreadyFulfilled($order)

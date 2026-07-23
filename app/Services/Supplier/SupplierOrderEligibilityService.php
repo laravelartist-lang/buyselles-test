@@ -38,6 +38,11 @@ class SupplierOrderEligibilityService
         return in_array($order->order_status, self::TERMINAL_ORDER_STATUSES, true);
     }
 
+    public function orderIsEligibleForAutomatedFulfillment(Order $order): bool
+    {
+        return ! $this->orderHasTerminalFulfillmentStatus($order);
+    }
+
     public function orderDetailHasTerminalSupplierAttempt(int $orderDetailId): bool
     {
         return SupplierOrder::query()
@@ -48,6 +53,10 @@ class SupplierOrderEligibilityService
 
     public function orderNeedsSupplierCodeFetch(Order $order): bool
     {
+        if (! $this->orderIsEligibleForAutomatedFulfillment($order)) {
+            return false;
+        }
+
         $order->loadMissing('orderDetails');
 
         foreach ($order->orderDetails ?? [] as $detail) {

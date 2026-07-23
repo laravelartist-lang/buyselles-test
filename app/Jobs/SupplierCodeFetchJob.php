@@ -6,6 +6,7 @@ use App\Models\Order;
 use App\Models\SupplierOrder;
 use App\Services\Supplier\SupplierFulfillmentFailureService;
 use App\Services\Supplier\SupplierManager;
+use App\Services\Supplier\SupplierOrderEligibilityService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -40,11 +41,21 @@ class SupplierCodeFetchJob implements ShouldQueue
     public function handle(
         SupplierManager $manager,
         SupplierFulfillmentFailureService $failureService,
+        SupplierOrderEligibilityService $eligibilityService,
     ): void {
         $order = Order::find($this->orderId);
 
         if (! $order) {
             Log::warning('SupplierCodeFetchJob: order not found', ['order_id' => $this->orderId]);
+
+            return;
+        }
+
+        if (! $eligibilityService->orderIsEligibleForAutomatedFulfillment($order)) {
+            Log::info('SupplierCodeFetchJob: terminal order status, skipping', [
+                'order_id' => $this->orderId,
+                'order_status' => $order->order_status,
+            ]);
 
             return;
         }
@@ -113,6 +124,10 @@ class SupplierCodeFetchJob implements ShouldQueue
         $order = Order::find($this->orderId);
 
         if ($order === null) {
+            return;
+        }
+
+        if (app(SupplierOrderEligibilityService::class)->orderHasTerminalFulfillmentStatus($order)) {
             return;
         }
 

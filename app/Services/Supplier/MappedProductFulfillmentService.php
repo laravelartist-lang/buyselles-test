@@ -19,6 +19,10 @@ class MappedProductFulfillmentService
 
     public function fulfillStorefrontOrder(Order $order): void
     {
+        if (! $this->eligibilityService->orderIsEligibleForAutomatedFulfillment($order)) {
+            return;
+        }
+
         $mapping = $this->resolvePrimaryCodeMapping($order);
 
         if ($mapping?->isSupplierFirst()) {
@@ -93,6 +97,10 @@ class MappedProductFulfillmentService
 
     public function dispatchAsyncFallbackIfNeeded(Order $order): void
     {
+        if (! $this->eligibilityService->orderIsEligibleForAutomatedFulfillment($order)) {
+            return;
+        }
+
         if ($this->orderNeedsAsyncSupplier($order) || $this->eligibilityService->orderNeedsDirectTopUpFulfillment($order)) {
             $this->fulfillmentDispatcher->dispatchForOrder($order);
         }

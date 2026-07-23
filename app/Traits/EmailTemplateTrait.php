@@ -47,6 +47,11 @@ trait EmailTemplateTrait
     {
         $template = EmailTemplate::with('translationCurrentLanguage')->where(['user_type' => $userType, 'template_name' => $templateName])->first();
         if (! $template) {
+            $this->getEmailTemplateDataForUpdate($userType);
+            $template = EmailTemplate::with('translationCurrentLanguage')->where(['user_type' => $userType, 'template_name' => $templateName])->first();
+        }
+
+        if (! $template) {
             \Log::warning('Email template not found', [
                 'to' => $sendMailTo,
                 'template' => $templateName,

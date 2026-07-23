@@ -287,8 +287,8 @@ class CustomerAPIAuthController extends Controller
             return response()->json(['errors' => Helpers::validationErrorProcessor($validator)], 403);
         }
 
-        $emailVerification = $this->loginSetupRepo->getFirstWhere(params: ['key' => 'email_verification'])?->value ?? 0;
-        if ($emailVerification == 1) {
+        $emailVerification = (int) (getLoginConfig(key: 'email_verification') ?? 0);
+        if ($emailVerification === 1) {
             $OTPIntervalTime = getWebConfig(name: 'otp_resend_time') ?? 60; // seconds
             $OTPVerificationData = $this->phoneOrEmailVerificationRepo->getFirstWhere(params: ['phone_or_email' => $request['email']]);
 
@@ -310,29 +310,35 @@ class CustomerAPIAuthController extends Controller
 
             $this->storeCustomerOtpVerification($request['email'], $token);
 
-            try {
-                $emailServices = getWebConfig(name: 'mail_config');
-                if ($emailServices['status'] == 0) {
-                    $emailServices = getWebConfig(name: 'mail_config_sendgrid');
-                }
-
-                if (isset($emailServices['status']) && $emailServices['status'] == 1) {
-                    $data = [
-                        'userName' => $request['email'],
-                        'subject' => translate('registration_Verification_Code'),
-                        'title' => translate('registration_Verification_Code'),
-                        'verificationCode' => $token,
-                        'userType' => 'customer',
-                        'templateName' => 'registration-verification',
-                    ];
-                    event(new EmailVerificationEvent(email: $request['email'], data: $data));
-                }
-            } catch (\Exception $exception) {
+            if (! isMailConfigActive()) {
                 return response()->json([
                     'errors' => [
-                        ['code' => 'otp', 'message' => translate('Token_sent_failed')],
+                        ['code' => 'config-missing', 'message' => translate('email_is_not_configured').'. '.translate('contact_with_the_administrator')],
                     ],
-                ], 403);
+                ], 400);
+            }
+
+            try {
+                $data = [
+                    'userName' => $request['email'],
+                    'subject' => translate('registration_Verification_Code'),
+                    'title' => translate('registration_Verification_Code'),
+                    'verificationCode' => $token,
+                    'userType' => 'customer',
+                    'templateName' => 'registration-verification',
+                ];
+                event(new EmailVerificationEvent(email: $request['email'], data: $data));
+            } catch (\Exception $exception) {
+                \Log::error('Registration verification email failed', [
+                    'email' => $request['email'],
+                    'message' => $exception->getMessage(),
+                ]);
+
+                return response()->json([
+                    'errors' => [
+                        ['code' => 'mail-send-failed', 'message' => translate('Unable_to_send_the_verification_code.')],
+                    ],
+                ], 400);
             }
 
             return response()->json([
@@ -993,6 +999,9 @@ class CustomerAPIAuthController extends Controller
             DB::table('password_resets')->updateOrInsert(['identity' => $request['email_or_phone']], [
                 'token' => $token,
                 'created_at' => now(),
+                'otp_hit_count' => 0,
+                'is_temp_blocked' => 0,
+                'temp_block_time' => null,
             ]);
 
             $this->storeCustomerOtpVerification($request['email_or_phone'], $token);
@@ -1011,12 +1020,13 @@ class CustomerAPIAuthController extends Controller
                     'type' => 'sent_to_phone',
                 ], 200);
             } elseif ($request['type'] == 'email') {
-                try {
-                    $emailServices = getWebConfig(name: 'mail_config');
-                    if ($emailServices['status'] == 0) {
-                        $emailServices = getWebConfig(name: 'mail_config_sendgrid');
-                    }
+                if (! isMailConfigActive()) {
+                    return response()->json(['errors' => [
+                        ['code' => 'config-missing', 'message' => translate('email_is_not_configured').'. '.translate('contact_with_the_administrator')],
+                    ]], 400);
+                }
 
+                try {
                     $resetUrl = route('customer.auth.reset-password', ['identity' => base64_encode($customer['email']), 'token' => $token]);
                     $data = [
                         'userType' => 'customer',
@@ -1028,13 +1038,15 @@ class CustomerAPIAuthController extends Controller
                         'verificationCode' => $token,
                     ];
 
-                    if (isset($emailServices['status']) && $emailServices['status'] == 1) {
-                        event(new PasswordResetEvent(email: $customer['email'], data: $data));
-                    }
-
+                    event(new PasswordResetEvent(email: $customer['email'], data: $data));
                 } catch (\Exception $exception) {
+                    \Log::error('Password reset email failed', [
+                        'email' => $customer['email'],
+                        'message' => $exception->getMessage(),
+                    ]);
+
                     return response()->json(['errors' => [
-                        ['code' => 'config-missing', 'message' => translate('Email_configuration_issue.')],
+                        ['code' => 'mail-send-failed', 'message' => translate('Unable_to_send_the_verification_code.')],
                     ]], 400);
                 }
             }

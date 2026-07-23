@@ -7,6 +7,7 @@ use App\Models\SupplierOrder;
 use App\Services\DigitalProductCodeService;
 use App\Services\Supplier\SupplierManager;
 use App\Services\Supplier\SupplierOrderCodeProcessor;
+use App\Services\Supplier\SupplierOrderEligibilityService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -48,6 +49,7 @@ class SupplierOrderPollJob implements ShouldQueue
         SupplierManager $manager,
         DigitalProductCodeService $codeService,
         SupplierOrderCodeProcessor $codeProcessor,
+        SupplierOrderEligibilityService $eligibilityService,
     ): void {
         $supplierOrder = SupplierOrder::with(['supplierApi', 'productMapping'])->find($this->supplierOrderId);
 
@@ -57,6 +59,27 @@ class SupplierOrderPollJob implements ShouldQueue
             ]);
 
             return;
+        }
+
+        if ($supplierOrder->order_id) {
+            $linkedOrder = Order::find($supplierOrder->order_id);
+
+            if ($linkedOrder && ! $eligibilityService->orderIsEligibleForAutomatedFulfillment($linkedOrder)) {
+                Log::info('SupplierOrderPollJob: linked order is terminal, stopping poll', [
+                    'supplier_order_id' => $supplierOrder->id,
+                    'order_id' => $linkedOrder->id,
+                    'order_status' => $linkedOrder->order_status,
+                ]);
+
+                if (! in_array($supplierOrder->status, ['fulfilled', 'failed', 'refunded'], true)) {
+                    $supplierOrder->update([
+                        'status' => 'failed',
+                        'failed_reason' => 'Customer order is terminal — fulfillment will not be retried.',
+                    ]);
+                }
+
+                return;
+            }
         }
 
         // Already fulfilled — skip
@@ -165,7 +188,7 @@ class SupplierOrderPollJob implements ShouldQueue
         if ($supplierOrder->order_id && ($supplierOrder->productMapping?->is_direct_topup ?? false)) {
             $order = Order::find($supplierOrder->order_id);
 
-            if ($order) {
+            if ($order && app(SupplierOrderEligibilityService::class)->orderIsEligibleForAutomatedFulfillment($order)) {
                 app(\App\Services\DirectTopUp\DirectTopUpWalletCheckoutService::class)->markDirectTopUpOrderFailed(
                     $order,
                     $exception->getMessage() ?: translate('direct_topup_fulfillment_failed'),

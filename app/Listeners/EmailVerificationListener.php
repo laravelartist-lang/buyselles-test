@@ -29,6 +29,10 @@ class EmailVerificationListener
     {
         $email = $event->email;
         $data = $event->data;
-        $this->sendingMail(sendMailTo: $email, userType: $data['userType'], templateName: $data['templateName'], data: $data, sendSync: true);
+        $sent = $this->sendingMail(sendMailTo: $email, userType: $data['userType'], templateName: $data['templateName'], data: $data, sendSync: true);
+
+        if (! $sent) {
+            throw new \RuntimeException(translate('Token_sent_failed'));
+        }
     }
 }

@@ -215,11 +215,8 @@ trait CustomerTrait
         }
 
         if ($verificationData['is_temp_blocked'] == 1 && Carbon::parse($verificationData['created_at'])->DiffInSeconds() >= $tempBlockTime) {
-            $this->passwordResetRepo->updateOrCreate(params: ['identity' => $identity], value: [
-                'otp_hit_count' => 0,
-                'is_temp_blocked' => 0,
-                'temp_block_time' => null,
-            ]);
+            $this->resetPasswordResetAttempts($identity);
+            $verificationData = $this->passwordResetRepo->getFirstWhere(params: ['identity' => $identity]);
         }
 
         if ($verificationData['otp_hit_count'] >= $maxOTPHit && Carbon::parse($verificationData['updated_at'])->DiffInSeconds() < $maxOTPHitTime && $verificationData['is_temp_blocked'] == 0) {
@@ -236,16 +233,42 @@ trait CustomerTrait
             ];
         }
 
-        $verificationNewData = $this->passwordResetRepo->getFirstWhere(params: ['identity' => $identity]);
-        $this->passwordResetRepo->updateOrCreate(params: ['identity' => $identity], value: [
-            'otp_hit_count' => ($verificationNewData['otp_hit_count'] + 1),
-            'updated_at' => now(),
-        ]);
-
         return [
             'status' => 0,
             'code' => 'valid_otp',
             'message' => translate('OTP_is_not_matched'),
         ];
+    }
+
+    public function recordPasswordResetFailedAttempt(?string $identity): void
+    {
+        if ($identity === null || $identity === '') {
+            return;
+        }
+
+        $verificationData = $this->passwordResetRepo->getFirstWhere(params: ['identity' => $identity]);
+
+        if ($verificationData === null) {
+            return;
+        }
+
+        $this->passwordResetRepo->updateOrCreate(params: ['identity' => $identity], value: [
+            'otp_hit_count' => ((int) ($verificationData['otp_hit_count'] ?? 0)) + 1,
+            'updated_at' => now(),
+        ]);
+    }
+
+    public function resetPasswordResetAttempts(?string $identity): void
+    {
+        if ($identity === null || $identity === '') {
+            return;
+        }
+
+        $this->passwordResetRepo->updateOrCreate(params: ['identity' => $identity], value: [
+            'otp_hit_count' => 0,
+            'is_temp_blocked' => 0,
+            'temp_block_time' => null,
+            'updated_at' => now(),
+        ]);
     }
 }

@@ -29,6 +29,10 @@ class PasswordResetListener
     {
         $email = $event->email;
         $data = $event->data;
-        $this->sendingMail(sendMailTo: $email, userType: $data['userType'], templateName: $data['templateName'], data: $data);
+        $sent = $this->sendingMail(sendMailTo: $email, userType: $data['userType'], templateName: $data['templateName'], data: $data, sendSync: true);
+
+        if (! $sent) {
+            throw new \RuntimeException(translate('Unable_to_send_the_verification_code.'));
+        }
     }
 }

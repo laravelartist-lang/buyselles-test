@@ -198,7 +198,9 @@ class AuthController with ChangeNotifier {
 
       } else if (tempToken != null && tempToken.isNotEmpty) {
         String type;
-        if(config.customerVerification?.firebase == 1){
+        if (config.customerVerification?.email == 1 && register.email != null && register.email!.trim().isNotEmpty) {
+          type = 'email';
+        } else if(config.customerVerification?.firebase == 1){
           type = 'phone';
         }else if(config.customerVerification?.phone == 1){
           type = 'phone';

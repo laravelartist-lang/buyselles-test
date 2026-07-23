@@ -30,6 +30,15 @@ class SupplierOrderFulfillmentDispatcher
 
     public function dispatchForOrder(Order $order): void
     {
+        if (! $this->supplierOrderEligibilityService->orderIsEligibleForAutomatedFulfillment($order)) {
+            Log::info('SupplierOrderFulfillmentDispatcher: terminal order status, skipping fulfillment dispatch', [
+                'order_id' => $order->id,
+                'order_status' => $order->order_status,
+            ]);
+
+            return;
+        }
+
         $this->dispatchSupplierCodeFetchIfNeeded($order);
         $this->dispatchDirectTopUpIfNeeded($order);
     }

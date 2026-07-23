@@ -229,4 +229,50 @@ class DirectTopUpFulfillmentTest extends TestCase
 
         Bus::assertNotDispatched(DirectTopUpFulfillmentJob::class);
     }
+
+    public function test_canceled_order_does_not_dispatch_any_fulfillment_jobs(): void
+    {
+        $this->app['db']->table('supplier_apis')->insert([
+            'id' => 1,
+            'is_active' => true,
+            'supports_direct_top_up' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->app['db']->table('supplier_product_mappings')->insert([
+            'product_id' => 55,
+            'supplier_api_id' => 1,
+            'supplier_product_id' => 'SUP-55',
+            'is_active' => true,
+            'is_direct_topup' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $order = new Order([
+            'payment_status' => 'paid',
+            'order_status' => 'canceled',
+        ]);
+        $order->id = 23;
+
+        $detail = new OrderDetail([
+            'product_id' => 55,
+            'qty' => 1,
+            'direct_topup_quantity' => 500,
+            'direct_topup_account_id' => 'player123',
+            'product_details' => json_encode([
+                'product_type' => 'digital',
+                'digital_product_type' => 'ready_after_sell',
+            ]),
+        ]);
+        $detail->id = 5;
+
+        $order->setRelation('orderDetails', collect([$detail]));
+
+        app(\App\Services\Supplier\SupplierOrderFulfillmentDispatcher::class)->dispatchForOrder($order);
+
+        Bus::assertNotDispatched(DirectTopUpFulfillmentJob::class);
+        Bus::assertNotDispatched(SupplierCodeFetchJob::class);
+    }
 }

@@ -201,6 +201,30 @@ if (! function_exists('fileCheck')) {
     }
 }
 
+if (! function_exists('getActiveMailConfig')) {
+    function getActiveMailConfig(): ?array
+    {
+        $smtp = getWebConfig(name: 'mail_config');
+        if (is_array($smtp) && ($smtp['status'] ?? 0) == 1) {
+            return $smtp;
+        }
+
+        $sendgrid = getWebConfig(name: 'mail_config_sendgrid');
+        if (is_array($sendgrid) && ($sendgrid['status'] ?? 0) == 1) {
+            return $sendgrid;
+        }
+
+        return null;
+    }
+}
+
+if (! function_exists('isMailConfigActive')) {
+    function isMailConfigActive(): bool
+    {
+        return getActiveMailConfig() !== null;
+    }
+}
+
 if (! function_exists('getLoginConfig')) {
     function getLoginConfig($key): string|object|array|null
     {

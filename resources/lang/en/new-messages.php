@@ -11178,6 +11178,7 @@ return [
     'direct_topup_quantity_must_be_positive' => 'Quantity must be greater than zero.',
     'direct_topup_quantity_out_of_range' => 'Quantity must be between',
     'direct_topup_fulfillment_failed' => 'Top-up could not be completed. Please try again.',
+    'order_is_not_eligible_for_fulfillment' => 'This order can no longer be fulfilled. Please place a new order.',
     'direct_topup_by_quantity' => 'By Quantity',
     'direct_topup_by_price' => 'By Price',
     'direct_topup_total_price' => 'Total Price',

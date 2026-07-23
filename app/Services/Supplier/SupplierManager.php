@@ -278,6 +278,18 @@ class SupplierManager
      */
     public function fulfillOrder(Order $order): array
     {
+        if (! $this->orderEligibilityService->orderIsEligibleForAutomatedFulfillment($order)) {
+            Log::info('SupplierManager: skipping code fulfillment for terminal order', [
+                'order_id' => $order->id,
+                'order_status' => $order->order_status,
+            ]);
+
+            return [
+                'fulfilled' => false,
+                'error' => translate('order_is_not_eligible_for_fulfillment'),
+            ];
+        }
+
         $order->loadMissing('orderDetails');
 
         $anyFulfilled = false;
@@ -350,6 +362,20 @@ class SupplierManager
      */
     public function fulfillDirectTopUpOrder(Order $order): array
     {
+        if (! $this->orderEligibilityService->orderIsEligibleForAutomatedFulfillment($order)) {
+            Log::info('SupplierManager: skipping direct top-up fulfillment for terminal order', [
+                'order_id' => $order->id,
+                'order_status' => $order->order_status,
+            ]);
+
+            return [
+                'fulfilled' => false,
+                'placed' => false,
+                'pending' => false,
+                'error' => translate('order_is_not_eligible_for_fulfillment'),
+            ];
+        }
+
         $order->loadMissing(['orderDetails' => fn ($query) => $query->without('storage')]);
 
         $anyFulfilled = false;

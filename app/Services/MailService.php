@@ -43,11 +43,8 @@ class MailService
         $status = 0;
         $message = 'success';
         try {
-            $emailServicesSmtp = getWebConfig(name: 'mail_config');
-            if ($emailServicesSmtp['status'] == 0) {
-                $emailServicesSmtp = getWebConfig(name: 'mail_config_sendgrid');
-            }
-            if ($emailServicesSmtp['status'] == 1) {
+            $emailServicesSmtp = getActiveMailConfig();
+            if ($emailServicesSmtp !== null) {
                 Mail::to($request->email)->send(new TestEmailSender);
                 $status = 1;
             }
