@@ -119,8 +119,9 @@ A **mapping** connects one of your store's digital products to a supplier SKU. T
 3. Click **"Browse Catalog"** — the cached catalog loads in a modal
 4. Find the matching product and click **"Select"** — fills the `supplier_product_id` field
 5. Set **markup** (e.g., 10% percent or $2.00 flat)
-6. Configure **auto-restock** settings (threshold, max qty)
-7. Save
+6. Save
+
+> **Note:** Automatic pre-stocking (`auto_restock`) was **removed on 2026-07-13**. The scheduled stock sync job only updates remote prices and availability — it does **not** place supplier orders. Codes are fetched from suppliers only when a **customer or partner order** needs fulfillment.
 
 ### What gets saved to `supplier_product_mappings`
 
@@ -133,9 +134,6 @@ A **mapping** connects one of your store's digital products to a supplier SKU. T
 | `markup_type` | `percent` | `percent` or `flat` |
 | `markup_value` | `10.00` | 10% markup → sell price = 13.01 × 1.10 = **14.31** |
 | `priority` | `0` | Lower = tried first when multiple suppliers |
-| `auto_restock` | `true` | Auto-fetch codes when stock dips below threshold |
-| `min_stock_threshold` | `5` | Trigger restock when local pool < 5 codes |
-| `max_restock_qty` | `50` | Fetch at most 50 codes per restock cycle |
 
 ---
 
@@ -290,7 +288,7 @@ assignAndNotify($order)
 
 ## 8. Stage 7 — Periodic Stock & Price Sync (Every 15 min)
 
-The `SupplierStockSyncJob` runs on a schedule every 15 minutes. It checks all active mappings.
+The `SupplierStockSyncJob` is **not scheduled**. Run it manually from the admin panel via the **"Sync Prices"** button on the Mappings list page when you want to refresh supplier stock/prices.
 
 ```
 Scheduler fires SupplierStockSyncJob
@@ -315,11 +313,9 @@ For each active SupplierProductMapping:
         │
         ├─► Update mapping.last_synced_at = now()
         │
-        └─► If auto_restock = true:
-                localStock = count of available codes for product
-                If localStock < min_stock_threshold AND remote stock > 0:
-                    qty = min(max_restock_qty, remote_available)
-                    placeSupplierOrder() → fetch new codes automatically
+        └─► Does NOT place supplier orders (auto_restock removed 2026-07-13).
+            Supplier `place_order` calls happen only via customer/partner fulfillment jobs.
+            Run `php artisan supplier:audit-recent-placements` to compare API logs vs orders.
 ```
 
 You can also trigger this manually from the admin panel via the **"Sync Prices"** button on the Mappings list page.
@@ -414,9 +410,6 @@ Links your products to supplier SKUs.
 | `markup_type` | enum | `percent` or `flat` |
 | `markup_value` | decimal | Markup amount |
 | `priority` | int | Fallback order (lower = higher priority) |
-| `auto_restock` | bool | Enable automatic restocking |
-| `min_stock_threshold` | int | Trigger level for auto-restock |
-| `max_restock_qty` | int | Max codes to fetch per auto-restock |
 | `is_active` | bool | Enable/disable this mapping |
 | `last_synced_at` | timestamp | When this mapping was last synced |
 
