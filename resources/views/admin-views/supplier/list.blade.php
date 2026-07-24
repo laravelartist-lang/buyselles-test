@@ -41,7 +41,6 @@
                             <th class="text-center">{{ translate('balance') }}</th>
                             <th class="text-center">{{ translate('priority') }}</th>
                             <th class="text-center">{{ translate('rate_limit') }}</th>
-                            <th class="text-center">{{ translate('sandbox') }}</th>
                             <th class="text-center">{{ translate('status') }}</th>
                             <th class="text-center">{{ translate('action') }}</th>
                         </tr>
@@ -86,13 +85,6 @@
                             </td>
                             <td class="text-center">{{ $supplier->priority }}</td>
                             <td class="text-center">{{ $supplier->rate_limit_per_minute }}/min</td>
-                            <td class="text-center">
-                                @if($supplier->is_sandbox)
-                                    <span class="badge bg-warning text-dark">{{ translate('sandbox') }}</span>
-                                @else
-                                    <span class="badge bg-success">{{ translate('live') }}</span>
-                                @endif
-                            </td>
                             <td>
                                 <form action="{{ route('admin.supplier.status') }}" method="post"
                                       id="supplier-status{{ $supplier->id }}-form"

@@ -378,7 +378,6 @@
 
         const driverSelect = document.getElementById('driver-select');
         const nameInput = document.querySelector('input[name="name"]');
-        const sandboxToggle = document.getElementById('sandbox-toggle');
         const baseUrlInput = document.getElementById('base-url-input');
         const rateLimitInput = document.getElementById('rate-limit-input');
         const topupToggle = document.getElementById('topup-toggle');
@@ -401,10 +400,6 @@
 
         if (topupToggle && preset.supports_direct_top_up !== undefined) {
             topupToggle.checked = Boolean(preset.supports_direct_top_up);
-        }
-
-        if (sandboxToggle && preset.is_sandbox !== undefined) {
-            sandboxToggle.checked = Boolean(preset.is_sandbox);
         }
 
         config.settingsValues = { ...(preset.settings || {}) };

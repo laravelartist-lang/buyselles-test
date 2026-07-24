@@ -96,17 +96,6 @@
 
                     <div class="col-lg-3">
                         <div class="form-group">
-                            <label class="form-label">{{ translate('sandbox_mode') }}</label>
-                            <div class="form-check form-switch mt-2">
-                                <input class="form-check-input" type="checkbox" name="is_sandbox" value="1"
-                                       id="sandbox-toggle" {{ old('is_sandbox', $supplier->is_sandbox) ? 'checked' : '' }}>
-                                <label class="form-check-label" for="sandbox-toggle">{{ translate('enable_sandbox') }}</label>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="col-lg-3">
-                        <div class="form-group">
                             <label class="form-label">{{ translate('supports_direct_top_up') }}</label>
                             <div class="form-check form-switch mt-2">
                                 <input class="form-check-input" type="checkbox" name="supports_direct_top_up" value="1"
@@ -156,11 +145,6 @@
                         <p class="text-muted mb-0">{{ translate('test_direct_topup_hint') ?: 'Place a sandbox test order without affecting customer orders. Uses the same API payload as the Secret Orca CLI test commands.' }}</p>
                     </div>
                     <div class="d-flex flex-wrap gap-2">
-                        @if($supplier->is_sandbox)
-                            <span class="badge bg-info text-dark">{{ translate('sandbox_mode') }}</span>
-                        @else
-                            <span class="badge bg-warning text-dark">{{ translate('live_mode') ?: 'Live Mode' }}</span>
-                        @endif
                         @if($isSecretOrcaSupplier ?? false)
                             <button type="button" class="btn btn-sm btn-outline-secondary" id="test-topup-repair-btn">
                                 {{ translate('repair_secret_orca_settings') ?: 'Repair Secret Orca Settings' }}
@@ -264,7 +248,6 @@
     'connectorPresets' => $connectorPresets ?? [],
     'testTopUpMappings' => $testTopUpMappings ?? [],
     'isSecretOrcaSupplier' => $isSecretOrcaSupplier ?? false,
-    'isSandboxSupplier' => (bool) $supplier->is_sandbox,
 ])
 @endsection
 

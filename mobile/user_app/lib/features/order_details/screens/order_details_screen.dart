@@ -18,6 +18,7 @@ import 'package:flutter_sixvalley_ecommerce/features/order_details/widgets/selle
 import 'package:flutter_sixvalley_ecommerce/features/order_details/widgets/shipping_and_billing_widget.dart';
 import 'package:flutter_sixvalley_ecommerce/features/review/controllers/review_controller.dart';
 import 'package:flutter_sixvalley_ecommerce/features/splash/controllers/splash_controller.dart';
+import 'package:flutter_sixvalley_ecommerce/helper/order_note_helper.dart';
 import 'package:flutter_sixvalley_ecommerce/helper/price_converter.dart';
 import 'package:flutter_sixvalley_ecommerce/helper/route_healper.dart';
 import 'package:flutter_sixvalley_ecommerce/localization/language_constrants.dart';
@@ -171,9 +172,45 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     BuildContext context,
     OrderDetailsController orderProvider,
   ) {
-    final String orderNote = orderProvider.orders?.orderNote ?? '';
-    if (orderNote.isEmpty || orderProvider.orders?.orderType == 'POS') {
+    if (orderProvider.orders?.orderType == 'POS') {
       return const SizedBox.shrink();
+    }
+
+    final rawNote = orderProvider.orders?.orderNote ?? '';
+    final isFailed = orderProvider.orders?.orderStatus == 'failed';
+    final display = OrderNoteHelper.parse(rawNote, isFailedOrder: isFailed);
+
+    if (display.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final sections = <Widget>[];
+
+    if (display.failureMessage != null &&
+        display.failureMessage!.trim().isNotEmpty) {
+      sections.add(
+        _orderNoteBlock(
+          context,
+          title: getTranslated('order_failure_reason', context) ??
+              'What went wrong',
+          body: display.failureMessage!,
+          emphasize: true,
+        ),
+      );
+    }
+
+    if (display.customerNote != null &&
+        display.customerNote!.trim().isNotEmpty) {
+      if (sections.isNotEmpty) {
+        sections.add(const SizedBox(height: Dimensions.paddingSizeSmall));
+      }
+      sections.add(
+        _orderNoteBlock(
+          context,
+          title: getTranslated('order_note', context) ?? 'Additional Note',
+          body: display.customerNote!,
+        ),
+      );
     }
 
     return Container(
@@ -192,22 +229,37 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            getTranslated('order_note', context) ?? 'Order Note',
-            style: robotoBold.copyWith(
-              color: Theme.of(context).textTheme.bodyLarge?.color,
-            ),
-          ),
-          const SizedBox(height: Dimensions.paddingSizeExtraSmall),
-          Text(
-            orderNote,
-            style: titilliumRegular.copyWith(
-              color: Theme.of(context).textTheme.bodyMedium?.color,
-            ),
-          ),
-        ],
+        children: sections,
       ),
+    );
+  }
+
+  Widget _orderNoteBlock(
+    BuildContext context, {
+    required String title,
+    required String body,
+    bool emphasize = false,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: robotoBold.copyWith(
+            color: emphasize
+                ? Theme.of(context).colorScheme.error
+                : Theme.of(context).textTheme.bodyLarge?.color,
+          ),
+        ),
+        const SizedBox(height: Dimensions.paddingSizeExtraSmall),
+        Text(
+          body,
+          style: titilliumRegular.copyWith(
+            color: Theme.of(context).textTheme.bodyMedium?.color,
+            height: 1.4,
+          ),
+        ),
+      ],
     );
   }
 

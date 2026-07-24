@@ -93,17 +93,6 @@
 
                     <div class="col-lg-3">
                         <div class="form-group">
-                            <label class="form-label">{{ translate('sandbox_mode') }}</label>
-                            <div class="form-check form-switch mt-2">
-                                <input class="form-check-input" type="checkbox" name="is_sandbox" value="1"
-                                       id="sandbox-toggle" {{ old('is_sandbox') ? 'checked' : '' }}>
-                                <label class="form-check-label" for="sandbox-toggle">{{ translate('enable_sandbox') }}</label>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="col-lg-3">
-                        <div class="form-group">
                             <label class="form-label">{{ translate('supports_direct_top_up') }}</label>
                             <div class="form-check form-switch mt-2">
                                 <input class="form-check-input" type="checkbox" name="supports_direct_top_up" value="1"

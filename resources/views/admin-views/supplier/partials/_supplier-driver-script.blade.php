@@ -22,7 +22,6 @@
         ],
         'testTopUp' => [
             'mappings' => $testTopUpMappings ?? [],
-            'isSandbox' => (bool) ($isSandboxSupplier ?? false),
             'isSecretOrca' => (bool) ($isSecretOrcaSupplier ?? false),
         ],
         'settingsValues' => old('settings', isset($supplier) ? ($supplier->settings ?? []) : []),

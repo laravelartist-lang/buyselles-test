@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter_sixvalley_ecommerce/data/model/image_full_url.dart';
 import 'package:flutter_sixvalley_ecommerce/features/shop/domain/models/seller_model.dart';
+import 'package:flutter_sixvalley_ecommerce/helper/order_note_helper.dart';
 
 Map<String, dynamic>? _safeMap(dynamic value) {
   if (value is Map<String, dynamic>) {
@@ -236,7 +237,7 @@ class Orders {
 
     expectedDeliveryDate = json['expected_delivery_date'];
     deliverymanAssignedAt = json['deliveryman_assigned_at'];
-    orderNote = json['order_note'];
+    orderNote = OrderNoteHelper.orderNoteFromJson(json['order_note']);
     billingAddress = json['billing_address'];
     final billingAddressJson = _safeMap(json['billing_address_data']);
     billingAddressData = billingAddressJson != null ? BillingAddressData.fromJson(billingAddressJson) : null;
