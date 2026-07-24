@@ -20,7 +20,8 @@ Schedule::job(new SyncSupplierMappingPricesJob)->dailyAt('01:00');
 // Ping all active suppliers to monitor health/availability.
 Schedule::job(new SupplierHealthCheckJob)->everyFiveMinutes();
 
-// Supplier stock sync (fetch_stock) is manual-only via admin "Sync Prices" — not scheduled.
+// Manual price refresh only: Admin → Supplier Mappings → Sync Prices (SyncSupplierMappingPricesJob).
+// Never schedule automatic supplier purchases or legacy stock-sync jobs.
 
 // Auto-release escrows past their release deadline (no active dispute).
 Schedule::job(new AutoReleaseEscrowJob)->hourly();

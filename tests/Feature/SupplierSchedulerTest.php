@@ -16,4 +16,18 @@ class SupplierSchedulerTest extends TestCase
         $this->assertStringContainsString('SupplierHealthCheckJob', $output);
         $this->assertStringContainsString('SyncSupplierMappingPricesJob', $output);
     }
+
+    public function test_console_schedule_does_not_reference_auto_restock_or_stock_sync_job(): void
+    {
+        $console = file_get_contents(base_path('routes/console.php')) ?: '';
+
+        $this->assertStringNotContainsString('SupplierStockSyncJob', $console);
+        $this->assertStringNotContainsString('auto_restock', $console);
+        $this->assertStringNotContainsString('everyFifteenMinutes', $console);
+    }
+
+    public function test_supplier_stock_sync_job_class_is_removed(): void
+    {
+        $this->assertFileDoesNotExist(app_path('Jobs/SupplierStockSyncJob.php'));
+    }
 }

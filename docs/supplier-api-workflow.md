@@ -13,7 +13,7 @@ This document explains the full lifecycle of a supplier product: from fetching t
 5. [Stage 4 — Fetching Codes from Supplier](#5-stage-4--fetching-codes-from-supplier)
 6. [Stage 5 — Webhook Delivery (Async Suppliers)](#6-stage-5--webhook-delivery-async-suppliers)
 7. [Stage 6 — Code Delivered to Customer](#7-stage-6--code-delivered-to-customer)
-8. [Stage 7 — Periodic Stock & Price Sync (Every 15 min)](#8-stage-7--periodic-stock--price-sync-every-15-min)
+8. [Stage 7 — Price sync (daily + manual)](#8-stage-7--price-sync-daily--manual)
 9. [Price Calculation Logic](#9-price-calculation-logic)
 10. [Supplier Fallback Chain](#10-supplier-fallback-chain)
 11. [Key Database Tables](#11-key-database-tables)
@@ -30,7 +30,7 @@ This document explains the full lifecycle of a supplier product: from fetching t
 │                           │                                     │
 │  Browse Catalog ──────────┼──► SyncSupplierCatalogJob           │
 │  Add Mapping              │       └─► BambooDriver::fetchProducts│
-│  Sync Prices Button ──────┼──► SupplierStockSyncJob (every 15m) │
+│  Sync Prices Button ──────┼──► SyncSupplierMappingPricesJob (manual) │
 │                           │       └─► syncStock() per mapping   │
 ├───────────────────────────┴─────────────────────────────────────┤
 │                 ORDER FULFILLMENT PIPELINE                      │
@@ -55,7 +55,7 @@ This document explains the full lifecycle of a supplier product: from fetching t
 | `BambooDriver` | `app/Services/Supplier/Drivers/BambooDriver.php` | Bamboo-specific API implementation |
 | `SyncSupplierCatalogJob` | `app/Jobs/SyncSupplierCatalogJob.php` | Background catalog fetch with progress tracking |
 | `SupplierCodeFetchJob` | `app/Jobs/SupplierCodeFetchJob.php` | On-demand code fetch when a customer order needs codes |
-| `SupplierStockSyncJob` | `app/Jobs/SupplierStockSyncJob.php` | Scheduled price/stock sync every 15 minutes |
+| `SyncSupplierMappingPricesJob` | `app/Jobs/SyncSupplierMappingPricesJob.php` | Daily + manual price sync via `fetch_stock` (no purchases) |
 | `DigitalProductCodeService` | `app/Services/DigitalProductCodeService.php` | Manages the code pool, assigns codes to orders |
 
 ---
@@ -286,12 +286,12 @@ assignAndNotify($order)
 
 ---
 
-## 8. Stage 7 — Periodic Stock & Price Sync (Every 15 min)
+## 8. Stage 7 — Price sync (daily + manual)
 
-The `SupplierStockSyncJob` is **not scheduled**. Run it manually from the admin panel via the **"Sync Prices"** button on the Mappings list page when you want to refresh supplier stock/prices.
+`SyncSupplierMappingPricesJob` runs **daily at 01:00** and can be triggered manually from **Admin → Supplier Mappings → Sync Prices**. It calls `SupplierManager::syncStock()` per mapping (API read only).
 
 ```
-Scheduler fires SupplierStockSyncJob
+Schedule (daily) or admin Sync Prices → SyncSupplierMappingPricesJob
         │
         ▼
 For each active SupplierProductMapping:
@@ -345,7 +345,7 @@ If markup_type = 'flat':
 The product's `unit_price` field is updated to `sell_price` automatically when:
 
 1. Manual stock in your local pool runs out (checked in `applyApiPriceIfManualDepleted`)
-2. New codes arrive from the supplier via webhook or auto-restock
+2. New codes arrive from the supplier via webhook or customer-order fulfillment
 3. The periodic 15-minute sync job runs and detects depleted manual stock
 4. You click "Sync Prices" in the admin panel
 
@@ -466,7 +466,7 @@ Full request/response log for every API call.
 2. Admin syncs catalog (background job, cached 6 hours)
           ↓
 3. Admin creates Mapping:
-   Local Product ←→ Supplier SKU + Markup + Auto-restock settings
+   Local Product ←→ Supplier SKU + Markup
           ↓
 4. Customer places order → pays
           ↓
@@ -483,8 +483,8 @@ Full request/response log for every API call.
    → Codes added to pool (encrypted)
    → assignAndNotify() → Customer gets email with codes
           ↓
-9. Every 15 min: SupplierStockSyncJob
-   → Updates cost_price from API
-   → Auto-restocks if stock < threshold
+9. Daily / manual: SyncSupplierMappingPricesJob
+   → Updates cost_price from API (fetch_stock)
    → Updates product unit_price if manual stock depleted
+   → Never places supplier orders (auto_restock removed 2026-07-13)
 ```

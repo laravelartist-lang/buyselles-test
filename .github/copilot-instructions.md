@@ -262,7 +262,7 @@ status (success|failed), http_code, response_time_ms, created_at
 
 **Files to create:**
 - `app/Services/SupplierApiService.php`
-- `app/Jobs/SupplierStockSyncJob.php` — every 15 min via scheduler
+- Price sync: `SyncSupplierMappingPricesJob` — daily + manual admin Sync Prices (read-only `fetch_stock`, no purchases).
 - `app/Jobs/SupplierCodeFetchJob.php` — retry 3x with exponential backoff (30s/60s/120s)
 - `app/Http/Controllers/Api/SupplierWebhookController.php` — `POST /api/supplier/webhook`
 - `app/Models/SupplierApi.php`

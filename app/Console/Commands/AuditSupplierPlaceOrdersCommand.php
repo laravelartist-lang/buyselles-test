@@ -82,7 +82,7 @@ class AuditSupplierPlaceOrdersCommand extends Command
 
         if ($orphanEstimate > 0) {
             $this->warn("Possible orphan supplier placements: ~{$orphanEstimate} (place_order minus customer orders minus admin tests).");
-            $this->warn('If this is high while auto_restock is disabled, investigate SupplierStockSyncJob and duplicate fulfillment dispatches.');
+            $this->warn('If this is high, investigate duplicate fulfillment dispatches or manual supplier API tests.');
         } else {
             $this->info('No orphan supplier placement pattern detected for this window.');
         }
