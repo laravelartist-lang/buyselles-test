@@ -29,4 +29,26 @@ class OrderFailureNoteFormatterTest extends TestCase
 
         $this->assertSame('Supplier fulfillment failed: Out of stock', $note);
     }
+
+    public function test_from_throwable_prefers_full_response_body_over_truncated_exception_message(): void
+    {
+        $response = new \Illuminate\Http\Client\Response(
+            new \GuzzleHttp\Psr7\Response(
+                400,
+                ['Content-Type' => 'application/json'],
+                json_encode([
+                    'message' => 'Account does not have enough funds available to buy the card(s) requested. Balance: 0.3624.',
+                ], JSON_THROW_ON_ERROR)
+            )
+        );
+
+        $exception = new \Illuminate\Http\Client\RequestException($response);
+
+        $formatter = new OrderFailureNoteFormatter;
+
+        $plain = $formatter->fromThrowable($exception);
+
+        $this->assertStringContainsString('enough funds', $plain);
+        $this->assertStringNotContainsString('{', $plain);
+    }
 }

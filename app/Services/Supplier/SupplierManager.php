@@ -15,6 +15,7 @@ use App\Models\SupplierProductDenomination;
 use App\Models\SupplierProductMapping;
 use App\Services\DigitalProductCodeService;
 use App\Services\DirectTopUp\DirectTopUpWalletCheckoutService;
+use App\Services\Order\OrderFailureNoteFormatter;
 use App\Services\Supplier\Drivers\BambooDriver;
 use App\Services\Supplier\Drivers\GenericRestDriver;
 use App\Services\Supplier\Drivers\GolfApiDriver;
@@ -266,7 +267,7 @@ class SupplierManager
                     'error' => $e->getMessage(),
                 ]);
 
-                $errors[] = "Supplier '{$supplier->name}' error: ".$e->getMessage();
+                $errors[] = "Supplier '{$supplier->name}' error: ".$this->supplierErrorMessage($e);
             }
         }
 
@@ -605,7 +606,7 @@ class SupplierManager
                     'error' => $e->getMessage(),
                 ]);
 
-                $errors[] = "Product '{$product->name}': Supplier error: ".$e->getMessage();
+                $errors[] = "Product '{$product->name}': Supplier error: ".$this->supplierErrorMessage($e);
             }
         }
 
@@ -1055,5 +1056,10 @@ class SupplierManager
         }
 
         return $bulkResult['inserted'];
+    }
+
+    private function supplierErrorMessage(\Throwable $throwable): string
+    {
+        return app(OrderFailureNoteFormatter::class)->fromThrowable($throwable);
     }
 }

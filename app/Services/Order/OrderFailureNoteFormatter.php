@@ -2,8 +2,40 @@
 
 namespace App\Services\Order;
 
+use Illuminate\Http\Client\RequestException;
+use Throwable;
+
 class OrderFailureNoteFormatter
 {
+    /**
+     * Prefer the full HTTP response body over {@see RequestException::getMessage()},
+     * which Laravel truncates and often embeds as invalid JSON.
+     */
+    public function fromThrowable(Throwable $throwable): string
+    {
+        if ($throwable instanceof RequestException) {
+            $response = $throwable->response;
+            if ($response !== null) {
+                $json = $response->json();
+                if (is_array($json)) {
+                    foreach (['message', 'error', 'error_message', 'description'] as $key) {
+                        $candidate = data_get($json, $key);
+                        if (is_string($candidate) && trim($candidate) !== '') {
+                            return trim($candidate);
+                        }
+                    }
+                }
+
+                $fromBody = $this->toPlainText($response->body());
+                if ($fromBody !== '' && ! str_contains($fromBody, 'HTTP request returned')) {
+                    return $fromBody;
+                }
+            }
+        }
+
+        return $this->toPlainText($throwable->getMessage());
+    }
+
     public function supplierFailureNote(string $error): string
     {
         return 'Supplier fulfillment failed: '.$this->toPlainText($error);
