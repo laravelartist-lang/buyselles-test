@@ -63,6 +63,7 @@ class SyncSupplierMappingPricesJobTest extends TestCase
             $table->id();
             $table->string('name')->nullable();
             $table->decimal('unit_price', 14, 2)->default(0);
+            $table->boolean('partner_api_only')->default(false);
             $table->timestamps();
         });
 

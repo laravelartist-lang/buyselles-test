@@ -426,6 +426,20 @@ class SupplierProductMapping extends Model
         return $query->orderBy('priority', 'asc');
     }
 
+    /**
+     * Limit mappings to storefront (customer-facing) products only, excluding
+     * products that are exclusively exposed through the partner API.
+     */
+    public function scopeStorefrontOnly($query)
+    {
+        return $query->whereHas('product', function ($productQuery): void {
+            $productQuery->where(function ($inner): void {
+                $inner->where('partner_api_only', false)
+                    ->orWhereNull('partner_api_only');
+            });
+        });
+    }
+
     // ─── Static helpers ──────────────────────────────────────────────────
 
     /**
