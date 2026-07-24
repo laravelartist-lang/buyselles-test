@@ -479,4 +479,34 @@ class DirectTopUpWalletCheckoutTest extends TestCase
         $this->assertSame('unpaid', $order->payment_status);
         $this->assertSame(1, $this->app['db']->table('wallet_transactions')->where('transaction_type', 'order_refund')->count());
     }
+
+    public function test_mark_direct_topup_order_failed_prefixes_plain_supplier_message(): void
+    {
+        $user = User::create([
+            'f_name' => 'Test',
+            'email' => 'plain-note@test.com',
+            'wallet_balance' => 50,
+        ]);
+
+        $order = Order::create([
+            'customer_id' => $user->id,
+            'payment_method' => 'pay_by_wallet',
+            'payment_status' => 'paid',
+            'order_status' => 'processing',
+            'order_amount' => 10,
+        ]);
+
+        $service = app(DirectTopUpWalletCheckoutService::class);
+        $service->markDirectTopUpOrderFailed(
+            $order,
+            '{"message":"Your balance is not enough (truncated...)',
+            $user->id,
+        );
+
+        $order->refresh();
+
+        $this->assertStringStartsWith('Direct top-up fulfillment failed:', (string) $order->order_note);
+        $this->assertStringContainsString('balance is not enough', (string) $order->order_note);
+        $this->assertStringNotContainsString('"message"', (string) $order->order_note);
+    }
 }

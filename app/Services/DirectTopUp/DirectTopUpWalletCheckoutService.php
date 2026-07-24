@@ -9,6 +9,7 @@ use App\Models\OrderDetail;
 use App\Models\OrderTransaction;
 use App\Models\SupplierOrder;
 use App\Models\SupplierProductMapping;
+use App\Services\Order\OrderFailureNoteFormatter;
 use App\Services\Order\OrderFulfillmentStatusService;
 use App\Services\Partner\PartnerOrderRefundService;
 use App\Services\Supplier\SupplierManager;
@@ -26,6 +27,7 @@ class DirectTopUpWalletCheckoutService
         private readonly SupplierManager $supplierManager,
         private readonly FailedWalletOrderRefundService $walletRefundService,
         private readonly OrderFulfillmentStatusService $fulfillmentStatusService,
+        private readonly OrderFailureNoteFormatter $failureNoteFormatter,
     ) {}
 
     /**
@@ -201,7 +203,7 @@ class DirectTopUpWalletCheckoutService
         $order->update([
             'order_status' => 'failed',
             'payment_status' => $refunded ? 'unpaid' : $order->payment_status,
-            'order_note' => 'Direct top-up fulfillment failed: '.$error,
+            'order_note' => $this->failureNoteFormatter->directTopUpFailureNote($error),
         ]);
 
         OrderDetail::where('order_id', $order->id)->update([
@@ -219,10 +221,10 @@ class DirectTopUpWalletCheckoutService
         }
 
         if (preg_match("/^Product '[^']+': (.+)$/u", $error, $matches)) {
-            return trim($matches[1]);
+            return $this->failureNoteFormatter->toPlainText(trim($matches[1]));
         }
 
-        return trim($error);
+        return $this->failureNoteFormatter->toPlainText(trim($error));
     }
 
     /**
@@ -247,7 +249,10 @@ class DirectTopUpWalletCheckoutService
             $order->update([
                 'order_status' => 'canceled',
                 'payment_status' => 'unpaid',
-                'order_note' => 'Direct top-up failed: '.$error,
+                'order_note' => $this->failureNoteFormatter->directTopUpFailureNote(
+                    $error,
+                    'Direct top-up failed:'
+                ),
             ]);
 
             OrderDetail::where('order_id', $orderId)->update([

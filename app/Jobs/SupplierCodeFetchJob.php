@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Models\Order;
 use App\Models\SupplierOrder;
+use App\Services\Order\OrderFailureNoteFormatter;
 use App\Services\Supplier\SupplierFulfillmentFailureService;
 use App\Services\Supplier\SupplierManager;
 use App\Services\Supplier\SupplierOrderEligibilityService;
@@ -131,9 +132,13 @@ class SupplierCodeFetchJob implements ShouldQueue
             return;
         }
 
+        $plainError = $exception !== null
+            ? app(OrderFailureNoteFormatter::class)->fromThrowable($exception)
+            : 'Supplier fulfillment failed after retries.';
+
         app(SupplierFulfillmentFailureService::class)->markOrderFailed(
             $order,
-            $exception?->getMessage() ?: 'Supplier fulfillment failed after retries.',
+            $plainError,
             (int) $order->customer_id
         );
     }

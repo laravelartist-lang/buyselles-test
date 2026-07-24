@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Models\Order;
 use App\Services\DirectTopUp\DirectTopUpWalletCheckoutService;
+use App\Services\Order\OrderFailureNoteFormatter;
 use App\Services\Supplier\SupplierManager;
 use App\Services\Supplier\SupplierOrderEligibilityService;
 use Illuminate\Bus\Queueable;
@@ -133,9 +134,13 @@ class DirectTopUpFulfillmentJob implements ShouldQueue
             return;
         }
 
+        $plainError = $exception !== null
+            ? app(OrderFailureNoteFormatter::class)->fromThrowable($exception)
+            : translate('direct_topup_fulfillment_failed');
+
         app(DirectTopUpWalletCheckoutService::class)->markDirectTopUpOrderFailed(
             $order,
-            $exception?->getMessage() ?: translate('direct_topup_fulfillment_failed'),
+            $plainError,
             (int) $order->customer_id
         );
     }

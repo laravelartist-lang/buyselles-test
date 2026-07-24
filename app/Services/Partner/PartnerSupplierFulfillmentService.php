@@ -8,6 +8,7 @@ use App\Models\Product;
 use App\Models\SupplierOrder;
 use App\Models\SupplierProductMapping;
 use App\Services\DigitalProductCodeService;
+use App\Services\Order\OrderFailureNoteFormatter;
 use App\Services\Supplier\SupplierManager;
 use App\Services\Supplier\SupplierOrderCodeProcessor;
 use App\Services\Supplier\SupplierOrderEligibilityService;
@@ -20,6 +21,7 @@ class PartnerSupplierFulfillmentService
         private readonly SupplierOrderEligibilityService $eligibilityService,
         private readonly SupplierOrderCodeProcessor $codeProcessor,
         private readonly DigitalProductCodeService $codeService,
+        private readonly OrderFailureNoteFormatter $failureNoteFormatter,
     ) {}
 
     /**
@@ -136,7 +138,7 @@ class PartnerSupplierFulfillmentService
                     'success' => false,
                     'pending' => false,
                     'failed' => true,
-                    'error' => $e->getMessage(),
+                    'error' => $this->failureNoteFormatter->fromThrowable($e),
                     'supplier_order_id' => $supplierOrderId,
                     'supplier_request_id' => $supplierRequestId,
                 ];

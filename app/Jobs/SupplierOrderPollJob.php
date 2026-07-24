@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Models\Order;
 use App\Models\SupplierOrder;
 use App\Services\DigitalProductCodeService;
+use App\Services\Order\OrderFailureNoteFormatter;
 use App\Services\Supplier\SupplierManager;
 use App\Services\Supplier\SupplierOrderCodeProcessor;
 use App\Services\Supplier\SupplierOrderEligibilityService;
@@ -180,9 +181,11 @@ class SupplierOrderPollJob implements ShouldQueue
             return;
         }
 
+        $plainError = app(OrderFailureNoteFormatter::class)->fromThrowable($exception);
+
         $supplierOrder->update([
             'status' => 'failed',
-            'failed_reason' => 'Poll retries exhausted: '.$exception->getMessage(),
+            'failed_reason' => 'Poll retries exhausted: '.$plainError,
         ]);
 
         if ($supplierOrder->order_id && ($supplierOrder->productMapping?->is_direct_topup ?? false)) {
@@ -191,7 +194,7 @@ class SupplierOrderPollJob implements ShouldQueue
             if ($order && app(SupplierOrderEligibilityService::class)->orderIsEligibleForAutomatedFulfillment($order)) {
                 app(\App\Services\DirectTopUp\DirectTopUpWalletCheckoutService::class)->markDirectTopUpOrderFailed(
                     $order,
-                    $exception->getMessage() ?: translate('direct_topup_fulfillment_failed'),
+                    $plainError ?: translate('direct_topup_fulfillment_failed'),
                     (int) $order->customer_id,
                 );
             }
