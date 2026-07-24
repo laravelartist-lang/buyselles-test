@@ -3,8 +3,6 @@
 namespace App\Jobs;
 
 use App\Models\SupplierProductMapping;
-use App\Services\DigitalProductCodeService;
-use App\Services\Supplier\SupplierCurrencyConverter;
 use App\Services\Supplier\SupplierManager;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -15,6 +13,7 @@ use Illuminate\Support\Facades\Log;
 
 /**
  * Daily price sync job — refreshes mapped supplier cost prices from live API data.
+ * Uses SupplierManager::syncStock() so each read is recorded in supplier_api_logs.
  */
 class SyncSupplierMappingPricesJob implements ShouldQueue
 {
@@ -29,11 +28,8 @@ class SyncSupplierMappingPricesJob implements ShouldQueue
         $this->onQueue('slow');
     }
 
-    public function handle(
-        SupplierManager $manager,
-        DigitalProductCodeService $codeService,
-        SupplierCurrencyConverter $converter,
-    ): void {
+    public function handle(SupplierManager $manager): void
+    {
         $mappings = SupplierProductMapping::query()
             ->storefrontOnly()
             ->active()
@@ -41,42 +37,13 @@ class SyncSupplierMappingPricesJob implements ShouldQueue
             ->with('supplierApi')
             ->get();
 
-        $updated = 0;
+        $synced = 0;
         $failed = 0;
 
         foreach ($mappings as $mapping) {
             try {
-                $supplier = $mapping->supplierApi;
-
-                if ($supplier->isDown()) {
-                    continue;
-                }
-
-                $driver = $manager->driver($supplier);
-                $stockResult = $driver->fetchStock($mapping->supplier_product_id);
-                $resolvedCost = $converter->resolveMappingCost(
-                    (float) $stockResult->price,
-                    (string) $stockResult->currency,
-                    $supplier->settings,
-                );
-
-                if ($resolvedCost['cost_price'] <= 0
-                    || ($resolvedCost['cost_price'] == $mapping->cost_price
-                        && $resolvedCost['cost_currency'] === $mapping->cost_currency)) {
-                    if ($manager->normalizeLegacyMappingCost($mapping, $supplier)) {
-                        $updated++;
-                    }
-
-                    continue;
-                }
-
-                $mapping->update([
-                    'cost_price' => $resolvedCost['cost_price'],
-                    'cost_currency' => $resolvedCost['cost_currency'],
-                ]);
-
-                $codeService->applyApiPriceIfManualDepleted($mapping->product_id);
-                $updated++;
+                $manager->syncStock($mapping);
+                $synced++;
             } catch (\Throwable $e) {
                 $failed++;
                 Log::error('SyncSupplierMappingPricesJob: mapping price sync failed', [
@@ -90,7 +57,7 @@ class SyncSupplierMappingPricesJob implements ShouldQueue
 
         Log::info('SyncSupplierMappingPricesJob: completed', [
             'total' => $mappings->count(),
-            'updated' => $updated,
+            'synced' => $synced,
             'failed' => $failed,
         ]);
     }

@@ -2,21 +2,15 @@
 
 namespace App\Jobs;
 
-use App\Models\SupplierProductMapping;
 use App\Services\Supplier\SupplierManager;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\Log;
 
 /**
- * Periodic stock sync job — runs every 15 minutes via scheduler.
- *
- * For each active supplier-product mapping:
- * 1. Checks remote stock availability via supplier API
- * 2. Updates cost price if it has changed
+ * @deprecated Use SyncSupplierMappingPricesJob. Kept for queued retries from older deployments.
  */
 class SupplierStockSyncJob implements ShouldQueue
 {
@@ -24,7 +18,7 @@ class SupplierStockSyncJob implements ShouldQueue
 
     public int $tries = 1;
 
-    public int $timeout = 600; // 10 minutes
+    public int $timeout = 600;
 
     public function __construct()
     {
@@ -33,34 +27,6 @@ class SupplierStockSyncJob implements ShouldQueue
 
     public function handle(SupplierManager $manager): void
     {
-        $mappings = SupplierProductMapping::query()
-            ->storefrontOnly()
-            ->active()
-            ->with('supplierApi')
-            ->get();
-
-        $synced = 0;
-        $failed = 0;
-
-        foreach ($mappings as $mapping) {
-            try {
-                $manager->syncStock($mapping);
-                $synced++;
-            } catch (\Throwable $e) {
-                $failed++;
-                Log::error('SupplierStockSyncJob: mapping sync failed', [
-                    'mapping_id' => $mapping->id,
-                    'product_id' => $mapping->product_id,
-                    'supplier_id' => $mapping->supplier_api_id,
-                    'error' => $e->getMessage(),
-                ]);
-            }
-        }
-
-        Log::info('SupplierStockSyncJob: completed', [
-            'total' => $mappings->count(),
-            'synced' => $synced,
-            'failed' => $failed,
-        ]);
+        (new SyncSupplierMappingPricesJob)->handle($manager);
     }
 }

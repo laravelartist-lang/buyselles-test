@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin\Supplier;
 use App\Contracts\Repositories\CategoryRepositoryInterface;
 use App\Http\Controllers\BaseController;
 use App\Jobs\SyncDenominationsJob;
+use App\Jobs\SyncSupplierMappingPricesJob;
 use App\Models\Product;
 use App\Models\SupplierApi;
 use App\Models\SupplierProductMapping;
@@ -369,7 +370,7 @@ class SupplierMappingController extends BaseController
     public function syncPrices(): JsonResponse
     {
         try {
-            \App\Jobs\SupplierStockSyncJob::dispatchSync();
+            SyncSupplierMappingPricesJob::dispatchSync();
 
             return response()->json([
                 'success' => true,

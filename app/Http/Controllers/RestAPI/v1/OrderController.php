@@ -152,8 +152,8 @@ class OrderController extends Controller
         })->with('product')->whereIn('cart_group_id', $cartGroupIds)->where(['is_checked' => 1])->get();
 
         $productStockCheck = CartManager::product_stock_check($carts);
-        if (! $productStockCheck) {
-            $digitalErrors = app(\App\Services\DigitalProductCodeService::class)->getDigitalStockErrors($carts);
+        $digitalErrors = app(\App\Services\DigitalProductCodeService::class)->getDigitalStockErrors($carts);
+        if (! $productStockCheck || $digitalErrors !== []) {
             $errorMsg = ! empty($digitalErrors)
                 ? implode(' | ', $digitalErrors)
                 : translate('The_following_items_in_your_cart_are_currently_out_of_stock');
@@ -267,8 +267,8 @@ class OrderController extends Controller
         })->with('product')->whereIn('cart_group_id', $cartGroupIds)->where(['is_checked' => 1])->get();
 
         $productStockCheck = CartManager::product_stock_check($carts);
-        if (! $productStockCheck) {
-            $digitalErrors = app(\App\Services\DigitalProductCodeService::class)->getDigitalStockErrors($carts);
+        $digitalErrors = app(\App\Services\DigitalProductCodeService::class)->getDigitalStockErrors($carts);
+        if (! $productStockCheck || $digitalErrors !== []) {
             $errorMsg = ! empty($digitalErrors)
                 ? implode(' | ', $digitalErrors)
                 : translate('The_following_items_in_your_cart_are_currently_out_of_stock');

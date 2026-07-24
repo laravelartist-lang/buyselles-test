@@ -2,15 +2,11 @@
 
 namespace Tests\Feature;
 
-use App\DTOs\Supplier\StockResult;
 use App\Jobs\SyncSupplierMappingPricesJob;
 use App\Models\BusinessSetting;
 use App\Models\Currency;
 use App\Models\SupplierApi;
 use App\Models\SupplierProductMapping;
-use App\Services\DigitalProductCodeService;
-use App\Services\Supplier\Drivers\GenericRestDriver;
-use App\Services\Supplier\SupplierCurrencyConverter;
 use App\Services\Supplier\SupplierManager;
 use Illuminate\Database\Schema\Blueprint;
 use Mockery;
@@ -102,7 +98,7 @@ class SyncSupplierMappingPricesJobTest extends TestCase
         parent::tearDown();
     }
 
-    public function test_job_updates_mapping_cost_price_when_api_price_changes(): void
+    public function test_job_syncs_each_active_storefront_mapping_via_supplier_manager(): void
     {
         SupplierProductMapping::flushEventListeners();
 
@@ -110,6 +106,7 @@ class SyncSupplierMappingPricesJobTest extends TestCase
             'id' => 10,
             'name' => 'Test Product',
             'unit_price' => 5.00,
+            'partner_api_only' => false,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -134,34 +131,11 @@ class SyncSupplierMappingPricesJobTest extends TestCase
             'is_active' => true,
         ]);
 
-        $driver = Mockery::mock(GenericRestDriver::class);
-        $driver->shouldReceive('fetchStock')
-            ->once()
-            ->with('42')
-            ->andReturn(new StockResult(
-                available: 10,
-                price: 1.709,
-                currency: 'JOD',
-                rawData: [],
-            ));
-
         $manager = Mockery::mock(SupplierManager::class);
-        $manager->shouldReceive('driver')->andReturn($driver);
-        $this->app->instance(SupplierManager::class, $manager);
-
-        $codeService = Mockery::mock(DigitalProductCodeService::class);
-        $codeService->shouldReceive('applyApiPriceIfManualDepleted')
+        $manager->shouldReceive('syncStock')
             ->once()
-            ->with(10);
-        $this->app->instance(DigitalProductCodeService::class, $codeService);
+            ->with(Mockery::on(fn (SupplierProductMapping $passed): bool => $passed->id === $mapping->id));
 
-        $converter = app(SupplierCurrencyConverter::class);
-
-        (new SyncSupplierMappingPricesJob)->handle($manager, $codeService, $converter);
-
-        $mapping->refresh();
-
-        $this->assertEqualsWithDelta(2.41, (float) $mapping->cost_price, 0.01);
-        $this->assertSame('USD', $mapping->cost_currency);
+        (new SyncSupplierMappingPricesJob)->handle($manager);
     }
 }

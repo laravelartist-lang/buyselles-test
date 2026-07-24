@@ -11744,4 +11744,6 @@ return [
     'Partner_API_order' => 'Partner API order',
     'direct_topup_mapping_not_found' => 'Direct topup mapping not found',
     'Token_sent_failed' => 'Token sent failed',
+    'has_no_active_supplier_mapping' => 'Has no active supplier mapping',
+    'Please_contact_support_or_try_again_later' => 'Please contact support or try again later',
 ];

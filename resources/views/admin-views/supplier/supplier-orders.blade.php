@@ -9,6 +9,12 @@
             <h5 class="mb-0"><i class="fi fi-rr-shopping-cart"></i> {{ translate('supplier_orders') }}</h5>
         </div>
         <div class="card-body">
+            <div class="alert alert-soft-info mb-4">
+                {{ translate('This_list_shows_supplier_purchase_orders') ?? 'This list shows supplier purchase orders (place_order) tied to customer fulfillment.' }}
+                {{ translate('Price_and_stock_sync_activity') ?? 'Price and stock sync activity is logged under' }}
+                <a href="{{ route('admin.supplier.api-logs', ['action' => 'fetch_stock']) }}">{{ translate('supplier_API_logs') ?? 'Supplier API logs' }}</a>
+                ({{ translate('action') ?? 'action' }}: <code>fetch_stock</code>).
+            </div>
             <form action="{{ route('admin.supplier.orders') }}" method="GET" class="mb-4">
                 <div class="row gy-2 gx-3 align-items-end">
                     <div class="col-lg-3">

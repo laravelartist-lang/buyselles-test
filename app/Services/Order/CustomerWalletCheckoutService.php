@@ -44,8 +44,9 @@ class CustomerWalletCheckoutService
         }
 
         $productStock = CartManager::product_stock_check($carts);
-        if (! $productStock) {
-            $digitalErrors = app(\App\Services\DigitalProductCodeService::class)->getDigitalStockErrors($carts);
+        $digitalErrors = app(\App\Services\DigitalProductCodeService::class)->getDigitalStockErrors($carts);
+
+        if (! $productStock || $digitalErrors !== []) {
             $errorMsg = ! empty($digitalErrors)
                 ? implode(' | ', $digitalErrors)
                 : translate('The_following_items_in_your_cart_are_currently_out_of_stock');

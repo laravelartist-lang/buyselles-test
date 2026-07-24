@@ -455,4 +455,33 @@ class SupplierProductMapping extends Model
             ->whereHas('supplierApi', fn ($q) => $q->where('is_active', true))
             ->exists();
     }
+
+    /**
+     * True when the product has supplier mapping rows but none can fulfill
+     * (inactive supplier API and/or supplier marked down).
+     */
+    public static function hasOnlyUnavailableSupplierMappings(int $productId): bool
+    {
+        $hasAnyActiveMappingRow = static::query()
+            ->where('product_id', $productId)
+            ->where('is_active', true)
+            ->exists();
+
+        if (! $hasAnyActiveMappingRow) {
+            return false;
+        }
+
+        return ! static::hasActiveMapping($productId);
+    }
+
+    public static function primaryActiveMapping(int $productId): ?self
+    {
+        return static::query()
+            ->where('product_id', $productId)
+            ->where('is_active', true)
+            ->whereHas('supplierApi', fn ($q) => $q->where('is_active', true))
+            ->with('supplierApi')
+            ->byPriority()
+            ->first();
+    }
 }

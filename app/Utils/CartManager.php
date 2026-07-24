@@ -1018,14 +1018,11 @@ class CartManager
                         continue;
                     }
 
-                    $hasSupplierMapping = \App\Models\SupplierProductMapping::hasActiveMapping((int) $product['id']);
+                    $fulfillmentError = app(\App\Services\DigitalProductCodeService::class)
+                        ->resolveStorefrontDigitalFulfillmentError($cart);
 
-                    if (! $hasSupplierMapping) {
-                        $available = self::getAvailableDigitalCodeCount((int) $product['id']);
-
-                        if ($available < $cart->quantity) {
-                            $status = false;
-                        }
+                    if ($fulfillmentError !== null) {
+                        $status = false;
                     }
                 }
             } else {

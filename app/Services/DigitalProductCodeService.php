@@ -348,47 +348,83 @@ class DigitalProductCodeService
         $errors = [];
 
         foreach ($carts as $cart) {
-            if (($cart->product_type ?? null) !== 'digital') {
-                continue;
-            }
-
-            if ($cart instanceof \App\Models\Cart && $cart->isDirectTopUp()) {
-                continue;
-            }
-
-            if (($cart->direct_topup_quantity ?? null) !== null) {
-                continue;
-            }
-
-            $productId = $cart->product_id ?? null;
-            if (! $productId) {
-                continue;
-            }
-
-            if (SupplierProductMapping::hasActiveMapping((int) $productId)) {
-                continue;
-            }
-
-            $available = DigitalProductCode::query()
-                ->where('product_id', $productId)
-                ->where('status', 'available')
-                ->where('is_active', true)
-                ->where(function ($q): void {
-                    $q->whereNull('expiry_date')
-                        ->orWhereDate('expiry_date', '>=', now()->toDateString());
-                })
-                ->count();
-
-            $requested = (int) $cart->quantity;
-            if ($available < $requested) {
-                $productName = $cart->name ?? ($cart->product?->name ?? translate('Product'));
-                $errors[] = translate('Only').' '.$available.' '.translate('code(s)_available_for').
-                    ' "'.$productName.'". '.
-                    translate('Please_reduce_quantity_to').' '.$available.'.';
+            $error = $this->resolveStorefrontDigitalFulfillmentError($cart);
+            if ($error !== null) {
+                $errors[] = $error;
             }
         }
 
         return $errors;
+    }
+
+    /**
+     * @param  \App\Models\Cart|object  $cart
+     */
+    public function resolveStorefrontDigitalFulfillmentError($cart): ?string
+    {
+        if (($cart->product_type ?? $cart->product?->product_type ?? null) !== 'digital') {
+            return null;
+        }
+
+        if ($cart instanceof \App\Models\Cart && $cart->isDirectTopUp()) {
+            return null;
+        }
+
+        if (($cart->direct_topup_quantity ?? null) !== null) {
+            return null;
+        }
+
+        $productId = (int) ($cart->product_id ?? 0);
+        if ($productId <= 0) {
+            return null;
+        }
+
+        $requested = (int) ($cart->quantity ?? 1);
+        $productName = $cart->name ?? translate('Product');
+
+        if (SupplierProductMapping::hasActiveMapping($productId)) {
+            $mapping = SupplierProductMapping::primaryActiveMapping($productId);
+            $supplier = $mapping?->supplierApi;
+
+            if ($supplier !== null && $supplier->isDown()) {
+                $localAvailable = $this->countAvailableLocalCodes($productId);
+
+                if ($localAvailable < $requested) {
+                    return translate('Supplier').' "'.$supplier->name.'" '.translate('is_temporarily_unavailable').
+                        ' "'.$productName.'".';
+                }
+            }
+
+            return null;
+        }
+
+        if (SupplierProductMapping::hasOnlyUnavailableSupplierMappings($productId)) {
+            return translate('Product').' "'.$productName.'" '.translate('has_no_active_supplier_mapping').
+                '. '.translate('Please_contact_support_or_try_again_later').'.';
+        }
+
+        $available = $this->countAvailableLocalCodes($productId);
+
+        if ($available < $requested) {
+            return translate('Only').' '.$available.' '.translate('code(s)_available_for').
+                ' "'.$productName.'". '.
+                translate('Please_reduce_quantity_to').' '.$available.'.';
+        }
+
+        return null;
+    }
+
+    private function countAvailableLocalCodes(int $productId): int
+    {
+        return DigitalProductCode::query()
+            ->where('product_id', $productId)
+            ->where('status', 'available')
+            ->where('is_active', true)
+            ->where(function ($q): void {
+                $q->whereNull('expiry_date')
+                    ->orWhereDate('expiry_date', '>=', now()->toDateString());
+            })
+            ->count();
     }
 
     /**
