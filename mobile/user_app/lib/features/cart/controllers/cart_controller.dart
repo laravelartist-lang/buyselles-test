@@ -293,6 +293,13 @@ class CartController extends ChangeNotifier {
   }
 
 
+  Future<void> refreshAfterOrderPlaced(BuildContext context) async {
+    resetCartList(isUpdate: false);
+    await getCartData(context, reload: true);
+    notifyListeners();
+  }
+
+
   Future<void> mergeGuestCart() async{
     ApiResponseModel apiResponse = await cartServiceInterface!.mergeGuestCart();
     if (apiResponse.response != null && apiResponse.response!.statusCode == 200) {

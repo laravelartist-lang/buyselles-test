@@ -49,6 +49,6 @@ class SupplierFulfillmentFailureService
             'admin'
         );
 
-        OrderManager::abortDeferredCheckout();
+        OrderManager::abortDeferredCheckout($order);
     }
 }

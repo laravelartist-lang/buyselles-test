@@ -1528,7 +1528,8 @@ class OrderManager
         }
 
         if ($orders->contains(fn (Order $order): bool => in_array($order->order_status, ['failed', 'canceled'], true))) {
-            self::abortDeferredCheckout();
+            $failedOrder = $orders->first(fn (Order $order): bool => in_array($order->order_status, ['failed', 'canceled'], true));
+            self::abortDeferredCheckout($failedOrder);
 
             return;
         }
@@ -1548,20 +1549,49 @@ class OrderManager
         }
     }
 
-    public static function abortDeferredCheckout(): void
+    public static function abortDeferredCheckout(?Order $order = null): void
     {
         $deferred = session()->pull('deferred_checkout_completion');
 
-        if (! is_array($deferred)) {
-            return;
-        }
+        $cartGroupIds = is_array($deferred) ? ($deferred['cart_group_ids'] ?? []) : [];
 
-        $cartGroupIds = $deferred['cart_group_ids'] ?? [];
         if ($cartGroupIds !== []) {
             CartManager::cartCleanByCartGroupIds(cartGroupIDs: $cartGroupIds);
+        } elseif ($order !== null) {
+            self::cleanCartForPlacedOrder($order);
         }
 
         self::forgetCheckoutCouponSession();
+    }
+
+    public static function cleanCartForPlacedOrder(Order $order): void
+    {
+        $productIds = OrderDetail::query()
+            ->where('order_id', $order->id)
+            ->whereNotNull('product_id')
+            ->pluck('product_id')
+            ->unique()
+            ->values();
+
+        if ($productIds->isEmpty() || ! Schema::hasTable('carts')) {
+            return;
+        }
+
+        $customerId = (int) ($order->customer_id ?? 0);
+        if ($customerId <= 0) {
+            return;
+        }
+
+        $isGuest = filter_var($order->is_guest, FILTER_VALIDATE_BOOLEAN);
+
+        Cart::query()
+            ->where('customer_id', $customerId)
+            ->where('is_guest', $isGuest ? 1 : 0)
+            ->whereIn('product_id', $productIds->all())
+            ->where('is_checked', 1)
+            ->delete();
+
+        cacheRemoveByType(type: 'carts');
     }
 
     public static function orderContainsOnlyDigitalProducts(Order $order): bool

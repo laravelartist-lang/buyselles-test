@@ -167,6 +167,11 @@ class CustomerWalletCheckoutService
         $orderStatus = $firstOrder?->order_status;
         $pendingFulfillment = in_array($orderStatus, ['pending', 'processing'], true);
 
+        $cartGroupIds = $carts->pluck('cart_group_id')->unique()->filter()->values()->all();
+        if ($cartGroupIds !== []) {
+            CartManager::cartCleanByCartGroupIds(cartGroupIDs: $cartGroupIds);
+        }
+
         return [
             'http_status' => 200,
             'payload' => [

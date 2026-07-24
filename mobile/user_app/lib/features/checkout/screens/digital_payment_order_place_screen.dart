@@ -3,7 +3,9 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:flutter_sixvalley_ecommerce/features/auth/controllers/auth_controller.dart';
+import 'package:flutter_sixvalley_ecommerce/features/cart/controllers/cart_controller.dart';
 import 'package:flutter_sixvalley_ecommerce/features/checkout/controllers/checkout_controller.dart';
+import 'package:flutter_sixvalley_ecommerce/features/coupon/controllers/coupon_controller.dart';
 import 'package:flutter_sixvalley_ecommerce/features/checkout/widgets/order_place_bottomsheet_widget.dart';
 import 'package:flutter_sixvalley_ecommerce/helper/route_healper.dart';
 import 'package:flutter_sixvalley_ecommerce/localization/language_constrants.dart';
@@ -138,7 +140,13 @@ class DigitalPaymentScreenState extends State<DigitalPaymentScreen> {
     }
   }
 
-  void _handlePaymentResult(bool isSuccess, bool isFailed, bool isCancel, bool isNewUser, String? orderIds) {
+  Future<void> _handlePaymentResult(bool isSuccess, bool isFailed, bool isCancel, bool isNewUser, String? orderIds) async {
+    if (isSuccess) {
+      await Provider.of<CartController>(context, listen: false)
+          .refreshAfterOrderPlaced(context);
+      Provider.of<CouponController>(context, listen: false).removeCoupon();
+    }
+
     bool isLoggedIn = Provider.of<AuthController>(context, listen: false).isLoggedIn();
     bool onlyDigital = Provider.of<CheckoutController>(context, listen: false).onlyDigital;
     bool onlyDirectTopUp = Provider.of<CheckoutController>(context, listen: false).onlyDirectTopUp;

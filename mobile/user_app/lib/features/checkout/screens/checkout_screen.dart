@@ -673,6 +673,7 @@ class CheckoutScreenState extends State<CheckoutScreen> {
   void _callback(bool isSuccess, String message, String orderID,
       bool createAccount) async {
     if (isSuccess) {
+      await _syncCartAfterOrderPlaced();
       WidgetsBinding.instance.addPostFrameCallback((_) {
         bool isLoggedIn =
             Provider.of<AuthController>(context, listen: false).isLoggedIn();
@@ -773,5 +774,15 @@ class CheckoutScreenState extends State<CheckoutScreen> {
       showCustomSnackBarWidget(message, context,
           snackBarType: SnackBarType.error);
     }
+  }
+
+  Future<void> _syncCartAfterOrderPlaced() async {
+    if (!mounted) {
+      return;
+    }
+    final cartController =
+        Provider.of<CartController>(context, listen: false);
+    await cartController.refreshAfterOrderPlaced(context);
+    Provider.of<CouponController>(context, listen: false).removeCoupon();
   }
 }
