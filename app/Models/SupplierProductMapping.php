@@ -170,6 +170,43 @@ class SupplierProductMapping extends Model
     }
 
     /**
+     * Default fixed denomination when the customer does not pick one (variable amount disabled).
+     * Prefers the row whose supplier SKU matches the mapping; otherwise a sole fixed denom.
+     */
+    public function resolveDefaultDenomination(): ?SupplierProductDenomination
+    {
+        if ($this->requiresDenominationSelection()) {
+            return null;
+        }
+
+        $fixedDenominations = $this->relationLoaded('activeDenominations')
+            ? $this->activeDenominations->where('type', 'fixed')->values()
+            : $this->fixedDenominations()->get();
+
+        if ($fixedDenominations->isEmpty()) {
+            return null;
+        }
+
+        $mappingSku = (string) $this->supplier_product_id;
+
+        if ($mappingSku !== '') {
+            $matched = $fixedDenominations->first(
+                fn (SupplierProductDenomination $denomination): bool => (string) $denomination->supplier_product_id === $mappingSku
+            );
+
+            if ($matched !== null) {
+                return $matched;
+            }
+        }
+
+        if ($fixedDenominations->count() === 1) {
+            return $fixedDenominations->first();
+        }
+
+        return null;
+    }
+
+    /**
      * @return array<int, string>
      */
     public function codeSourcePriorityOrder(): array
@@ -396,6 +433,14 @@ class SupplierProductMapping extends Model
 
         if ($this->min_amount !== null && (float) $this->min_amount > 0) {
             return (float) $this->min_amount;
+        }
+
+        $defaultDenomination = $this->resolveDefaultDenomination();
+
+        if ($defaultDenomination?->isFixed()) {
+            $faceValue = (float) $defaultDenomination->face_value;
+
+            return $faceValue > 0 ? $faceValue : null;
         }
 
         return null;

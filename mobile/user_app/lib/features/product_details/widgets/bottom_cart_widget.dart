@@ -212,6 +212,11 @@ class _BottomCartWidgetState extends State<BottomCartWidget> {
       return;
     }
 
+    if (product != null && _shouldUseCartBottomSheet(product)) {
+      _openCartBottomSheetIfNeeded(context, product);
+      return;
+    }
+
     if (buyNow) {
       _buyNowDirectly(context);
     } else {
@@ -258,7 +263,26 @@ class _BottomCartWidgetState extends State<BottomCartWidget> {
     final bool hasDigitalExtensions = product.digitalProductExtensions != null
         && product.digitalProductExtensions!.isNotEmpty;
 
-    return hasColors || hasChoices || hasDigitalExtensions;
+    return hasColors || hasChoices || hasDigitalExtensions || product.requiresDenominationSelection;
+  }
+
+  void _openCartBottomSheetIfNeeded(BuildContext context, ProductDetailsModel product) {
+    if (_hasProductVariants(product)) {
+      final BuildContext? modalContext = _modalContext(context);
+      if (modalContext == null) {
+        return;
+      }
+      Provider.of<ProductDetailsController>(modalContext, listen: false)
+          .initializeSupplierDenominationDefaults(product);
+      _presentModalBottomSheet(
+        modalContext,
+        builder: (_) => CartBottomSheetWidget(product: product),
+      );
+    }
+  }
+
+  bool _shouldUseCartBottomSheet(ProductDetailsModel product) {
+    return _hasProductVariants(product);
   }
 
   void _presentModalBottomSheet(
@@ -402,6 +426,8 @@ class _BottomCartWidgetState extends State<BottomCartWidget> {
       variantKey: variantKey,
       digitalVariantPrice: digitalVariantPrice,
       productType: widget.product!.productType,
+      supplierDenominationId: productDetailsController.resolveSupplierDenominationIdForCart(widget.product),
+      customAmount: productDetailsController.resolveCustomAmountForCart(widget.product),
     );
   }
 
@@ -414,6 +440,12 @@ class _BottomCartWidgetState extends State<BottomCartWidget> {
 
     var productDetailsController = Provider.of<ProductDetailsController>(context, listen: false);
     var cartController = Provider.of<CartController>(context, listen: false);
+
+    final String? denomError = productDetailsController.validateSupplierDenomination(context, product);
+    if (denomError != null) {
+      showCustomSnackBarWidget(denomError, context, snackBarType: SnackBarType.warning);
+      return;
+    }
 
     CartModelBody cart = _buildCartModelBody(productDetailsController);
     int? stock = cart.variation?.qty ?? widget.product!.currentStock;
@@ -445,6 +477,12 @@ class _BottomCartWidgetState extends State<BottomCartWidget> {
 
     var productDetailsController = Provider.of<ProductDetailsController>(context, listen: false);
     var cartController = Provider.of<CartController>(context, listen: false);
+
+    final String? denomError = productDetailsController.validateSupplierDenomination(context, product);
+    if (denomError != null) {
+      showCustomSnackBarWidget(denomError, context, snackBarType: SnackBarType.warning);
+      return;
+    }
 
     CartModelBody cart = _buildCartModelBody(productDetailsController);
     int? stock = cart.variation?.qty ?? widget.product!.currentStock;

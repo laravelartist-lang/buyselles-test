@@ -245,13 +245,29 @@ class SupplierManager
                 continue;
             }
 
+            $effectiveDenomination = $denomination;
+            $effectiveCustomAmount = $customAmount;
+
+            if ($effectiveDenomination === null) {
+                $mapping->loadMissing('activeDenominations');
+                $defaultDenomination = $mapping->resolveDefaultDenomination();
+
+                if ($defaultDenomination !== null) {
+                    $effectiveDenomination = $defaultDenomination;
+
+                    if ($effectiveCustomAmount === null || $effectiveCustomAmount <= 0) {
+                        $effectiveCustomAmount = (float) $defaultDenomination->face_value;
+                    }
+                }
+            }
+
             try {
                 $result = $this->placeSupplierOrder(
                     supplier: $supplier,
                     mapping: $mapping,
                     quantity: $quantity,
-                    customAmount: $customAmount,
-                    denomination: $denomination,
+                    customAmount: $effectiveCustomAmount,
+                    denomination: $effectiveDenomination,
                     intent: SupplierOrderPlacementIntent::CustomerFulfillment,
                 );
 

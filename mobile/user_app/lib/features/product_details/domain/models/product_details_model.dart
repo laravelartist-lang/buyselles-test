@@ -73,9 +73,25 @@ class ProductDetailsModel {
   ClearanceSale? clearanceSale;
   DirectTopUpConfig? _directTopup;
   bool? _isDirectTopup;
+  bool? _requiresDenominationSelection;
+  int? _defaultSupplierDenominationId;
+  bool? _isCustomizable;
+  bool? _hasDenominations;
+  List<SupplierDenominationOption>? _denominations;
+  VariableDenominationOption? _variableDenomination;
+  double? _customizableMinAmount;
+  double? _customizableMaxAmount;
 
   DirectTopUpConfig? get directTopup => _directTopup;
   bool get isDirectTopup => _isDirectTopup == true;
+  bool get requiresDenominationSelection => _requiresDenominationSelection == true;
+  int? get defaultSupplierDenominationId => _defaultSupplierDenominationId;
+  bool get isCustomizableSupplierProduct => _isCustomizable == true;
+  bool get hasDenominations => _hasDenominations == true;
+  List<SupplierDenominationOption>? get denominations => _denominations;
+  VariableDenominationOption? get variableDenomination => _variableDenomination;
+  double? get customizableMinAmount => _customizableMinAmount;
+  double? get customizableMaxAmount => _customizableMaxAmount;
 
   ProductDetailsModel(
       {int? id,
@@ -512,6 +528,29 @@ class ProductDetailsModel {
       );
     }
     _isDirectTopup = _parseDirectTopUpFlag(json['is_direct_topup']);
+    _requiresDenominationSelection = json['requires_denomination_selection'] == true;
+    _defaultSupplierDenominationId = json['default_supplier_denomination_id'] != null
+        ? int.tryParse(json['default_supplier_denomination_id'].toString())
+        : null;
+    _isCustomizable = json['is_customizable'] == true;
+    _hasDenominations = json['has_denominations'] == true;
+    _customizableMinAmount = double.tryParse('${json['customizable_min_amount']}');
+    _customizableMaxAmount = double.tryParse('${json['customizable_max_amount']}');
+    if (json['denominations'] != null && json['denominations'] is List) {
+      _denominations = [];
+      for (final dynamic item in json['denominations'] as List) {
+        if (item is Map<String, dynamic>) {
+          _denominations!.add(SupplierDenominationOption.fromJson(item));
+        }
+      }
+    } else {
+      _denominations = [];
+    }
+    if (json['variable_denomination'] != null && json['variable_denomination'] is Map) {
+      _variableDenomination = VariableDenominationOption.fromJson(
+        Map<String, dynamic>.from(json['variable_denomination'] as Map),
+      );
+    }
     if(json['minimum_order_qty'] != null){
       _minimumOrderQty = int.parse(json['minimum_order_qty'].toString());
     }else{
@@ -1031,4 +1070,62 @@ int? _parseTruthyInt(dynamic value) {
   }
 
   return int.tryParse(normalized);
+}
+
+class SupplierDenominationOption {
+  final int id;
+  final String? name;
+  final String type;
+  final double faceValue;
+  final String? faceValueCurrency;
+  final double sellPrice;
+
+  SupplierDenominationOption({
+    required this.id,
+    this.name,
+    required this.type,
+    required this.faceValue,
+    this.faceValueCurrency,
+    required this.sellPrice,
+  });
+
+  factory SupplierDenominationOption.fromJson(Map<String, dynamic> json) {
+    return SupplierDenominationOption(
+      id: int.parse(json['id'].toString()),
+      name: json['name']?.toString(),
+      type: json['type']?.toString() ?? 'fixed',
+      faceValue: double.tryParse('${json['face_value']}') ?? 0,
+      faceValueCurrency: json['face_value_currency']?.toString(),
+      sellPrice: double.tryParse('${json['sell_price']}') ?? 0,
+    );
+  }
+}
+
+class VariableDenominationOption {
+  final int id;
+  final String? name;
+  final String type;
+  final double minFaceValue;
+  final double maxFaceValue;
+  final String? faceValueCurrency;
+
+  VariableDenominationOption({
+    required this.id,
+    this.name,
+    required this.type,
+    required this.minFaceValue,
+    required this.maxFaceValue,
+    this.faceValueCurrency,
+  });
+
+  factory VariableDenominationOption.fromJson(Map<String, dynamic> json) {
+    return VariableDenominationOption(
+      id: int.parse(json['id'].toString()),
+      name: json['name']?.toString(),
+      type: json['type']?.toString() ?? 'variable',
+      minFaceValue: double.tryParse('${json['min_face_value']}') ?? 0,
+      maxFaceValue: double.tryParse('${json['max_face_value']}') ?? 0,
+      faceValueCurrency: json['face_value_currency']?.toString(),
+    );
+  }
 }

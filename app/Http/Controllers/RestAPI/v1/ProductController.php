@@ -462,6 +462,12 @@ class ProductController extends Controller
                 'face_value_currency' => $variableDenom->face_value_currency,
             ] : null;
 
+            $product['requires_denomination_selection'] = $supplierMapping
+                ? $supplierMapping->requiresDenominationSelection()
+                : false;
+            $defaultDenomination = $supplierMapping?->resolveDefaultDenomination();
+            $product['default_supplier_denomination_id'] = $defaultDenomination?->id;
+
             $responseData = json_decode(json_encode($product), true);
             if ($product['product_type'] === 'digital') {
                 $responseData['is_direct_topup'] = $isDirectTopupApi;

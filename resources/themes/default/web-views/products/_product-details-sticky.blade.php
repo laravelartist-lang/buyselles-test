@@ -13,11 +13,11 @@
                 $stickyMapping = \App\Models\SupplierProductMapping::query()
                     ->where('product_id', $productDetails->id)
                     ->where('is_active', true)
-                    ->where('is_customizable', true)
                     ->whereHas('supplierApi', fn ($q) => $q->where('is_active', true))
-                    ->with(['activeDenominations' => fn ($q) => $q->where('type', 'fixed')->orderBy('sort_order')->orderBy('face_value')])
+                    ->with(['activeDenominations' => fn ($q) => $q->where('type', 'fixed')->where('is_active', true)->orderBy('sort_order')->orderBy('face_value')])
                     ->first();
-                $stickyDenom = $stickyMapping?->activeDenominations->first();
+                $stickyDenom = $stickyMapping?->resolveDefaultDenomination()
+                    ?? ($stickyMapping?->is_customizable ? $stickyMapping->activeDenominations->first() : null);
             @endphp
             @if ($stickyDenom)
                 <input type="hidden" name="supplier_denomination_id" value="{{ $stickyDenom->id }}">

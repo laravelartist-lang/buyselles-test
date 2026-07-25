@@ -63,6 +63,12 @@ class CartRepository extends DataSyncService implements CartRepositoryInterface 
       data['direct_topup_quantity'] = cart.directTopupQuantity;
       data['quantity'] = 1;
     }
+    if (cart.supplierDenominationId != null) {
+      data['supplier_denomination_id'] = cart.supplierDenominationId;
+    }
+    if (cart.customAmount != null) {
+      data['custom_amount'] = cart.customAmount;
+    }
 
     try {
       final response = await dioClient.post(AppConstants.addToCartUri, data: data);

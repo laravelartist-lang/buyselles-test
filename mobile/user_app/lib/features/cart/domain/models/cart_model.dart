@@ -343,6 +343,8 @@ class CartModelBody{
   String? productType;
   String? directTopupAccountId;
   double? directTopupQuantity;
+  int? supplierDenominationId;
+  double? customAmount;
 
   CartModelBody(
     {this.productId,
@@ -354,7 +356,9 @@ class CartModelBody{
       this.digitalVariantPrice,
       this.productType,
       this.directTopupAccountId,
-      this.directTopupQuantity});
+      this.directTopupQuantity,
+      this.supplierDenominationId,
+      this.customAmount});
 
 
   Map<String, dynamic> toJson() {

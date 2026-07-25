@@ -635,6 +635,10 @@ class CartManager
 
         $supplierDenominationId = null;
 
+        if ($mapping && $hasSupplierMapping) {
+            $mapping->loadMissing(['activeDenominations', 'supplierApi']);
+        }
+
         // Case 1: Fixed denomination selected (customer picked a denomination button)
         if ($mapping && $request->has('supplier_denomination_id') && $request['supplier_denomination_id']) {
             $denomination = \App\Models\SupplierProductDenomination::where('id', $request['supplier_denomination_id'])
@@ -668,7 +672,33 @@ class CartManager
                         ];
                     }
                     $price = $customAmount;
+                } elseif ($denomination->isVariable()) {
+                    return ['status' => 0, 'message' => translate('amount_must_be_between').' '.$denomination->min_face_value.' - '.$denomination->max_face_value];
                 }
+            }
+        }
+        // Case 1b: Default fixed denomination when variable amount is disabled on the mapping
+        elseif ($mapping && $hasSupplierMapping && ! $mapping->requiresDenominationSelection()) {
+            $defaultDenomination = $mapping->resolveDefaultDenomination();
+
+            if ($defaultDenomination !== null) {
+                $supplierDenominationId = $defaultDenomination->id;
+                $customAmount = (float) $defaultDenomination->face_value;
+                $price = $defaultDenomination->calculateSellPrice();
+            }
+        }
+        // Case 1c: Denomination selection required but missing
+        elseif ($mapping && $hasSupplierMapping && $mapping->requiresDenominationSelection()) {
+            $fixedDenominations = $mapping->activeDenominations->where('type', 'fixed');
+            $variableDenomination = $mapping->activeDenominations->firstWhere('type', 'variable');
+            $legacyCustomAmountOnly = $fixedDenominations->isEmpty()
+                && $variableDenomination === null
+                && $mapping->is_customizable
+                && $request->has('custom_amount')
+                && $request['custom_amount'] !== null;
+
+            if (! $legacyCustomAmountOnly) {
+                return ['status' => 0, 'message' => translate('invalid_denomination_selected')];
             }
         }
         // Case 2: Legacy customizable flow (no denomination system, direct custom_amount)

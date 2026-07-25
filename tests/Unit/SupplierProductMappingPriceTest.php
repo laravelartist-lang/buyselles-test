@@ -82,7 +82,9 @@ class SupplierProductMappingPriceTest extends TestCase
         $mapping = new SupplierProductMapping([
             'cost_price' => 4.8,
             'min_amount' => null,
+            'is_customizable' => false,
         ]);
+        $mapping->setRelation('activeDenominations', collect());
 
         $this->assertNull($mapping->resolveSupplierFaceValue());
     }
@@ -120,5 +122,73 @@ class SupplierProductMappingPriceTest extends TestCase
         ]);
 
         $this->assertSame(5.0, $mapping->resolveSupplierFaceValue());
+    }
+
+    public function test_resolve_default_denomination_matches_mapping_supplier_product_id(): void
+    {
+        $mapping = new SupplierProductMapping([
+            'is_customizable' => false,
+            'supplier_product_id' => '3313615',
+        ]);
+
+        $match = new SupplierProductDenomination([
+            'type' => 'fixed',
+            'supplier_product_id' => '3313615',
+            'face_value' => 1,
+        ]);
+        $other = new SupplierProductDenomination([
+            'type' => 'fixed',
+            'supplier_product_id' => '3313616',
+            'face_value' => 5,
+        ]);
+
+        $mapping->setRelation('activeDenominations', collect([$other, $match]));
+
+        $this->assertSame($match, $mapping->resolveDefaultDenomination());
+        $this->assertSame(1.0, $mapping->resolveSupplierFaceValue());
+    }
+
+    public function test_resolve_default_denomination_uses_sole_fixed_when_no_sku_match(): void
+    {
+        $mapping = new SupplierProductMapping([
+            'is_customizable' => false,
+            'supplier_product_id' => '999',
+        ]);
+
+        $only = new SupplierProductDenomination([
+            'type' => 'fixed',
+            'supplier_product_id' => '111',
+            'face_value' => 10,
+        ]);
+
+        $mapping->setRelation('activeDenominations', collect([$only]));
+
+        $this->assertSame($only, $mapping->resolveDefaultDenomination());
+    }
+
+    public function test_resolve_default_denomination_returns_null_when_multiple_fixed_without_sku_match(): void
+    {
+        $mapping = new SupplierProductMapping([
+            'is_customizable' => false,
+            'supplier_product_id' => '999',
+        ]);
+
+        $mapping->setRelation('activeDenominations', collect([
+            new SupplierProductDenomination(['type' => 'fixed', 'supplier_product_id' => 'a', 'face_value' => 1]),
+            new SupplierProductDenomination(['type' => 'fixed', 'supplier_product_id' => 'b', 'face_value' => 2]),
+        ]));
+
+        $this->assertNull($mapping->resolveDefaultDenomination());
+    }
+
+    public function test_resolve_default_denomination_returns_null_when_selection_required(): void
+    {
+        $mapping = new SupplierProductMapping(['is_customizable' => true]);
+
+        $mapping->setRelation('activeDenominations', collect([
+            new SupplierProductDenomination(['type' => 'fixed', 'face_value' => 10]),
+        ]));
+
+        $this->assertNull($mapping->resolveDefaultDenomination());
     }
 }

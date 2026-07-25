@@ -112,6 +112,114 @@ class ProductDetailsController extends ChangeNotifier {
     notifyListeners();
   }
 
+  int? _selectedSupplierDenominationId;
+  double? _supplierCustomAmount;
+
+  int? get selectedSupplierDenominationId => _selectedSupplierDenominationId;
+  double? get supplierCustomAmount => _supplierCustomAmount;
+
+  void initializeSupplierDenominationDefaults(ProductDetailsModel? product) {
+    final model = product ?? _productDetailsModel;
+    if (model == null) {
+      return;
+    }
+
+    _selectedSupplierDenominationId = model.defaultSupplierDenominationId;
+    _supplierCustomAmount = null;
+
+    if (model.requiresDenominationSelection) {
+      final fixed = (model.denominations ?? []).where((d) => d.type == 'fixed').toList();
+      if (_selectedSupplierDenominationId == null && fixed.isNotEmpty) {
+        _selectedSupplierDenominationId = fixed.first.id;
+      } else if (model.variableDenomination != null && fixed.isEmpty) {
+        _selectedSupplierDenominationId = model.variableDenomination!.id;
+      }
+    }
+
+    notifyListeners();
+  }
+
+  void selectSupplierDenomination(int id) {
+    _selectedSupplierDenominationId = id;
+    _supplierCustomAmount = null;
+    notifyListeners();
+  }
+
+  void setSupplierCustomAmount(String value) {
+    _supplierCustomAmount = double.tryParse(value.trim());
+    if (modelVariableDenomination != null) {
+      _selectedSupplierDenominationId = modelVariableDenomination!.id;
+    }
+    notifyListeners();
+  }
+
+  VariableDenominationOption? get modelVariableDenomination =>
+      _productDetailsModel?.variableDenomination;
+
+  int? resolveSupplierDenominationIdForCart(ProductDetailsModel? product) {
+    final model = product ?? _productDetailsModel;
+    if (model == null) {
+      return null;
+    }
+
+    if (_selectedSupplierDenominationId != null) {
+      return _selectedSupplierDenominationId;
+    }
+
+    return model.defaultSupplierDenominationId;
+  }
+
+  double? resolveCustomAmountForCart(ProductDetailsModel? product) {
+    final model = product ?? _productDetailsModel;
+    if (model == null) {
+      return null;
+    }
+
+    final selectedId = resolveSupplierDenominationIdForCart(model);
+    if (selectedId == null) {
+      return null;
+    }
+
+    final variable = model.variableDenomination;
+    if (variable != null && variable.id == selectedId) {
+      return _supplierCustomAmount;
+    }
+
+    for (final denom in model.denominations ?? <SupplierDenominationOption>[]) {
+      if (denom.id == selectedId && denom.type == 'fixed') {
+        return denom.faceValue;
+      }
+    }
+
+    return _supplierCustomAmount;
+  }
+
+  String? validateSupplierDenomination(BuildContext context, ProductDetailsModel? product) {
+    final model = product ?? _productDetailsModel;
+    if (model == null || !model.requiresDenominationSelection) {
+      return null;
+    }
+
+    final selectedId = _selectedSupplierDenominationId;
+    if (selectedId == null) {
+      return getTranslated('supplier_denomination_required', context)
+          ?? 'Please select a denomination';
+    }
+
+    final variable = model.variableDenomination;
+    if (variable != null && variable.id == selectedId) {
+      final amount = _supplierCustomAmount;
+      if (amount == null || amount <= 0) {
+        return getTranslated('please_input_amount', context) ?? 'Please input amount';
+      }
+      if (amount < variable.minFaceValue || amount > variable.maxFaceValue) {
+        return '${getTranslated('amount', context) ?? 'Amount'} ${variable.minFaceValue} - ${variable.maxFaceValue}';
+      }
+    }
+
+    return null;
+  }
+
   bool _isDirectTopUpActive() {
     return DirectTopUpHelper.shouldPromptDirectTopUpSheet(_productDetailsModel);
   }
@@ -166,6 +274,7 @@ class ProductDetailsController extends ChangeNotifier {
       if(_productDetailsModel != null){
         _quantity = _productDetailsModel!.minimumOrderQty ?? 1;
         initializeDirectTopUpDefaults();
+        initializeSupplierDenominationDefaults(_productDetailsModel);
         log("=====slug===>$slug/ $productId");
         // Provider.of<SellerProductController>(Get.context!, listen: false).
         // getSellerProductList(_productDetailsModel?.addedBy == 'admin' ? '0' : productDetailsModel!.userId.toString(), 1, productId, reload: true);
@@ -191,9 +300,11 @@ class ProductDetailsController extends ChangeNotifier {
     _variantIndex = 0;
     _quantity = minimumOrderQuantity;
     _variationIndex = [];
-    for (int i=0; i<= product.choiceOptions!.length; i++) {
+    final choiceLength = product.choiceOptions?.length ?? 0;
+    for (int i=0; i<= choiceLength; i++) {
       _variationIndex!.add(0);
     }
+    initializeSupplierDenominationDefaults(product);
   }
 
   bool isReviewSelected = false;

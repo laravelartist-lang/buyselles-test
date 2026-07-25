@@ -29,6 +29,7 @@ import 'package:flutter_sixvalley_ecommerce/utill/dimensions.dart';
 import 'package:flutter_sixvalley_ecommerce/common/basewidget/custom_button_widget.dart';
 import 'package:flutter_sixvalley_ecommerce/common/basewidget/custom_image_widget.dart';
 import 'package:flutter_sixvalley_ecommerce/common/basewidget/show_custom_snakbar_widget.dart';
+import 'package:flutter_sixvalley_ecommerce/features/product_details/widgets/supplier_denomination_widget.dart';
 import 'package:provider/provider.dart';
 
 
@@ -48,6 +49,7 @@ class CartBottomSheetWidgetState extends State<CartBottomSheetWidget> {
     Provider.of<ProductDetailsController>(context, listen: false).initData(widget.product!, 1, context);
     Provider.of<ProductDetailsController>(context, listen: false).initDigitalVariationIndex();
     Provider.of<ProductDetailsController>(context, listen: false).initializeDirectTopUpDefaults();
+    Provider.of<ProductDetailsController>(context, listen: false).initializeSupplierDenominationDefaults(widget.product);
     super.initState();
   }
 
@@ -87,7 +89,7 @@ class CartBottomSheetWidgetState extends State<CartBottomSheetWidget> {
               String? variantName = (widget.product!.colors != null && widget.product!.colors!.isNotEmpty) ?
               widget.product!.colors![productDetailsController.variantIndex!].name : null;
               List<String> variationList = [];
-              for(int index=0; index < widget.product!.choiceOptions!.length; index++) {
+              for(int index=0; index < (widget.product!.choiceOptions?.length ?? 0); index++) {
                 variationList.add(widget.product!.choiceOptions![index].options![productDetailsController.variationIndex![index]].trim());
       
               }
@@ -179,6 +181,8 @@ class CartBottomSheetWidgetState extends State<CartBottomSheetWidget> {
                   directTopupQuantity: DirectTopUpHelper.shouldPromptDirectTopUpSheet(widget.product)
                       ? productDetailsController.directTopUpQuantity
                       : null,
+                  supplierDenominationId: productDetailsController.resolveSupplierDenominationIdForCart(widget.product),
+                  customAmount: productDetailsController.resolveCustomAmountForCart(widget.product),
               );
       
       
@@ -603,6 +607,9 @@ class CartBottomSheetWidgetState extends State<CartBottomSheetWidget> {
                 if (DirectTopUpHelper.resolveDirectTopUpConfig(widget.product) != null)
                   const SizedBox(height: Dimensions.paddingSizeSmall),
 
+                if (widget.product != null)
+                  SupplierDenominationWidget(product: widget.product!),
+
                 if (!DirectTopUpHelper.shouldPromptDirectTopUpSheet(widget.product))
                 // Quantity
                 Padding(
@@ -721,13 +728,22 @@ class CartBottomSheetWidgetState extends State<CartBottomSheetWidget> {
                                   productDetailsController,
                                   widget.product!,
                                 );
-                                if (!isValid) {
-                                  return;
-                                }
+                              if (!isValid) {
+                                return;
                               }
+                            }
+
+                            final String? denomError = productDetailsController.validateSupplierDenomination(
+                              context,
+                              widget.product,
+                            );
+                            if (denomError != null) {
+                              showCustomSnackBarWidget(denomError, context, snackBarType: SnackBarType.warning);
+                              return;
+                            }
 
                               final ApiResponseModel apiResponse = await  Provider.of<CartController>(context, listen: false).addToCartAPI(
-                                cart, context, widget.product!.choiceOptions!,
+                                cart, context, widget.product!.choiceOptions ?? [],
                                 productDetailsController.variationIndex, buyNow: 1,
                               );
       
@@ -761,8 +777,17 @@ class CartBottomSheetWidgetState extends State<CartBottomSheetWidget> {
                               }
                             }
 
+                            final String? denomError = productDetailsController.validateSupplierDenomination(
+                              context,
+                              widget.product,
+                            );
+                            if (denomError != null) {
+                              showCustomSnackBarWidget(denomError, context, snackBarType: SnackBarType.warning);
+                              return;
+                            }
+
                             Provider.of<CartController>(context, listen: false).addToCartAPI(
-                              cart, context, widget.product!.choiceOptions!,
+                              cart, context, widget.product!.choiceOptions ?? [],
                               productDetailsController.variationIndex,
                             );
                           }},
