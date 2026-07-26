@@ -20,6 +20,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 
 class SupplierMappingController extends BaseController
 {
@@ -108,24 +109,10 @@ class SupplierMappingController extends BaseController
      */
     public function add(Request $request): RedirectResponse
     {
-        $validator = Validator::make($request->all(), [
-            'product_id' => 'required|exists:products,id',
-            'supplier_api_id' => 'required|exists:supplier_apis,id',
-            'supplier_product_id' => 'required|string|max:255',
-            'cost_price' => 'required|numeric|min:0',
-            'cost_currency' => 'required|string|max:3',
-            'markup_type' => 'required|in:percent,flat',
-            'markup_value' => 'required|numeric|min:0',
-            'priority' => 'required|integer|min:0',
-            'code_source_priority' => 'required|in:local_first,supplier_first',
-            'is_customizable' => 'nullable|boolean',
-            'is_direct_topup' => 'nullable|boolean',
-            'direct_topup_account_label' => 'nullable|string|max:255',
-            'direct_topup_region' => 'nullable|string|size:2|alpha',
-            'direct_topup_bundle_quantity' => 'required_if:is_direct_topup,1|nullable|numeric|min:0.0001|max:999999999999',
-            'min_amount' => 'nullable|numeric|min:0',
-            'max_amount' => 'nullable|numeric|min:0|gte:min_amount',
-        ]);
+        $validator = Validator::make($request->all(), array_merge(
+            $this->mappingValidationRules(),
+            $this->directTopupValidationRules($request),
+        ));
 
         if ($validator->fails()) {
             Toastr::error($validator->errors()->first());
@@ -195,24 +182,10 @@ class SupplierMappingController extends BaseController
      */
     public function update(Request $request, int $id): RedirectResponse
     {
-        $validator = Validator::make($request->all(), [
-            'product_id' => 'required|exists:products,id',
-            'supplier_api_id' => 'required|exists:supplier_apis,id',
-            'supplier_product_id' => 'required|string|max:255',
-            'cost_price' => 'required|numeric|min:0',
-            'cost_currency' => 'required|string|max:3',
-            'markup_type' => 'required|in:percent,flat',
-            'markup_value' => 'required|numeric|min:0',
-            'priority' => 'required|integer|min:0',
-            'code_source_priority' => 'required|in:local_first,supplier_first',
-            'is_customizable' => 'nullable|boolean',
-            'is_direct_topup' => 'nullable|boolean',
-            'direct_topup_account_label' => 'nullable|string|max:255',
-            'direct_topup_region' => 'nullable|string|size:2|alpha',
-            'direct_topup_bundle_quantity' => 'required_if:is_direct_topup,1|nullable|numeric|min:0.0001|max:999999999999',
-            'min_amount' => 'nullable|numeric|min:0',
-            'max_amount' => 'nullable|numeric|min:0|gte:min_amount',
-        ]);
+        $validator = Validator::make($request->all(), array_merge(
+            $this->mappingValidationRules(),
+            $this->directTopupValidationRules($request),
+        ));
 
         if ($validator->fails()) {
             Toastr::error($validator->errors()->first());
@@ -396,6 +369,7 @@ class SupplierMappingController extends BaseController
      * @return array{
      *     is_direct_topup: bool,
      *     direct_topup_account_label: ?string,
+     *     direct_topup_bundle_mode: ?string,
      *     direct_topup_region: ?string,
      *     direct_topup_bundle_quantity: ?float
      * }
@@ -408,6 +382,7 @@ class SupplierMappingController extends BaseController
             return [
                 'is_direct_topup' => false,
                 'direct_topup_account_label' => null,
+                'direct_topup_bundle_mode' => null,
                 'direct_topup_region' => null,
                 'direct_topup_bundle_quantity' => null,
             ];
@@ -423,6 +398,17 @@ class SupplierMappingController extends BaseController
             $accountLabel = translate('player_id') ?: 'Player ID';
         }
 
+        $bundleMode = $isDirectTopup
+            ? strtolower(trim((string) $request->input(
+                'direct_topup_bundle_mode',
+                SupplierProductMapping::DIRECT_TOPUP_BUNDLE_CUSTOMIZABLE,
+            )))
+            : null;
+
+        if ($bundleMode !== SupplierProductMapping::DIRECT_TOPUP_BUNDLE_FIXED) {
+            $bundleMode = SupplierProductMapping::DIRECT_TOPUP_BUNDLE_CUSTOMIZABLE;
+        }
+
         $region = $isDirectTopup
             ? strtoupper(trim((string) $request->input('direct_topup_region', '')))
             : null;
@@ -431,19 +417,64 @@ class SupplierMappingController extends BaseController
             $region = null;
         }
 
-        $bundleQuantity = $isDirectTopup
-            ? (float) $request->input('direct_topup_bundle_quantity', 0)
-            : null;
+        $bundleQuantity = null;
 
-        if (! $isDirectTopup || $bundleQuantity <= 0) {
-            $bundleQuantity = null;
+        if ($isDirectTopup && $bundleMode === SupplierProductMapping::DIRECT_TOPUP_BUNDLE_CUSTOMIZABLE) {
+            $bundleQuantity = (float) $request->input('direct_topup_bundle_quantity', 0);
+
+            if ($bundleQuantity <= 0) {
+                $bundleQuantity = null;
+            }
         }
 
         return [
             'is_direct_topup' => $isDirectTopup,
             'direct_topup_account_label' => $accountLabel,
+            'direct_topup_bundle_mode' => $isDirectTopup ? $bundleMode : null,
             'direct_topup_region' => $region,
             'direct_topup_bundle_quantity' => $bundleQuantity,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function mappingValidationRules(): array
+    {
+        return [
+            'product_id' => 'required|exists:products,id',
+            'supplier_api_id' => 'required|exists:supplier_apis,id',
+            'supplier_product_id' => 'required|string|max:255',
+            'cost_price' => 'required|numeric|min:0',
+            'cost_currency' => 'required|string|max:3',
+            'markup_type' => 'required|in:percent,flat',
+            'markup_value' => 'required|numeric|min:0',
+            'priority' => 'required|integer|min:0',
+            'code_source_priority' => 'required|in:local_first,supplier_first',
+            'is_customizable' => 'nullable|boolean',
+            'min_amount' => 'nullable|numeric|min:0',
+            'max_amount' => 'nullable|numeric|min:0|gte:min_amount',
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function directTopupValidationRules(Request $request): array
+    {
+        return [
+            'is_direct_topup' => 'nullable|boolean',
+            'direct_topup_account_label' => 'nullable|string|max:255',
+            'direct_topup_bundle_mode' => 'nullable|in:customizable,fixed',
+            'direct_topup_region' => 'nullable|string|size:2|alpha',
+            'direct_topup_bundle_quantity' => [
+                Rule::requiredIf(fn () => $request->boolean('is_direct_topup')
+                    && $request->input('direct_topup_bundle_mode', SupplierProductMapping::DIRECT_TOPUP_BUNDLE_CUSTOMIZABLE) === SupplierProductMapping::DIRECT_TOPUP_BUNDLE_CUSTOMIZABLE),
+                'nullable',
+                'numeric',
+                'min:0.0001',
+                'max:999999999999',
+            ],
         ];
     }
 

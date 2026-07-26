@@ -175,15 +175,7 @@
                         </div>
                     </div>
 
-                    <div class="col-lg-6 direct-topup-fields direct-topup-section-content" style="display:none;">
-                        <div class="form-group">
-                            <label class="form-label">{{ translate('direct_topup_bundle_quantity') ?: 'Bundle quantity' }} <span class="text-danger">*</span></label>
-                            <input type="number" name="direct_topup_bundle_quantity" class="form-control"
-                                   value="{{ old('direct_topup_bundle_quantity') }}"
-                                   min="0.0001" step="any" placeholder="1000">
-                            <small class="text-muted">{{ translate('direct_topup_bundle_quantity_hint') ?: 'Credits/coins sent to the supplier per purchase (e.g. 1000, 5000, 10000).' }}</small>
-                        </div>
-                    </div>
+                    @include('admin-views.supplier.partials._direct-topup-bundle-fields')
 
                     <div class="col-lg-6 direct-topup-fields direct-topup-section-content" style="display:none;">
                         <div class="form-group">
@@ -314,6 +306,7 @@
 @endsection
 
 @push('script')
+<script src="{{ dynamicAsset(path: 'public/assets/back-end/js/admin/direct-topup-bundle-mode.js') }}"></script>
 <script>
 (function () {
     // ─── Customizable toggle show/hide ───────────────────────────────
@@ -416,6 +409,9 @@
                 ajaxCheckInProgress = false;
                 if (data.supported) {
                     directTopupFields.forEach(el => { el.style.display = ''; });
+                    if (window.syncDirectTopUpBundleModeFields) {
+                        window.syncDirectTopUpBundleModeFields();
+                    }
                 } else {
                     toastr.error(data.message || '{{ translate("supplier_does_not_support_direct_topup") ?: "This supplier does not support direct top-up." }}');
                     this.checked = false;
