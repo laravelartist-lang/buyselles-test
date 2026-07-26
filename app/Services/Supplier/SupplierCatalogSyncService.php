@@ -620,7 +620,7 @@ class SupplierCatalogSyncService
             }
         );
 
-        return array_map(function (array $item) use ($rawPricesById, $sourceCurrency): array {
+        return array_map(function (array $item) use ($rawPricesById, $sourceCurrency, $supplier): array {
             $id = (string) ($item['id'] ?? '');
 
             if ($id === '' || ! $rawPricesById->has($id)) {

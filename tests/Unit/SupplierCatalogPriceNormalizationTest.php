@@ -203,4 +203,51 @@ class SupplierCatalogPriceNormalizationTest extends TestCase
 
         $this->assertTrue($method->invoke($service, $items, $supplier));
     }
+
+    public function test_repair_catalog_prices_from_driver_rebuilds_usd_prices(): void
+    {
+        $supplier = SupplierApi::query()->create([
+            'driver' => 'generic_rest',
+            'settings' => ['source_currency' => 'JOD', 'product_price_field' => 'price'],
+        ]);
+
+        $items = [[
+            'id' => '41',
+            'name' => 'zain gsm1 JD',
+            'price' => 1.62,
+            'currency' => 'USD',
+            'source_price' => 1.62,
+            'source_currency' => 'JOD',
+            'price_converted' => true,
+            'stock' => 16,
+        ]];
+
+        $manager = \Mockery::mock(\App\Services\Supplier\SupplierManager::class);
+        $driver = \Mockery::mock(\App\Contracts\SupplierDriverInterface::class);
+        $driver->shouldReceive('fetchProducts')
+            ->once()
+            ->with(['fetch_all' => true])
+            ->andReturn([
+                new \App\DTOs\Supplier\SupplierProductDTO(
+                    supplierProductId: '41',
+                    name: 'zain gsm1 JD',
+                    description: null,
+                    category: null,
+                    imageUrl: null,
+                    price: 1.62,
+                    currency: 'JOD',
+                    stockAvailable: 16,
+                    region: null,
+                    rawData: ['price' => 1.62],
+                ),
+            ]);
+        $manager->shouldReceive('driver')->andReturn($driver);
+        $this->app->instance(\App\Services\Supplier\SupplierManager::class, $manager);
+
+        $repaired = app(SupplierCatalogSyncService::class)->repairCatalogPricesFromDriver($supplier, $items);
+
+        $this->assertEqualsWithDelta(2.28, $repaired[0]['price'], 0.01);
+        $this->assertSame('USD', $repaired[0]['currency']);
+        $this->assertTrue($repaired[0]['price_converted']);
+    }
 }
