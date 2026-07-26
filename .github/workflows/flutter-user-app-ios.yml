@@ -1,4 +1,4 @@
-name: Build User App (iOS)
+name: Build User App (iOS signed IPA)
 
 on:
   workflow_dispatch:
@@ -13,8 +13,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-ios:
-    name: Build iOS (no signing)
+  build-ipa:
+    name: Build signed IPA (TestFlight)
     runs-on: macos-latest
     defaults:
       run:
@@ -30,19 +30,151 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Verify Flutter SDK
-        run: flutter --version
+      - name: Validate signing secrets
+        run: |
+          missing=0
+          for name in BUILD_CERTIFICATE_BASE64 BUILD_PROVISION_PROFILE_BASE64 P12_PASSWORD KEYCHAIN_PASSWORD GOOGLE_SERVICE_INFO_PLIST_BASE64; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::Missing repository secret: ${name}"
+              missing=1
+            fi
+          done
+          [ "$missing" -eq 0 ]
+        env:
+          BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
+          BUILD_PROVISION_PROFILE_BASE64: ${{ secrets.BUILD_PROVISION_PROFILE_BASE64 }}
+          P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+          GOOGLE_SERVICE_INFO_PLIST_BASE64: ${{ secrets.GOOGLE_SERVICE_INFO_PLIST_BASE64 }}
+
+      - name: Install Apple signing certificate
+        working-directory: ${{ github.workspace }}
+        env:
+          BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
+          P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          CERTIFICATE_PATH="$RUNNER_TEMP/build_certificate.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+
+          echo -n "$BUILD_CERTIFICATE_BASE64" | base64 --decode -o "$CERTIFICATE_PATH"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          security import "$CERTIFICATE_PATH" -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security list-keychain -d user -s "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+      - name: Install provisioning profile
+        id: provision
+        working-directory: ${{ github.workspace }}
+        env:
+          BUILD_PROVISION_PROFILE_BASE64: ${{ secrets.BUILD_PROVISION_PROFILE_BASE64 }}
+        run: |
+          PP_PATH="$RUNNER_TEMP/build_pp.mobileprovision"
+          echo -n "$BUILD_PROVISION_PROFILE_BASE64" | base64 --decode -o "$PP_PATH"
+
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          PP_XML="$(security cms -D -i "$PP_PATH")"
+          UUID=$(/usr/libexec/PlistBuddy -c 'Print UUID' /dev/stdin <<< "$PP_XML")
+          cp "$PP_PATH" "$HOME/Library/MobileDevice/Provisioning Profiles/${UUID}.mobileprovision"
+
+          PROFILE_NAME=$(/usr/libexec/PlistBuddy -c 'Print Name' /dev/stdin <<< "$PP_XML")
+          TEAM_ID=$(/usr/libexec/PlistBuddy -c 'Print TeamIdentifier:0' /dev/stdin <<< "$PP_XML")
+          echo "profile_name=${PROFILE_NAME}" >> "$GITHUB_OUTPUT"
+          echo "team_id=${TEAM_ID}" >> "$GITHUB_OUTPUT"
+
+      - name: Install Firebase iOS config
+        env:
+          GOOGLE_SERVICE_INFO_PLIST_BASE64: ${{ secrets.GOOGLE_SERVICE_INFO_PLIST_BASE64 }}
+        run: |
+          echo -n "$GOOGLE_SERVICE_INFO_PLIST_BASE64" | base64 --decode -o ios/Runner/GoogleService-Info.plist
+
+      - name: Configure Release manual signing for CI
+        env:
+          PROFILE_NAME: ${{ steps.provision.outputs.profile_name }}
+        run: |
+          PBX="ios/Runner.xcodeproj/project.pbxproj"
+          python3 <<'PY'
+          import os
+          import re
+
+          profile = os.environ["PROFILE_NAME"]
+          path = "ios/Runner.xcodeproj/project.pbxproj"
+          text = open(path, encoding="utf-8").read()
+          block_id = "97C147071CF9000F007C117D /* Release */"
+          start = text.find(block_id)
+          if start == -1:
+              raise SystemExit("Release Runner build configuration not found")
+          end = text.find("name = Release;", start)
+          if end == -1:
+              raise SystemExit("Release block end not found")
+          end = text.find("};", end) + 2
+          block = text[start:end]
+          block = re.sub(
+              r'CODE_SIGN_IDENTITY = "[^"]*";',
+              'CODE_SIGN_IDENTITY = "Apple Distribution";',
+              block,
+              count=1,
+          )
+          block = block.replace(
+              "CODE_SIGN_STYLE = Automatic;",
+              "CODE_SIGN_STYLE = Manual;",
+              1,
+          )
+          block = re.sub(
+              r'PROVISIONING_PROFILE_SPECIFIER = "[^"]*";',
+              f'PROVISIONING_PROFILE_SPECIFIER = "{profile}";',
+              block,
+              count=1,
+          )
+          text = text[:start] + block + text[end:]
+          open(path, "w", encoding="utf-8").write(text)
+          PY
 
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Build iOS app (unsigned)
-        run: flutter build ios --release --no-codesign
+      - name: Write ExportOptions.plist
+        env:
+          TEAM_ID: ${{ steps.provision.outputs.team_id }}
+          PROFILE_NAME: ${{ steps.provision.outputs.profile_name }}
+        run: |
+          python3 <<'PY'
+          import os
+          import plistlib
 
-      - name: Upload unsigned build artifact
+          data = {
+              "method": "app-store",
+              "teamID": os.environ["TEAM_ID"],
+              "signingStyle": "manual",
+              "signingCertificate": "Apple Distribution",
+              "provisioningProfiles": {
+                  "com.buyselles.app": os.environ["PROFILE_NAME"],
+              },
+              "uploadSymbols": True,
+          }
+          with open("ios/ExportOptions.plist", "wb") as handle:
+              plistlib.dump(data, handle)
+          PY
+
+      - name: Build IPA
+        run: flutter build ipa --release --export-options-plist=ios/ExportOptions.plist
+
+      - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
         with:
-          name: user-app-ios-unsigned
-          path: mobile/user_app/build/ios/iphoneos/Runner.app
+          name: user-app-ios-ipa
+          path: mobile/user_app/build/ios/ipa/*.ipa
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 14
+
+      - name: Clean up keychain
+        if: always()
+        working-directory: ${{ github.workspace }}
+        env:
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          security delete-keychain "$RUNNER_TEMP/app-signing.keychain-db" || true
