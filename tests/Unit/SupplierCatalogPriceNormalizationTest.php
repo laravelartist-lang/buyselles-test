@@ -203,4 +203,50 @@ class SupplierCatalogPriceNormalizationTest extends TestCase
 
         $this->assertTrue($method->invoke($service, $items, $supplier));
     }
+
+    public function test_repair_catalog_prices_from_driver_uses_supplier_decimal_settings(): void
+    {
+        $supplier = SupplierApi::query()->create([
+            'driver' => 'golf_api',
+            'settings' => [
+                'source_currency' => 'JOD',
+                'product_price_field' => 'price',
+                'price_decimal_places' => 2,
+            ],
+        ]);
+
+        $items = [[
+            'id' => '99',
+            'name' => 'Test product',
+            'price' => 1.0,
+            'currency' => 'USD',
+            'source_price' => 1.0,
+            'source_currency' => 'JOD',
+            'price_converted' => true,
+        ]];
+
+        $manager = \Mockery::mock(\App\Services\Supplier\SupplierManager::class);
+        $driver = \Mockery::mock(\App\Contracts\SupplierDriverInterface::class);
+        $driver->shouldReceive('fetchProducts')
+            ->once()
+            ->with(['fetch_all' => true])
+            ->andReturn([
+                \App\DTOs\Supplier\SupplierProductDTO::fromArray([
+                    'id' => '99',
+                    'name' => 'Test product',
+                    'price' => 1.62,
+                    'currency' => 'JOD',
+                    'stock' => 10,
+                ]),
+            ]);
+        $manager->shouldReceive('driver')->andReturn($driver);
+        $this->app->instance(\App\Services\Supplier\SupplierManager::class, $manager);
+
+        $service = app(SupplierCatalogSyncService::class);
+        $repaired = $service->repairCatalogPricesFromDriver($supplier, $items);
+
+        $this->assertSame(1.62, $repaired[0]['source_price']);
+        $this->assertEqualsWithDelta(2.28, $repaired[0]['price'], 0.02);
+        $this->assertTrue($repaired[0]['price_converted']);
+    }
 }
