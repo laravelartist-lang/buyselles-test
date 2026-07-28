@@ -1,4 +1,4 @@
-name: Build User App (iOS signed IPA)
+name: Build Vendor App (iOS signed IPA)
 
 on:
   workflow_dispatch:
@@ -9,7 +9,7 @@ on:
         default: true
 
 concurrency:
-  group: flutter-user-app-ios-${{ github.ref }}
+  group: flutter-vendor-app-ios-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -18,7 +18,7 @@ jobs:
     runs-on: macos-latest
     defaults:
       run:
-        working-directory: mobile/user_app
+        working-directory: mobile/vendor_app
 
     steps:
       - name: Checkout code
@@ -33,7 +33,7 @@ jobs:
       - name: Validate signing secrets
         run: |
           missing=0
-          required=(BUILD_CERTIFICATE_BASE64 BUILD_PROVISION_PROFILE_BASE64 P12_PASSWORD KEYCHAIN_PASSWORD GOOGLE_SERVICE_INFO_PLIST_BASE64)
+          required=(BUILD_CERTIFICATE_BASE64 VENDOR_BUILD_PROVISION_PROFILE_BASE64 P12_PASSWORD KEYCHAIN_PASSWORD VENDOR_GOOGLE_SERVICE_INFO_PLIST_BASE64)
           if [ "${UPLOAD_TO_TESTFLIGHT}" = "true" ]; then
             required+=(APP_STORE_CONNECT_API_KEY APP_STORE_CONNECT_KEY_ID APP_STORE_CONNECT_ISSUER_ID)
           fi
@@ -47,10 +47,10 @@ jobs:
         env:
           UPLOAD_TO_TESTFLIGHT: ${{ inputs.upload_to_testflight }}
           BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
-          BUILD_PROVISION_PROFILE_BASE64: ${{ secrets.BUILD_PROVISION_PROFILE_BASE64 }}
+          VENDOR_BUILD_PROVISION_PROFILE_BASE64: ${{ secrets.VENDOR_BUILD_PROVISION_PROFILE_BASE64 }}
           P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
           KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
-          GOOGLE_SERVICE_INFO_PLIST_BASE64: ${{ secrets.GOOGLE_SERVICE_INFO_PLIST_BASE64 }}
+          VENDOR_GOOGLE_SERVICE_INFO_PLIST_BASE64: ${{ secrets.VENDOR_GOOGLE_SERVICE_INFO_PLIST_BASE64 }}
           APP_STORE_CONNECT_API_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
           APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
           APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
@@ -79,10 +79,10 @@ jobs:
         id: provision
         working-directory: ${{ github.workspace }}
         env:
-          BUILD_PROVISION_PROFILE_BASE64: ${{ secrets.BUILD_PROVISION_PROFILE_BASE64 }}
+          VENDOR_BUILD_PROVISION_PROFILE_BASE64: ${{ secrets.VENDOR_BUILD_PROVISION_PROFILE_BASE64 }}
         run: |
           PP_PATH="$RUNNER_TEMP/build_pp.mobileprovision"
-          echo -n "$BUILD_PROVISION_PROFILE_BASE64" | base64 --decode -o "$PP_PATH"
+          echo -n "$VENDOR_BUILD_PROVISION_PROFILE_BASE64" | base64 --decode -o "$PP_PATH"
 
           mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
           PP_XML="$(security cms -D -i "$PP_PATH")"
@@ -96,20 +96,21 @@ jobs:
 
       - name: Install Firebase iOS config
         env:
-          GOOGLE_SERVICE_INFO_PLIST_BASE64: ${{ secrets.GOOGLE_SERVICE_INFO_PLIST_BASE64 }}
+          VENDOR_GOOGLE_SERVICE_INFO_PLIST_BASE64: ${{ secrets.VENDOR_GOOGLE_SERVICE_INFO_PLIST_BASE64 }}
         run: |
-          echo -n "$GOOGLE_SERVICE_INFO_PLIST_BASE64" | base64 --decode -o ios/Runner/GoogleService-Info.plist
+          echo -n "$VENDOR_GOOGLE_SERVICE_INFO_PLIST_BASE64" | base64 --decode -o ios/Runner/GoogleService-Info.plist
 
       - name: Configure Release manual signing for CI
         env:
           PROFILE_NAME: ${{ steps.provision.outputs.profile_name }}
+          TEAM_ID: ${{ steps.provision.outputs.team_id }}
         run: |
-          PBX="ios/Runner.xcodeproj/project.pbxproj"
           python3 <<'PY'
           import os
           import re
 
           profile = os.environ["PROFILE_NAME"]
+          team_id = os.environ["TEAM_ID"]
           path = "ios/Runner.xcodeproj/project.pbxproj"
           text = open(path, encoding="utf-8").read()
           block_id = "97C147071CF9000F007C117D /* Release */"
@@ -133,6 +134,12 @@ jobs:
               1,
           )
           block = re.sub(
+              r'DEVELOPMENT_TEAM = "[^"]*";',
+              f'DEVELOPMENT_TEAM = {team_id};',
+              block,
+              count=1,
+          )
+          block = re.sub(
               r'PROVISIONING_PROFILE_SPECIFIER = "[^"]*";',
               f'PROVISIONING_PROFILE_SPECIFIER = "{profile}";',
               block,
@@ -147,14 +154,14 @@ jobs:
 
       - name: Ensure App Store icon has no alpha channel
         run: |
-          ICON="ios/Runner/Assets.xcassets/AppIcon.appiconset/1024.png"
+          ICON="ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-1024x1024@1x.png"
           if sips -g hasAlpha "$ICON" 2>/dev/null | grep -q 'hasAlpha: yes'; then
             TMP="${RUNNER_TEMP}/appicon1024.jpg"
             sips -s format jpeg "$ICON" --out "$TMP" >/dev/null
             sips -s format png "$TMP" --out "$ICON" >/dev/null
-            echo "Removed alpha from 1024.png"
+            echo "Removed alpha from App Store icon"
           else
-            echo "1024.png already has no alpha"
+            echo "App Store icon already has no alpha"
           fi
 
       - name: Write ExportOptions.plist
@@ -172,7 +179,7 @@ jobs:
               "signingStyle": "manual",
               "signingCertificate": "Apple Distribution",
               "provisioningProfiles": {
-                  "com.buyselles.app": os.environ["PROFILE_NAME"],
+                  "com.buyselles.vendor": os.environ["PROFILE_NAME"],
               },
               "uploadSymbols": True,
           }
@@ -187,14 +194,14 @@ jobs:
         id: ipa
         run: |
           ipa_path="$(ls -1 build/ios/ipa/*.ipa | head -1)"
-          echo "path=mobile/user_app/${ipa_path}" >> "$GITHUB_OUTPUT"
-          echo "Built IPA: mobile/user_app/${ipa_path}"
+          echo "path=mobile/vendor_app/${ipa_path}" >> "$GITHUB_OUTPUT"
+          echo "Built IPA: mobile/vendor_app/${ipa_path}"
 
       - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
         with:
-          name: user-app-ios-ipa
-          path: mobile/user_app/build/ios/ipa/*.ipa
+          name: vendor-app-ios-ipa
+          path: mobile/vendor_app/build/ios/ipa/*.ipa
           if-no-files-found: error
           retention-days: 14
 
