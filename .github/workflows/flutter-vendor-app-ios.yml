@@ -7,10 +7,18 @@ on:
         description: Upload to TestFlight after building IPA
         type: boolean
         default: true
+      clean_build:
+        description: Ignore caches and run a full clean build
+        type: boolean
+        default: false
 
 concurrency:
   group: flutter-vendor-app-ios-${{ github.ref }}
   cancel-in-progress: true
+
+env:
+  APP_DIR: mobile/vendor_app
+  BUNDLE_ID: com.buyselles.vendor
 
 jobs:
   build-ipa:
@@ -23,12 +31,57 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 2
+
+      - name: Detect changed paths
+        id: changes
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            dependencies:
+              - 'mobile/vendor_app/pubspec.yaml'
+              - 'mobile/vendor_app/pubspec.lock'
+              - 'mobile/vendor_app/ios/Podfile'
+              - 'mobile/vendor_app/ios/Podfile.lock'
+            app_icon:
+              - 'mobile/vendor_app/ios/Runner/Assets.xcassets/AppIcon.appiconset/**'
+            ios_config:
+              - 'mobile/vendor_app/ios/Runner/Info.plist'
+              - 'mobile/vendor_app/ios/Runner.xcodeproj/**'
+              - 'mobile/vendor_app/ios/Runner/Runner.entitlements'
+            dart_code:
+              - 'mobile/vendor_app/lib/**'
+              - 'mobile/vendor_app/assets/**'
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
+          cache-key: flutter-vendor-${{ hashFiles('mobile/vendor_app/pubspec.lock') }}
+
+      - name: Restore Dart dependency cache
+        id: dart_cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            mobile/vendor_app/.dart_tool
+            ~/.pub-cache
+          key: dart-vendor-${{ hashFiles('mobile/vendor_app/pubspec.lock') }}
+          restore-keys: |
+            dart-vendor-
+
+      - name: Restore CocoaPods cache
+        id: pods_cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            mobile/vendor_app/ios/Pods
+            ~/.cocoapods
+          key: pods-vendor-${{ hashFiles('mobile/vendor_app/ios/Podfile.lock') }}
+          restore-keys: |
+            pods-vendor-
 
       - name: Validate signing secrets
         run: |
@@ -98,7 +151,8 @@ jobs:
         env:
           VENDOR_GOOGLE_SERVICE_INFO_PLIST_BASE64: ${{ secrets.VENDOR_GOOGLE_SERVICE_INFO_PLIST_BASE64 }}
         run: |
-          echo -n "$VENDOR_GOOGLE_SERVICE_INFO_PLIST_BASE64" | base64 --decode -o ios/Runner/GoogleService-Info.plist
+          echo -n "$VENDOR_GOOGLE_SERVICE_INFO_PLIST_BASE64" | base64 --decode -o ios/GoogleService-Info.plist
+          cp ios/GoogleService-Info.plist ios/Runner/GoogleService-Info.plist
 
       - name: Configure Release manual signing for CI
         env:
@@ -149,10 +203,16 @@ jobs:
           open(path, "w", encoding="utf-8").write(text)
           PY
 
-      - name: Install dependencies
+      - name: Install Dart dependencies
+        if: inputs.clean_build || steps.changes.outputs.dependencies == 'true' || steps.dart_cache.outputs.cache-hit != 'true'
         run: flutter pub get
 
+      - name: Skip Dart dependencies (cache hit)
+        if: inputs.clean_build != true && steps.changes.outputs.dependencies != 'true' && steps.dart_cache.outputs.cache-hit == 'true'
+        run: echo "Reusing cached Dart dependencies"
+
       - name: Ensure App Store icon has no alpha channel
+        if: inputs.clean_build || steps.changes.outputs.app_icon == 'true'
         run: |
           ICON="ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-1024x1024@1x.png"
           if sips -g hasAlpha "$ICON" 2>/dev/null | grep -q 'hasAlpha: yes'; then
@@ -163,6 +223,10 @@ jobs:
           else
             echo "App Store icon already has no alpha"
           fi
+
+      - name: Skip icon check (unchanged)
+        if: inputs.clean_build != true && steps.changes.outputs.app_icon != 'true'
+        run: echo "App icon unchanged — skipping alpha check"
 
       - name: Write ExportOptions.plist
         env:
@@ -188,7 +252,20 @@ jobs:
           PY
 
       - name: Build IPA
-        run: flutter build ipa --release --export-options-plist=ios/ExportOptions.plist
+        run: |
+          BUILD_FLAGS=(--release --export-options-plist=ios/ExportOptions.plist)
+          if [ "${CLEAN_BUILD}" != "true" ] && [ "${DEPS_CHANGED}" != "true" ] && [ "${DART_CACHE_HIT}" = "true" ]; then
+            BUILD_FLAGS+=(--no-pub)
+          fi
+          if [ "${PODS_CACHE_HIT}" = "true" ] && [ "${CLEAN_BUILD}" != "true" ] && [ "${DEPS_CHANGED}" != "true" ]; then
+            echo "Reusing cached CocoaPods — pod install should be incremental"
+          fi
+          flutter build ipa "${BUILD_FLAGS[@]}"
+        env:
+          CLEAN_BUILD: ${{ inputs.clean_build }}
+          DEPS_CHANGED: ${{ steps.changes.outputs.dependencies }}
+          DART_CACHE_HIT: ${{ steps.dart_cache.outputs.cache-hit }}
+          PODS_CACHE_HIT: ${{ steps.pods_cache.outputs.cache-hit }}
 
       - name: Locate built IPA
         id: ipa
