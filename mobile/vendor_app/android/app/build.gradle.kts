@@ -67,11 +67,24 @@ android {
     }
 }
 
+// shared_preferences_android pulls datastore 1.2.0; its native .so breaks 16 KB page devices.
+configurations.all {
+    resolutionStrategy {
+        force("androidx.datastore:datastore:1.2.1")
+        force("androidx.datastore:datastore-android:1.2.1")
+        force("androidx.datastore:datastore-core:1.2.1")
+        force("androidx.datastore:datastore-core-android:1.2.1")
+        force("androidx.datastore:datastore-preferences:1.2.1")
+        force("androidx.datastore:datastore-preferences-android:1.2.1")
+    }
+}
+
 flutter {
     source = "../.."
 }
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
+    implementation("androidx.activity:activity-ktx:1.9.3")
     implementation("com.google.firebase:firebase-messaging:23.4.1")
 }

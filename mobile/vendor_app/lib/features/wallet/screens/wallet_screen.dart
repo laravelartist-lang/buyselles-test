@@ -13,6 +13,7 @@ import 'package:sixvalley_vendor_app/features/transaction/screens/transaction_sc
 import 'package:sixvalley_vendor_app/features/wallet/widgets/wallet_card_widget.dart';
 import 'package:sixvalley_vendor_app/features/wallet/widgets/wallet_transaction_list_view_widget.dart';
 import 'package:sixvalley_vendor_app/features/wallet/widgets/withdraw_balance_widget.dart';
+import 'package:sixvalley_vendor_app/features/wallet_transfer/screens/wallet_transfer_screen.dart';
 import 'package:sixvalley_vendor_app/utill/styles.dart';
 
 class WalletScreen extends StatefulWidget {
@@ -84,6 +85,47 @@ class _WalletScreenState extends State<WalletScreen> {
                       return seller.userInfoModel == null ? const SizedBox() : Column(children: [
 
                         seller.userInfoModel == null ? const SizedBox() : const WithdrawBalanceWidget(),
+
+                        if (seller.userInfoModel?.vendorWalletTransferEnabled == true)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(
+                              Dimensions.paddingSizeSmall,
+                              Dimensions.paddingSizeDefault,
+                              Dimensions.paddingSizeSmall,
+                              0,
+                            ),
+                            child: InkWell(
+                              onTap: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (_) => const WalletTransferScreen()),
+                              ),
+                              child: Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: Dimensions.paddingSizeDefault,
+                                  vertical: Dimensions.paddingSizeSmall,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Theme.of(context).cardColor,
+                                  borderRadius: BorderRadius.circular(Dimensions.paddingSizeExtraSmall),
+                                  border: Border.all(color: Theme.of(context).primaryColor.withValues(alpha: 0.2)),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.swap_horiz, color: Theme.of(context).primaryColor),
+                                    const SizedBox(width: Dimensions.paddingSizeSmall),
+                                    Expanded(
+                                      child: Text(
+                                        getTranslated('wallet_transfer_to_customer', context)!,
+                                        style: robotoMedium.copyWith(color: Theme.of(context).primaryColor),
+                                      ),
+                                    ),
+                                    Icon(Icons.arrow_forward_ios, size: 16, color: Theme.of(context).primaryColor),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
 
                         Container(
                           margin: const EdgeInsets.all(Dimensions.fontSizeSmall).copyWith(right: 0, top: Dimensions.paddingSizeDefault),

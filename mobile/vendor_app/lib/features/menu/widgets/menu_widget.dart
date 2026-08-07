@@ -30,6 +30,7 @@ import 'package:sixvalley_vendor_app/features/review/screens/product_review_scre
 import 'package:sixvalley_vendor_app/features/settings/screens/setting_screen.dart';
 import 'package:sixvalley_vendor_app/features/shop/screens/shop_screen.dart';
 import 'package:sixvalley_vendor_app/features/wallet/screens/wallet_screen.dart';
+import 'package:sixvalley_vendor_app/features/wallet_transfer/screens/wallet_transfer_screen.dart';
 import 'package:sixvalley_vendor_app/features/bank_info/screens/bank_info_screen.dart';
 
 import '../../../main.dart';
@@ -78,7 +79,7 @@ class MenuBottomSheetWidget extends StatelessWidget {
             ),
 
 
-          // if(configModel?.posActive == 1 && Provider.of<ProfileController>(context, listen: false).userInfoModel?.posActive == 1)
+          if(configModel?.posActive == 1 && Provider.of<ProfileController>(context, listen: false).userInfoModel?.posActive == 1)
             CustomBottomSheetWidget(image: Images.pos, title: getTranslated('pos', context),
               onTap: () => _handleMenuTap(context, const NavBarScreen()),
             ),
@@ -114,6 +115,11 @@ class MenuBottomSheetWidget extends StatelessWidget {
           CustomBottomSheetWidget(image: Images.wallet, title: getTranslated('wallet', context),
             onTap: () => _handleMenuTap(context, const WalletScreen()),
           ),
+
+          if(Provider.of<ProfileController>(context, listen: false).userInfoModel?.vendorWalletTransferEnabled == true)
+            CustomBottomSheetWidget(image: Images.wallet, title: getTranslated('wallet_transfer_to_customer', context),
+              onTap: () => _handleMenuTap(context, const WalletTransferScreen()),
+            ),
 
 
           CustomBottomSheetWidget(image: Images.message, title: getTranslated('message', context),

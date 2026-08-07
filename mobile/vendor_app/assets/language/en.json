@@ -1381,5 +1381,13 @@
   "video_evidence": "Video evidence",
   "you": "You",
   "buyer": "Buyer",
-  "admin": "Admin"
+  "admin": "Admin",
+  "wallet_transfer_to_customer": "Wallet Transfer to Customer",
+  "send_balance_to_customer": "Send balance to customer",
+  "transfer_balance": "Transfer balance",
+  "transfer_history": "Transfer history",
+  "balance_transferred_successfully": "Balance transferred successfully",
+  "your_wallet_balance": "Your wallet balance",
+  "search_by_name_email_or_phone": "Search by name, email, or phone",
+  "reference": "Reference"
 }

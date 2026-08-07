@@ -119,6 +119,9 @@ class AppConstants {
   static const String temporaryClose = '/api/v3/seller/temporary-close';
   static const String vacation = '/api/v3/seller/vacation-add';
   static const String dynamicWithdrawMethod = '/api/v3/seller/withdraw-method-list';
+  static const String walletTransferUri = '/api/v3/seller/wallet-transfer';
+  static const String walletTransferSearchUri = '/api/v3/seller/wallet-transfer/search-customers';
+  static const String walletTransferSubmitUri = '/api/v3/seller/wallet-transfer/transfer';
   static const String orderAddressEdit = '/api/v3/seller/orders/address-update';
   static const String getNotificationList = '/api/v3/seller/notification?limit=20&offset=';
   static const String seenNotification = '/api/v3/seller/notification/view?id=';

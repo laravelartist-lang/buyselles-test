@@ -225,13 +225,14 @@ class ShopController extends ChangeNotifier {
     notifyListeners();
     ApiResponse apiResponse = await shopServiceInterface.temporaryClose(status);
 
-    if (apiResponse.response!.statusCode == 200) {
+    if (apiResponse.response != null && apiResponse.response!.statusCode == 200) {
       _isLoading = false;
 
       showCustomSnackBarWidget(getTranslated('status_updated_successfully', Get.context!), Get.context!, isToaster: true, isError: false);
       getShopInfo();
 
     } else {
+      _isLoading = false;
       ApiChecker.checkApi(apiResponse);
     }
     notifyListeners();
@@ -244,7 +245,7 @@ class ShopController extends ChangeNotifier {
     notifyListeners();
     ApiResponse apiResponse = await shopServiceInterface.vacation(vacationModel);
 
-    if (apiResponse.response!.statusCode == 200) {
+    if (apiResponse.response != null && apiResponse.response!.statusCode == 200) {
       _isLoading = false;
       showCustomSnackBarWidget(getTranslated('status_updated_successfully', Get.context!), Get.context!, isToaster: true, isError: false);
       getShopInfo();
@@ -451,7 +452,7 @@ class ShopController extends ChangeNotifier {
     _isLoading = true;
     notifyListeners();
     ApiResponse apiResponse = await shopServiceInterface.addPaymentInfo(vacationModel, isUpdate);
-    if (apiResponse.response!.statusCode == 200) {
+    if (apiResponse.response != null && apiResponse.response!.statusCode == 200) {
       _isLoading = false;
       if(!isUpdate) {
         showCustomSnackBarWidget(getTranslated('payment_method_added_successfully', Get.context!), Get.context!, isToaster: true, isError: false);
@@ -490,18 +491,22 @@ class ShopController extends ChangeNotifier {
 
   Future<void> updatePaymentMethodStatus(bool status, int index, int id,) async {
     ApiResponse apiResponse  = await shopServiceInterface.updateConfigStatus(status, id);
-    if (apiResponse.response!.statusCode == 200) {
+    if (apiResponse.response != null && apiResponse.response!.statusCode == 200) {
       showCustomSnackBarWidget(getTranslated('status_updated_successfully', Get.context!), Get.context!, isError: false, sanckBarType: SnackBarType.success);
       _paymentInformationModel?.data?[index].isActive = status;
+    } else {
+      ApiChecker.checkApi(apiResponse);
     }
     notifyListeners();
   }
 
   Future<void> deletePaymentMethodStatus(int id, int index) async {
     ApiResponse apiResponse  = await shopServiceInterface.deletePaymentMethod(id);
-    if (apiResponse.response!.statusCode == 200) {
+    if (apiResponse.response != null && apiResponse.response!.statusCode == 200) {
       showCustomSnackBarWidget(getTranslated('payment_method_deleted_successfully', Get.context!), Get.context!, isError: false, sanckBarType: SnackBarType.success);
       _paymentInformationModel?.data?.removeAt(index);
+    } else {
+      ApiChecker.checkApi(apiResponse);
     }
     notifyListeners();
   }
@@ -509,9 +514,11 @@ class ShopController extends ChangeNotifier {
 
   Future<void> setDefaultPaymentMethod(int id) async {
     ApiResponse apiResponse  = await shopServiceInterface.setDefaultPaymentMethod(id);
-    if (apiResponse.response!.statusCode == 200) {
+    if (apiResponse.response != null && apiResponse.response!.statusCode == 200) {
       showCustomSnackBarWidget(getTranslated('payment_method_deleted_successfully', Get.context!), Get.context!, isError: false, sanckBarType: SnackBarType.success);
       getPaymentInfoList(1);
+    } else {
+      ApiChecker.checkApi(apiResponse);
     }
     notifyListeners();
   }

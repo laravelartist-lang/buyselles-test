@@ -24,6 +24,7 @@ use App\Http\Controllers\RestAPI\v3\seller\shippingController;
 use App\Http\Controllers\RestAPI\v3\seller\ShippingMethodController;
 use App\Http\Controllers\RestAPI\v3\seller\ShopController;
 use App\Http\Controllers\RestAPI\v3\seller\VendorPaymentInfoController;
+use App\Http\Controllers\RestAPI\v3\seller\WalletTransferController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -76,6 +77,12 @@ Route::group(['namespace' => 'RestAPI\v3\seller', 'prefix' => 'v3/seller', 'midd
             Route::get('withdraw-method-list', 'withdraw_method_list');
             Route::post('balance-withdraw', 'withdraw_request');
             Route::delete('close-withdraw-request', 'close_withdraw_request');
+        });
+
+        Route::controller(WalletTransferController::class)->group(function () {
+            Route::get('wallet-transfer', 'index');
+            Route::get('wallet-transfer/search-customers', 'searchCustomers');
+            Route::post('wallet-transfer/transfer', 'transfer');
         });
 
         Route::controller(ShopController::class)->group(function () {

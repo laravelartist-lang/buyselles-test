@@ -283,6 +283,8 @@ class DeliveryManController extends ChangeNotifier {
       _deliveryManDetails!.deliveryMan!.isActive = status;
       _isLoading = false;
       showCustomSnackBarWidget(getTranslated('status_updated_successfully', Get.context!), Get.context!, isToaster: true, isError: false);
+    } else {
+      showCustomSnackBarWidget(responseModel.message, Get.context!, isToaster: true);
     }
     _isLoading = false;
     notifyListeners();
@@ -368,10 +370,12 @@ class DeliveryManController extends ChangeNotifier {
         isUpdate?
         showCustomSnackBarWidget(getTranslated("delivery_man_updated_successfully", Get.context!), Get.context!, isError: false):
         showCustomSnackBarWidget(getTranslated("delivery_man_added_successfully", Get.context!), Get.context!, isError: false);
+    } else if (responseModel.message != null && responseModel.message!.isNotEmpty) {
+      showCustomSnackBarWidget(responseModel.message, Get.context!, isToaster: true);
     }
     _isLoading = false;
     notifyListeners();
-    return ResponseModel(true, '');
+    return responseModel;
   }
 
   Future<void> getDeliveryManWithdrawDetails(BuildContext context, int? id) async {
@@ -390,7 +394,11 @@ class DeliveryManController extends ChangeNotifier {
       _isLoading = true;
     }
     ApiResponse apiResponse = await deliveryServiceInterface.deliveryManWithdrawList(offset, status);
-    _withdrawList.addAll(DeliveryManWithdrawModel.fromJson(apiResponse.response!.data).withdraws!);
+    if (apiResponse.response != null && apiResponse.response!.statusCode == 200) {
+      _withdrawList.addAll(DeliveryManWithdrawModel.fromJson(apiResponse.response!.data).withdraws!);
+    } else {
+      ApiChecker.checkApi(apiResponse);
+    }
     _isLoading = false;
     notifyListeners();
   }
@@ -414,6 +422,8 @@ class DeliveryManController extends ChangeNotifier {
         Navigator.pop(Get.context!);
         _withdrawList[index!].approved = approved;
         getDeliveryManWithdrawList(1, 'all');
+      } else if (responseModel.message != null && responseModel.message!.isNotEmpty) {
+        showCustomSnackBarWidget(responseModel.message, Get.context!, isToaster: true);
       }
     _isLoading = false;
     notifyListeners();

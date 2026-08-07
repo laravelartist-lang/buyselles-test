@@ -87,12 +87,13 @@ class DeliveryService implements DeliveryServiceInterface{
     ApiResponse apiResponse = await deliveryManRepoInterface.deliveryManWithdrawApprovedDenied(id, note, approved);
     if (apiResponse.response != null && apiResponse.response!.statusCode == 200) {
       String? message = apiResponse.response!.data['message'];
-      showCustomSnackBarWidget(message, Get.context!, isToaster: true);
+      showCustomSnackBarWidget(message, Get.context!, isToaster: true, isError: false);
       return ResponseModel(true, message);
-    } else {
-      String? message = apiResponse.response!.data['message'];
-      showCustomSnackBarWidget(message, Get.context!, isToaster: true);
     }
+
+    ApiChecker.checkApi(apiResponse);
+
+    return ResponseModel(false, apiResponse.error?.toString());
   }
 
   @override

@@ -162,6 +162,11 @@ import 'package:sixvalley_vendor_app/features/wallet/domain/repositories/wallet_
 import 'package:sixvalley_vendor_app/features/wallet/domain/repositories/wallet_repository_interface.dart';
 import 'package:sixvalley_vendor_app/features/wallet/domain/services/wallet_service.dart';
 import 'package:sixvalley_vendor_app/features/wallet/domain/services/wallet_service_interface.dart';
+import 'package:sixvalley_vendor_app/features/wallet_transfer/controllers/wallet_transfer_controller.dart';
+import 'package:sixvalley_vendor_app/features/wallet_transfer/domain/repositories/wallet_transfer_repository.dart';
+import 'package:sixvalley_vendor_app/features/wallet_transfer/domain/repositories/wallet_transfer_repository_interface.dart';
+import 'package:sixvalley_vendor_app/features/wallet_transfer/domain/services/wallet_transfer_service.dart';
+import 'package:sixvalley_vendor_app/features/wallet_transfer/domain/services/wallet_transfer_service_interface.dart';
 import 'package:sixvalley_vendor_app/features/pos/controllers/cart_controller.dart';
 import 'package:sixvalley_vendor_app/features/chat/controllers/chat_controller.dart';
 import 'package:sixvalley_vendor_app/features/coupon/controllers/coupon_controller.dart';
@@ -242,6 +247,8 @@ Future<void> init() async {
   sl.registerLazySingleton(() => notificationRepoInterface);
   WalletRepositoryInterface walletRepoInterface = WalletRepository(dioClient: sl());
   sl.registerLazySingleton(() => walletRepoInterface);
+  WalletTransferRepositoryInterface walletTransferRepoInterface = WalletTransferRepository(dioClient: sl());
+  sl.registerLazySingleton(() => walletTransferRepoInterface);
   LocationRepositoryInterface locationRepositoryInterface = LocationRepository(dioClient: sl());
   sl.registerLazySingleton(() => locationRepositoryInterface);
   CartRepositoryInterface cartRepositoryInterface = CartRepository(dioClient: sl(), sharedPreferences: sl());
@@ -314,6 +321,8 @@ Future<void> init() async {
   sl.registerLazySingleton(() => notificationServiceInterface);
   WalletServiceInterface walletServiceInterface = WalletService(walletRepoInterface: sl());
   sl.registerLazySingleton(() => walletServiceInterface);
+  WalletTransferServiceInterface walletTransferServiceInterface = WalletTransferService(walletTransferRepositoryInterface: sl());
+  sl.registerLazySingleton(() => walletTransferServiceInterface);
   LocationServiceInterface locationServiceInterface = LocationService(locationRepositoryInterface: sl());
   sl.registerLazySingleton(() => locationServiceInterface);
   CartServiceInterface cartServiceInterface = CartService(cartRepositoryInterface: sl());
@@ -404,6 +413,7 @@ Future<void> init() async {
   sl.registerFactory(() => TransactionController(transactionServiceInterface: sl()));
   sl.registerFactory(() => NotificationController(notificationServiceInterface: sl()));
   sl.registerFactory(() => WalletController(walletServiceInterface: sl()));
+  sl.registerFactory(() => WalletTransferController(walletTransferServiceInterface: sl()));
   sl.registerFactory(() => OrderDetailsController(orderDetailsServiceInterface: sl()));
   sl.registerFactory(() => ProductDetailsController(productDetailsServiceInterface: sl()));
   sl.registerFactory(() => ThemeController(sharedPreferences: sl()));

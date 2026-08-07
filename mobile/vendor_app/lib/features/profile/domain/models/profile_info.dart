@@ -44,6 +44,7 @@ class ProfileInfoModel {
   double? minimumOrderAmount;
   double? freeOverDeliveryAmount;
   int? freeOverDeliveryAmountStatus;
+  bool? vendorWalletTransferEnabled;
 
   ProfileInfoModel(
       {this.id,
@@ -71,7 +72,8 @@ class ProfileInfoModel {
         this.wallet,
         this.minimumOrderAmount,
         this.freeOverDeliveryAmount,
-        this.freeOverDeliveryAmountStatus
+        this.freeOverDeliveryAmountStatus,
+        this.vendorWalletTransferEnabled,
       });
 
   ProfileInfoModel.fromJson(Map<String, dynamic> json) {
@@ -126,6 +128,9 @@ class ProfileInfoModel {
     imageFullUrl = json['image_full_url'] != null
         ? ImageFullUrl.fromJson(json['image_full_url'])
         : null;
+
+    vendorWalletTransferEnabled = json['vendor_wallet_transfer_enabled'] == true
+        || json['vendor_wallet_transfer_enabled'] == 1;
   }
 
 

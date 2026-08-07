@@ -1294,5 +1294,13 @@
   "evidence_uploaded_successfully": "প্রমাণ সফলভাবে আপলোড করা হয়েছে",
   "dispute_cannot_be_escalated_in_current_status": "বর্তমান অবস্থায় বিতর্কটি পাঠানো যাবে না",
   "dispute_cannot_be_responded_to_in_current_status": "বর্তমান অবস্থায় বিতর্কটির উত্তর দেওয়া যাবে না",
-  "cannot_upload_evidence_for_a_closed_dispute": "বন্ধ বিতর্কের জন্য প্রমাণ আপলোড করা যাবে না"
+  "cannot_upload_evidence_for_a_closed_dispute": "বন্ধ বিতর্কের জন্য প্রমাণ আপলোড করা যাবে না",
+  "wallet_transfer_to_customer": "Wallet Transfer to Customer",
+  "send_balance_to_customer": "Send balance to customer",
+  "transfer_balance": "Transfer balance",
+  "transfer_history": "Transfer history",
+  "balance_transferred_successfully": "Balance transferred successfully",
+  "your_wallet_balance": "Your wallet balance",
+  "search_by_name_email_or_phone": "Search by name, email, or phone",
+  "reference": "Reference"
 }

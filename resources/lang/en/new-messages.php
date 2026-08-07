@@ -11750,4 +11750,5 @@ return [
     'target_account' => 'Target account',
     'connector_preset' => 'Connector preset',
     'invalid_denomination_selected' => 'Invalid denomination selected',
+    'balance_received' => 'Balance received',
 ];

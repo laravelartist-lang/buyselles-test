@@ -23,6 +23,7 @@ use App\Models\WithdrawalMethod;
 use App\Models\WithdrawRequest;
 use App\Repositories\OrderTransactionRepository;
 use App\Services\DashboardService;
+use App\Services\Wallet\VendorCustomerWalletTransferService;
 use App\Traits\FileManagerTrait;
 use App\Utils\BackEndHelper;
 use App\Utils\Convert;
@@ -201,6 +202,9 @@ class SellerController extends Controller
         $data['minimum_order_amount_by_seller'] = getWebConfig(name: 'minimum_order_amount_by_seller');
         $data['minimum_order_amount'] = \App\Utils\Convert::default($data['minimum_order_amount']);
         $data['free_delivery_over_amount'] = \App\Utils\Convert::default($data['free_delivery_over_amount']);
+
+        $data['vendor_wallet_transfer_enabled'] = app(VendorCustomerWalletTransferService::class)
+            ->sellerCanTransfer($seller['id']);
 
         return response()->json($data, 200);
     }
