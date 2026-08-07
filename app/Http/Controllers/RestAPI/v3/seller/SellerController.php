@@ -203,7 +203,7 @@ class SellerController extends Controller
         $data['minimum_order_amount'] = \App\Utils\Convert::default($data['minimum_order_amount']);
         $data['free_delivery_over_amount'] = \App\Utils\Convert::default($data['free_delivery_over_amount']);
 
-        $data['vendor_wallet_transfer_enabled'] = app(VendorCustomerWalletTransferService::class)
+        $data['vendor_wallet_transfer_enabled'] = (bool) app(VendorCustomerWalletTransferService::class)
             ->sellerCanTransfer($seller['id']);
 
         return response()->json($data, 200);

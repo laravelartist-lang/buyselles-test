@@ -17,6 +17,28 @@ double? _parseDouble(dynamic value, {double? defaultValue}) {
   return double.tryParse(value.toString()) ?? defaultValue;
 }
 
+bool? _parseBool(dynamic value) {
+  if (value == null) {
+    return null;
+  }
+  if (value is bool) {
+    return value;
+  }
+  if (value is num) {
+    return value == 1;
+  }
+
+  final normalized = value.toString().toLowerCase();
+  if (normalized == 'true' || normalized == '1') {
+    return true;
+  }
+  if (normalized == 'false' || normalized == '0') {
+    return false;
+  }
+
+  return null;
+}
+
 class ProfileInfoModel {
   int? id;
   String? fName;
@@ -76,6 +98,9 @@ class ProfileInfoModel {
         this.vendorWalletTransferEnabled,
       });
 
+  /// Matches backend default: unrestricted vendors can transfer unless API sets false.
+  bool get canUseWalletTransfer => vendorWalletTransferEnabled != false;
+
   ProfileInfoModel.fromJson(Map<String, dynamic> json) {
     id = json['id'];
     fName = json['f_name'];
@@ -129,8 +154,7 @@ class ProfileInfoModel {
         ? ImageFullUrl.fromJson(json['image_full_url'])
         : null;
 
-    vendorWalletTransferEnabled = json['vendor_wallet_transfer_enabled'] == true
-        || json['vendor_wallet_transfer_enabled'] == 1;
+    vendorWalletTransferEnabled = _parseBool(json['vendor_wallet_transfer_enabled']);
   }
 
 

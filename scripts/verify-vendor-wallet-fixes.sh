@@ -77,12 +77,12 @@ grep -q "ApiChecker.checkApi(apiResponse)" "${DM_SVC}" \
   && ok "Delivery-man withdraw approve/deny uses ApiChecker on failure" \
   || fail "delivery_service withdraw approve/deny missing proper failure handling"
 
-grep -q "vendorWalletTransferEnabled" "${MENU}" \
+grep -q "canUseWalletTransfer" "${MENU}" \
   && grep -q "WalletTransferScreen" "${MENU}" \
   && ok "Wallet transfer menu entry gated by module flag" \
   || fail "menu_widget missing wallet transfer entry"
 
-grep -q "vendorWalletTransferEnabled" "${WALLET_SCREEN}" \
+grep -q "canUseWalletTransfer" "${WALLET_SCREEN}" \
   && grep -q "WalletTransferScreen" "${WALLET_SCREEN}" \
   && ok "Wallet screen links to wallet transfer" \
   || fail "wallet_screen missing transfer CTA"

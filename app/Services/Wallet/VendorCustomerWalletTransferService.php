@@ -27,7 +27,20 @@ class VendorCustomerWalletTransferService
     {
         $permission = VendorPermission::where('seller_id', $sellerId)->first();
 
-        return $permission?->hasAccess('vendor_wallet_transfer') ?? true;
+        if ($permission === null) {
+            return true;
+        }
+
+        if ($permission->module_access === null || count($permission->module_access) === 0) {
+            return true;
+        }
+
+        if ($permission->hasAccess('vendor_wallet_transfer')) {
+            return true;
+        }
+
+        // Vendors granted wallet access before the transfer module was split out.
+        return $permission->hasAccess('vendor_wallet');
     }
 
     /**

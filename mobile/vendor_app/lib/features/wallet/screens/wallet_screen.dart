@@ -86,7 +86,7 @@ class _WalletScreenState extends State<WalletScreen> {
 
                         seller.userInfoModel == null ? const SizedBox() : const WithdrawBalanceWidget(),
 
-                        if (seller.userInfoModel?.vendorWalletTransferEnabled == true)
+                        if (seller.userInfoModel?.canUseWalletTransfer ?? true)
                           Padding(
                             padding: const EdgeInsets.fromLTRB(
                               Dimensions.paddingSizeSmall,
