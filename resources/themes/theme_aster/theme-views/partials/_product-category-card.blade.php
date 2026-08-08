@@ -40,7 +40,6 @@
                         {{ getProductPriceByType(product: $product, type: 'discounted_unit_price', result: 'string') }}
                     </ins>
                 </div>
-                @include('theme-views.partials._direct-topup-listing-price-meta', ['product' => $product])
             </div>
         </div>
     </div>

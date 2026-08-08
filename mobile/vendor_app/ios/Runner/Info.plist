@@ -24,10 +24,13 @@
 	<string>????</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
-	<key>FirebaseAppDelegateProxyEnabled</key>
-	<true/>
+	<key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsArbitraryLoads</key>
+        <true/>
+    </dict>
 	<key>LSApplicationCategoryType</key>
-	<string>public.app-category.business</string>
+	<string>FirebaseAppDelegateProxyEnabled</string>
 	<key>LSApplicationQueriesSchemes</key>
 	<array>
 		<string>http</string>
@@ -35,46 +38,14 @@
 	</array>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
-	<key>NSAppTransportSecurity</key>
-	<dict>
-		<key>NSAllowsArbitraryLoads</key>
-		<true/>
-	</dict>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>Bluetooth access to connect 58mm or 80mm thermal printers</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>
 	<string>Need BLE permission for getting printers</string>
 	<key>NSCameraUsageDescription</key>
 	<string>This app need camera access for taking photo for user profile picture.</string>
-	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>This app may use your location to set or verify shop and delivery addresses when you choose a location on the map.</string>
-	<key>NSLocationAlwaysUsageDescription</key>
-	<string>This app may use your location to set or verify shop and delivery addresses when you choose a location on the map.</string>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>This app uses your location to set shop address and delivery-related settings on a map.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>This app need photo gallery access for taking photo for user profile picture.</string>
-	<key>UIApplicationSceneManifest</key>
-	<dict>
-		<key>UIApplicationSupportsMultipleScenes</key>
-		<false/>
-		<key>UISceneConfigurations</key>
-		<dict>
-			<key>UIWindowSceneSessionRoleApplication</key>
-			<array>
-				<dict>
-					<key>UISceneClassName</key>
-					<string>UIWindowScene</string>
-					<key>UISceneDelegateClassName</key>
-					<string>FlutterSceneDelegate</string>
-					<key>UISceneConfigurationName</key>
-					<string>flutter</string>
-					<key>UISceneStoryboardFile</key>
-					<string>Main</string>
-				</dict>
-			</array>
-		</dict>
-	</dict>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UIBackgroundModes</key>
@@ -101,5 +72,26 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<false/>
+    <key>UIApplicationSceneManifest</key>
+    <dict>
+        <key>UIApplicationSupportsMultipleScenes</key>
+        <false/>
+        <key>UISceneConfigurations</key>
+        <dict>
+            <key>UIWindowSceneSessionRoleApplication</key>
+            <array>
+                <dict>
+                    <key>UISceneClassName</key>
+                    <string>UIWindowScene</string>
+                    <key>UISceneDelegateClassName</key>
+                    <string>FlutterSceneDelegate</string>
+                    <key>UISceneConfigurationName</key>
+                    <string>flutter</string>
+                    <key>UISceneStoryboardFile</key>
+                    <string>Main</string>
+                </dict>
+            </array>
+        </dict>
+    </dict>
 </dict>
 </plist>

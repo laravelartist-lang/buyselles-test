@@ -11751,4 +11751,5 @@ return [
     'connector_preset' => 'Connector preset',
     'invalid_denomination_selected' => 'Invalid denomination selected',
     'balance_received' => 'Balance received',
+    'vendor_registration_reasons' => 'Vendor registration reasons',
 ];
