@@ -1,6 +1,6 @@
 # Buyselles Vendor — App Store Review Notes
 
-**Version:** 1.0.0 (build **3**) — marketing version unchanged; build number incremented for resubmission.
+**Version:** 1.0.0 (build **4**) — marketing version unchanged; build number incremented for resubmission.
 
 Use this text in **App Review Information** when submitting to App Store Connect.
 
