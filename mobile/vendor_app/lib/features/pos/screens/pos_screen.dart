@@ -593,7 +593,7 @@ class PosScreenState extends State<PosScreen> {
                                                   PlaceOrderBody placeOrderBody = onPlaceOrder(paidAmount: _paidAmountController.text);
 
                                                   cartController.placeOrder(Get.context!, placeOrderBody).then((value) {
-                                                    if(value.response!.statusCode == 200) {
+                                                    if(value.response?.statusCode == 200) {
                                                       couponAmount = 0;
                                                       extraDiscountAmount = 0;
                                                       cartController.removeModifiedTax();

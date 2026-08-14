@@ -515,7 +515,7 @@ class ShopController extends ChangeNotifier {
   Future<void> setDefaultPaymentMethod(int id) async {
     ApiResponse apiResponse  = await shopServiceInterface.setDefaultPaymentMethod(id);
     if (apiResponse.response != null && apiResponse.response!.statusCode == 200) {
-      showCustomSnackBarWidget(getTranslated('payment_method_deleted_successfully', Get.context!), Get.context!, isError: false, sanckBarType: SnackBarType.success);
+      showCustomSnackBarWidget(getTranslated('payment_method_set_as_default_successfully', Get.context!), Get.context!, isError: false, sanckBarType: SnackBarType.success);
       getPaymentInfoList(1);
     } else {
       ApiChecker.checkApi(apiResponse);

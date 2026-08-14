@@ -284,7 +284,7 @@ class DeliveryManController extends ChangeNotifier {
       _isLoading = false;
       showCustomSnackBarWidget(getTranslated('status_updated_successfully', Get.context!), Get.context!, isToaster: true, isError: false);
     } else {
-      showCustomSnackBarWidget(responseModel.message, Get.context!, isToaster: true);
+      showCustomSnackBarWidget(responseModel.message, Get.context!, isToaster: true, sanckBarType: SnackBarType.error);
     }
     _isLoading = false;
     notifyListeners();
@@ -300,7 +300,7 @@ class DeliveryManController extends ChangeNotifier {
       getDeliveryManDetails(deliveryManId);
       showCustomSnackBarWidget(getTranslated('amount_collected_from_deliveryman', Get.context!), Get.context!, isToaster: true);
     }else{
-      showCustomSnackBarWidget(responseModel.message, Get.context!, isToaster: true);
+      showCustomSnackBarWidget(responseModel.message, Get.context!, isToaster: true, sanckBarType: SnackBarType.error);
     }
     _isLoading = false;
     notifyListeners();
@@ -371,7 +371,7 @@ class DeliveryManController extends ChangeNotifier {
         showCustomSnackBarWidget(getTranslated("delivery_man_updated_successfully", Get.context!), Get.context!, isError: false):
         showCustomSnackBarWidget(getTranslated("delivery_man_added_successfully", Get.context!), Get.context!, isError: false);
     } else if (responseModel.message != null && responseModel.message!.isNotEmpty) {
-      showCustomSnackBarWidget(responseModel.message, Get.context!, isToaster: true);
+      showCustomSnackBarWidget(responseModel.message, Get.context!, isToaster: true, sanckBarType: SnackBarType.error);
     }
     _isLoading = false;
     notifyListeners();
@@ -423,7 +423,7 @@ class DeliveryManController extends ChangeNotifier {
         _withdrawList[index!].approved = approved;
         getDeliveryManWithdrawList(1, 'all');
       } else if (responseModel.message != null && responseModel.message!.isNotEmpty) {
-        showCustomSnackBarWidget(responseModel.message, Get.context!, isToaster: true);
+        showCustomSnackBarWidget(responseModel.message, Get.context!, isToaster: true, sanckBarType: SnackBarType.error);
       }
     _isLoading = false;
     notifyListeners();

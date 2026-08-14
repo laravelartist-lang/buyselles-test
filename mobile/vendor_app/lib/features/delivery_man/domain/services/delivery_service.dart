@@ -27,10 +27,19 @@ class DeliveryService implements DeliveryServiceInterface{
     ApiResponse apiResponse = await deliveryManRepoInterface.collectCashFromDeliveryMan(deliveryManId, amount);
     if (apiResponse.response != null && apiResponse.response!.statusCode == 200) {
       return ResponseModel(true, '');
-    }else{
-      Map map = apiResponse.response!.data;
-      return ResponseModel(false, map['message']);
     }
+
+    String? errorMessage;
+    final responseData = apiResponse.response?.data;
+    if (responseData is Map && responseData['message'] != null) {
+      errorMessage = responseData['message'].toString();
+    } else if (apiResponse.error is String) {
+      errorMessage = apiResponse.error.toString();
+    } else if (apiResponse.error != null) {
+      errorMessage = apiResponse.error.errors[0].message;
+    }
+
+    return ResponseModel(false, errorMessage ?? '');
   }
 
   @override

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:sixvalley_vendor_app/common/basewidgets/custom_app_bar_widget.dart';
+import 'package:sixvalley_vendor_app/common/basewidgets/custom_snackbar_widget.dart';
 import 'package:sixvalley_vendor_app/features/profile/controllers/profile_controller.dart';
 import 'package:sixvalley_vendor_app/features/wallet_transfer/controllers/wallet_transfer_controller.dart';
 import 'package:sixvalley_vendor_app/features/wallet_transfer/widgets/transfer_form_widget.dart';
@@ -21,7 +22,28 @@ class _WalletTransferScreenState extends State<WalletTransferScreen> {
   @override
   void initState() {
     super.initState();
-    Provider.of<WalletTransferController>(context, listen: false).loadTransferData();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadIfAllowed());
+  }
+
+  Future<void> _loadIfAllowed() async {
+    if (!mounted) {
+      return;
+    }
+
+    final profileController = Provider.of<ProfileController>(context, listen: false);
+    if (profileController.userInfoModel == null) {
+      await profileController.getSellerInfo();
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    if (profileController.userInfoModel?.canUseWalletTransfer == false) {
+      return;
+    }
+
+    await Provider.of<WalletTransferController>(context, listen: false).loadTransferData();
   }
 
   @override
@@ -30,40 +52,74 @@ class _WalletTransferScreenState extends State<WalletTransferScreen> {
       appBar: CustomAppBarWidget(
         title: getTranslated('wallet_transfer_to_customer', context),
       ),
-      body: RefreshIndicator(
-        onRefresh: () async {
-          await Provider.of<WalletTransferController>(context, listen: false).loadTransferData();
-          if (!context.mounted) {
-            return;
-          }
-          await Provider.of<ProfileController>(context, listen: false).getSellerInfo();
-        },
-        child: Consumer<WalletTransferController>(
-          builder: (context, controller, _) {
-            if (controller.isLoading) {
-              return Center(
-                child: CircularProgressIndicator(
-                  valueColor: AlwaysStoppedAnimation<Color>(Theme.of(context).primaryColor),
-                ),
-              );
-            }
+      body: Consumer<ProfileController>(
+        builder: (context, profileController, _) {
+          final profile = profileController.userInfoModel;
 
-            return SingleChildScrollView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              child: Column(
-                children: [
-                  _BalanceCard(
-                    totalEarning: controller.totalEarning ?? 0,
-                    withdrawableBalance: controller.withdrawableBalance ?? 0,
+          if (profile != null && !profile.canUseWalletTransfer) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(Dimensions.paddingSizeLarge),
+                child: Text(
+                  getTranslated('wallet_transfer_not_available', context)!,
+                  textAlign: TextAlign.center,
+                  style: robotoRegular.copyWith(
+                    fontSize: Dimensions.fontSizeDefault,
+                    color: Theme.of(context).hintColor,
                   ),
-                  const TransferFormWidget(),
-                  const TransferHistoryWidget(),
-                  const SizedBox(height: Dimensions.paddingSizeLarge),
-                ],
+                ),
               ),
             );
-          },
-        ),
+          }
+
+          return RefreshIndicator(
+            onRefresh: () async {
+              final currentProfile = Provider.of<ProfileController>(context, listen: false);
+              await currentProfile.getSellerInfo();
+
+              if (!context.mounted) {
+                return;
+              }
+
+              if (currentProfile.userInfoModel?.canUseWalletTransfer == false) {
+                showCustomSnackBarWidget(
+                  getTranslated('wallet_transfer_not_available', context),
+                  context,
+                  sanckBarType: SnackBarType.warning,
+                );
+                return;
+              }
+
+              await Provider.of<WalletTransferController>(context, listen: false).loadTransferData();
+            },
+            child: Consumer<WalletTransferController>(
+              builder: (context, controller, _) {
+                if (controller.isLoading) {
+                  return Center(
+                    child: CircularProgressIndicator(
+                      valueColor: AlwaysStoppedAnimation<Color>(Theme.of(context).primaryColor),
+                    ),
+                  );
+                }
+
+                return SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  child: Column(
+                    children: [
+                      _BalanceCard(
+                        totalEarning: controller.totalEarning ?? 0,
+                        withdrawableBalance: controller.withdrawableBalance ?? 0,
+                      ),
+                      const TransferFormWidget(),
+                      const TransferHistoryWidget(),
+                      const SizedBox(height: Dimensions.paddingSizeLarge),
+                    ],
+                  ),
+                );
+              },
+            ),
+          );
+        },
       ),
     );
   }

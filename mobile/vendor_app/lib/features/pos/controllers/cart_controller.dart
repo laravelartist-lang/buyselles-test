@@ -394,7 +394,7 @@ class CartController extends ChangeNotifier{
     if(response.response?.statusCode == 200 && response.response?.data['checkProductTypeForWalkingCustomer'] == true) {
       showCustomSnackBarWidget(response.response?.data['message'], Get.context!, isToaster: true, isError: false, sanckBarType: SnackBarType.error);
       _isLoading = false;
-    } else if(response.response!.statusCode == 200) {
+    } else if(response.response?.statusCode == 200) {
       _isLoading = false;
       _couponCodeAmount = 0;
       _productDiscount = 0;

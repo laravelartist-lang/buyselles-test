@@ -29,8 +29,6 @@ class WalletService implements WalletServiceInterface{
       return apiResponse;
     }
 
-    ApiChecker.checkApi(apiResponse);
-
     return apiResponse;
   }
 
@@ -48,8 +46,6 @@ class WalletService implements WalletServiceInterface{
         apiResponse.response!.statusCode == 200) {
       return apiResponse;
     }
-
-    ApiChecker.checkApi(apiResponse);
 
     return apiResponse;
   }
