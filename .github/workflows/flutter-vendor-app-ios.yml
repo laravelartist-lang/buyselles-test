@@ -34,56 +34,8 @@ jobs:
         with:
           fetch-depth: 2
 
-      - name: Detect changed paths
-        id: changes
-        uses: dorny/paths-filter@v3
-        with:
-          filters: |
-            dependencies:
-              - 'mobile/vendor_app/pubspec.yaml'
-              - 'mobile/vendor_app/pubspec.lock'
-              - 'mobile/vendor_app/ios/Podfile'
-              - 'mobile/vendor_app/ios/Podfile.lock'
-            app_icon:
-              - 'mobile/vendor_app/ios/Runner/Assets.xcassets/AppIcon.appiconset/**'
-            ios_config:
-              - 'mobile/vendor_app/ios/Runner/Info.plist'
-              - 'mobile/vendor_app/ios/Runner.xcodeproj/**'
-              - 'mobile/vendor_app/ios/Runner/Runner.entitlements'
-            dart_code:
-              - 'mobile/vendor_app/lib/**'
-              - 'mobile/vendor_app/assets/**'
-
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-          cache: true
-          cache-key: flutter-vendor-${{ hashFiles('mobile/vendor_app/pubspec.lock') }}
-
-      - name: Restore Dart dependency cache
-        id: dart_cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            mobile/vendor_app/.dart_tool
-            ~/.pub-cache
-          key: dart-vendor-${{ hashFiles('mobile/vendor_app/pubspec.lock') }}
-          restore-keys: |
-            dart-vendor-
-
-      - name: Restore CocoaPods cache
-        id: pods_cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            mobile/vendor_app/ios/Pods
-            ~/.cocoapods
-          key: pods-vendor-${{ hashFiles('mobile/vendor_app/ios/Podfile.lock') }}
-          restore-keys: |
-            pods-vendor-
-
       - name: Validate signing secrets
+        working-directory: ${{ github.workspace }}
         run: |
           missing=0
           required=(BUILD_CERTIFICATE_BASE64 VENDOR_BUILD_PROVISION_PROFILE_BASE64 P12_PASSWORD KEYCHAIN_PASSWORD VENDOR_GOOGLE_SERVICE_INFO_PLIST_BASE64)
@@ -107,6 +59,91 @@ jobs:
           APP_STORE_CONNECT_API_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
           APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
           APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+
+      - name: Detect changed paths
+        id: changes
+        uses: dorny/paths-filter@v3
+        with:
+          base: ${{ github.event.repository.default_branch }}
+          ref: ${{ github.sha }}
+          filters: |
+            dependencies:
+              - 'mobile/vendor_app/pubspec.yaml'
+              - 'mobile/vendor_app/pubspec.lock'
+              - 'mobile/vendor_app/ios/Podfile'
+              - 'mobile/vendor_app/ios/Podfile.lock'
+            app_icon:
+              - 'mobile/vendor_app/ios/Runner/Assets.xcassets/AppIcon.appiconset/**'
+            ios_config:
+              - 'mobile/vendor_app/ios/Runner/Info.plist'
+              - 'mobile/vendor_app/ios/Runner.xcodeproj/**'
+              - 'mobile/vendor_app/ios/Runner/Runner.entitlements'
+            dart_code:
+              - 'mobile/vendor_app/lib/**'
+              - 'mobile/vendor_app/assets/**'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+          cache-key: flutter-vendor-${{ hashFiles('mobile/vendor_app/pubspec.lock') }}
+
+      - name: Validate Xcode project and iOS version
+        run: |
+          set -euo pipefail
+
+          if grep -q 'CURRENT_PROJECT_VERSION = $(FLUTTER_BUILD_NUMBER);' ios/Runner.xcodeproj/project.pbxproj; then
+            echo "::error::Invalid Xcode project: CURRENT_PROJECT_VERSION must be quoted as \"\$(FLUTTER_BUILD_NUMBER)\""
+            exit 1
+          fi
+
+          if ! grep -q 'CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";' ios/Runner.xcodeproj/project.pbxproj; then
+            echo "::error::Xcode project is not synced with pubspec.yaml (missing FLUTTER_BUILD_NUMBER reference)"
+            exit 1
+          fi
+
+          flutter pub get
+
+          pubspec_version="$(grep '^version:' pubspec.yaml | awk '{print $2}')"
+          build_name="${pubspec_version%%+*}"
+          build_number="${pubspec_version#*+}"
+          generated_number="$(grep '^FLUTTER_BUILD_NUMBER=' ios/Flutter/Generated.xcconfig | cut -d= -f2)"
+          generated_name="$(grep '^FLUTTER_BUILD_NAME=' ios/Flutter/Generated.xcconfig | cut -d= -f2)"
+
+          echo "pubspec version: ${pubspec_version}"
+          echo "Generated iOS build number: ${generated_number}"
+          echo "Generated iOS marketing version: ${generated_name}"
+
+          if [ "${generated_number}" != "${build_number}" ] || [ "${generated_name}" != "${build_name}" ]; then
+            echo "::error::Generated.xcconfig does not match pubspec.yaml"
+            exit 1
+          fi
+
+          xcodebuild -list -project ios/Runner.xcodeproj >/dev/null
+          echo "Xcode project validation passed (build ${build_name} (${build_number}))"
+
+      - name: Restore Dart dependency cache
+        id: dart_cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            mobile/vendor_app/.dart_tool
+            ~/.pub-cache
+          key: dart-vendor-${{ hashFiles('mobile/vendor_app/pubspec.lock') }}
+          restore-keys: |
+            dart-vendor-
+
+      - name: Restore CocoaPods cache
+        id: pods_cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            mobile/vendor_app/ios/Pods
+            ~/.cocoapods
+          key: pods-vendor-${{ hashFiles('mobile/vendor_app/ios/Podfile.lock') }}
+          restore-keys: |
+            pods-vendor-
 
       - name: Install Apple signing certificate
         working-directory: ${{ github.workspace }}
