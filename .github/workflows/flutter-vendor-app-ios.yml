@@ -103,6 +103,20 @@ jobs:
             exit 1
           fi
 
+          required_plist_keys=(
+            NSLocationWhenInUseUsageDescription
+            NSLocationAlwaysAndWhenInUseUsageDescription
+            NSLocationAlwaysUsageDescription
+            NSCameraUsageDescription
+            NSPhotoLibraryUsageDescription
+          )
+          for key in "${required_plist_keys[@]}"; do
+            if ! /usr/libexec/PlistBuddy -c "Print :${key}" ios/Runner/Info.plist >/dev/null 2>&1; then
+              echo "::error::Missing required Info.plist key: ${key}"
+              exit 1
+            fi
+          done
+
           flutter pub get
 
           pubspec_version="$(grep '^version:' pubspec.yaml | awk '{print $2}')"

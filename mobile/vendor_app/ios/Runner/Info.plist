@@ -30,7 +30,9 @@
         <true/>
     </dict>
 	<key>LSApplicationCategoryType</key>
-	<string>FirebaseAppDelegateProxyEnabled</string>
+	<string>public.app-category.business</string>
+	<key>FirebaseAppDelegateProxyEnabled</key>
+	<true/>
 	<key>LSApplicationQueriesSchemes</key>
 	<array>
 		<string>http</string>
@@ -44,6 +46,12 @@
 	<string>Need BLE permission for getting printers</string>
 	<key>NSCameraUsageDescription</key>
 	<string>This app need camera access for taking photo for user profile picture.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>This app uses your location to set shop address and delivery-related settings on a map.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>This app may use your location to set or verify shop and delivery addresses when you choose a location on the map.</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>This app may use your location to set or verify shop and delivery addresses when you choose a location on the map.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>This app need photo gallery access for taking photo for user profile picture.</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
