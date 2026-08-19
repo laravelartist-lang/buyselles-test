@@ -426,7 +426,12 @@ class CheckoutScreenState extends State<CheckoutScreen> {
                                               billingAddressId: billingAddressId,
                                               callback: (success, message) {
                                                 if (success) {
-                                                  _callback(true, message, orderProvider.getFirstOrderId(message), false);
+                                                  _callback(
+                                                    true,
+                                                    message,
+                                                    orderProvider.getFirstOrderId(message) ?? message,
+                                                    false,
+                                                  );
                                                 } else {
                                                   showCustomSnackBarWidget(
                                                     message,
