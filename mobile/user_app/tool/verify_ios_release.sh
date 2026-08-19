@@ -65,16 +65,17 @@ echo "pubspec version: ${pubspec_version} (name=${build_name}, number=${build_nu
 
 if command -v flutter >/dev/null 2>&1; then
   flutter pub get >/dev/null
-  if [ -f ios/Flutter/Generated.xcconfig ] && [ "$(uname -s)" = "Darwin" ]; then
+  if [ -f ios/Flutter/Generated.xcconfig ]; then
     generated_number="$(grep '^FLUTTER_BUILD_NUMBER=' ios/Flutter/Generated.xcconfig | cut -d= -f2)"
     generated_name="$(grep '^FLUTTER_BUILD_NAME=' ios/Flutter/Generated.xcconfig | cut -d= -f2)"
     if [ "${generated_number}" != "${build_number}" ] || [ "${generated_name}" != "${build_name}" ]; then
-      echo "::error::Generated.xcconfig does not match pubspec.yaml"
+      echo "::error::Generated.xcconfig (${generated_name}+${generated_number}) does not match pubspec.yaml (${build_name}+${build_number}). Run: flutter pub get"
       exit 1
     fi
-    echo "Generated.xcconfig matches pubspec.yaml"
-  elif [ -f ios/Flutter/Generated.xcconfig ]; then
-    echo "Skipping Generated.xcconfig sync check on non-macOS (macOS CI compile job validates this)"
+    echo "Generated.xcconfig matches pubspec.yaml (build ${build_number})"
+  else
+    echo "::error::Missing ios/Flutter/Generated.xcconfig after flutter pub get"
+    exit 1
   fi
 fi
 
