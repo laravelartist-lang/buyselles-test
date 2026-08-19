@@ -13,6 +13,7 @@ import 'package:flutter_sixvalley_ecommerce/features/auth/controllers/facebook_l
 import 'package:flutter_sixvalley_ecommerce/features/auth/controllers/google_login_controller.dart';
 import 'package:flutter_sixvalley_ecommerce/features/banner/controllers/banner_controller.dart';
 import 'package:flutter_sixvalley_ecommerce/features/checkout/controllers/checkout_controller.dart';
+import 'package:flutter_sixvalley_ecommerce/features/iap/controllers/iap_purchase_controller.dart';
 import 'package:flutter_sixvalley_ecommerce/features/compare/controllers/compare_controller.dart';
 import 'package:flutter_sixvalley_ecommerce/features/contact_us/controllers/contact_us_controller.dart';
 import 'package:flutter_sixvalley_ecommerce/features/deal/controllers/featured_deal_controller.dart';
@@ -131,6 +132,7 @@ Future<void> main() async {
       ChangeNotifierProvider(create: (context) => di.sl<WalletController>()),
       ChangeNotifierProvider(create: (context) => di.sl<CompareController>()),
       ChangeNotifierProvider(create: (context) => di.sl<CheckoutController>()),
+      ChangeNotifierProvider(create: (context) => di.sl<IapPurchaseController>()),
       ChangeNotifierProvider(create: (context) => di.sl<LoyaltyPointController>()),
       ChangeNotifierProvider(create: (context) => di.sl<LocationController>()),
       ChangeNotifierProvider(create: (context) => di.sl<ContactUsController>()),

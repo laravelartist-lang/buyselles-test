@@ -40,6 +40,8 @@ import 'package:flutter_sixvalley_ecommerce/features/checkout/domain/repositorie
 import 'package:flutter_sixvalley_ecommerce/features/checkout/domain/repositories/checkout_repository_interface.dart';
 import 'package:flutter_sixvalley_ecommerce/features/checkout/domain/services/checkout_service.dart';
 import 'package:flutter_sixvalley_ecommerce/features/checkout/domain/services/checkout_service_interface.dart';
+import 'package:flutter_sixvalley_ecommerce/features/iap/controllers/iap_purchase_controller.dart';
+import 'package:flutter_sixvalley_ecommerce/features/iap/domain/repositories/iap_repository.dart';
 import 'package:flutter_sixvalley_ecommerce/features/compare/controllers/compare_controller.dart';
 import 'package:flutter_sixvalley_ecommerce/features/compare/domain/repositories/compare_repository.dart';
 import 'package:flutter_sixvalley_ecommerce/features/compare/domain/repositories/compare_repository_interface.dart';
@@ -241,6 +243,8 @@ Future<void> init() async {
   sl.registerLazySingleton(() => WalletRepository(dioClient: sl()));
   sl.registerLazySingleton(() => CompareRepository(dioClient: sl()));
   sl.registerLazySingleton(() => LoyaltyPointRepository(dioClient: sl()));
+  sl.registerLazySingleton(() => IapRepository(dioClient: sl()));
+  sl.registerFactory(() => IapPurchaseController(iapRepository: sl()));
   sl.registerLazySingleton(() => CheckoutRepository(dioClient: sl()));
   sl.registerLazySingleton(() => LocationRepository(dioClient: sl()));
   sl.registerLazySingleton(() => ShippingRepository(dioClient: sl()));

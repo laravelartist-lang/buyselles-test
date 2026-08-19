@@ -15,6 +15,7 @@ import 'package:flutter_sixvalley_ecommerce/utill/images.dart';
 import 'package:flutter_sixvalley_ecommerce/common/basewidget/custom_button_widget.dart';
 import 'package:flutter_sixvalley_ecommerce/features/checkout/widgets/custom_check_box_widget.dart';
 import 'package:flutter_sixvalley_ecommerce/common/basewidget/show_custom_snakbar_widget.dart';
+import 'package:flutter_sixvalley_ecommerce/helper/apple_iap_payment_helper.dart';
 import 'package:provider/provider.dart';
 
 class PaymentMethodBottomSheetWidget extends StatefulWidget {
@@ -164,17 +165,42 @@ class PaymentMethodBottomSheetWidgetState
                         )),
                     ]),
 
+                    if (shouldUseAppleIapOnDigitalCheckout(
+                        context, widget.onlyDigital))
+                      Padding(
+                        padding: const EdgeInsets.only(top: Dimensions.paddingSizeDefault),
+                        child: CustomButton(
+                          onTap: () => widget.embedded
+                              ? checkoutController.setOfflineChecked('apple_iap')
+                              : _selectAndClose(() => checkoutController.setOfflineChecked('apple_iap')),
+                          isBorder: true,
+                          leftIcon: Images.appleLogo,
+                          backgroundColor: checkoutController.isAppleIapChecked
+                              ? Theme.of(context).primaryColor
+                              : Theme.of(context).cardColor,
+                          textColor: checkoutController.isAppleIapChecked
+                              ? Colors.white
+                              : Theme.of(context).textTheme.bodyLarge?.color,
+                          fontSize: Dimensions.fontSizeSmall,
+                          buttonText: 'App Store',
+                        ),
+                      ),
+
                     ///change amount
                     ChangeAmountWidget(
                         changeAmountTextController: changeAmountTextController),
 
                     if ((configModel?.digitalPayment ?? false) &&
                         (configModel?.paymentMethods?.isNotEmpty ?? false) &&
-                        !checkoutController.isCODChecked)
+                        !checkoutController.isCODChecked &&
+                        !shouldUseAppleIapOnDigitalCheckout(
+                            context, widget.onlyDigital))
                       SizedBox(height: Dimensions.paddingSizeSmall),
 
                     if ((configModel?.digitalPayment ?? false) &&
-                        (configModel?.paymentMethods?.isNotEmpty ?? false))
+                        (configModel?.paymentMethods?.isNotEmpty ?? false) &&
+                        !shouldUseAppleIapOnDigitalCheckout(
+                            context, widget.onlyDigital))
                       Container(
                         padding:
                             const EdgeInsets.all(Dimensions.paddingSizeDefault),
@@ -253,7 +279,9 @@ class PaymentMethodBottomSheetWidgetState
                       ),
 
                     if ((configModel?.digitalPayment ?? false) &&
-                        (configModel?.paymentMethods?.isNotEmpty ?? false))
+                        (configModel?.paymentMethods?.isNotEmpty ?? false) &&
+                        !shouldUseAppleIapOnDigitalCheckout(
+                            context, widget.onlyDigital))
                       SizedBox(height: Dimensions.paddingSizeSmall),
 
                     if (!widget.onlyDigital &&
@@ -506,19 +534,24 @@ bool _isPaymentMethodsAvailable(
   bool isWalletOn = configModel?.walletStatus == 1 &&
       Provider.of<AuthController>(context, listen: false).isLoggedIn();
   bool isOnlinePaymentMethodsOn =
-      configModel?.paymentMethods?.isNotEmpty ?? false;
+      (configModel?.paymentMethods?.isNotEmpty ?? false) &&
+      !shouldUseAppleIapOnDigitalCheckout(context, onlyDigital);
+  bool isAppleIapOn = shouldUseAppleIapOnDigitalCheckout(context, onlyDigital) &&
+      Provider.of<AuthController>(context, listen: false).isLoggedIn();
   bool isOfflinePaymentMethodsOn =
       !onlyDigital && (offlineMethods?.isNotEmpty ?? false);
 
   return isCashOnDeliveryOn ||
       isWalletOn ||
       isOnlinePaymentMethodsOn ||
-      isOfflinePaymentMethodsOn;
+      isOfflinePaymentMethodsOn ||
+      isAppleIapOn;
 }
 
 bool _hasSelectedPaymentMethod(CheckoutController checkoutController) {
   return checkoutController.paymentMethodIndex != -1 ||
       checkoutController.isCODChecked ||
       checkoutController.isOfflineChecked ||
-      checkoutController.isWalletChecked;
+      checkoutController.isWalletChecked ||
+      checkoutController.isAppleIapChecked;
 }

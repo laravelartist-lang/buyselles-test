@@ -20,6 +20,7 @@ import 'package:flutter_sixvalley_ecommerce/main.dart';
 import 'package:flutter_sixvalley_ecommerce/theme/controllers/theme_controller.dart';
 import 'package:flutter_sixvalley_ecommerce/utill/custom_themes.dart';
 import 'package:flutter_sixvalley_ecommerce/utill/dimensions.dart';
+import 'package:flutter_sixvalley_ecommerce/helper/apple_iap_payment_helper.dart';
 import 'package:flutter_sixvalley_ecommerce/utill/images.dart';
 import 'package:provider/provider.dart';
 
@@ -98,7 +99,10 @@ class OrderPaymentMethodBottomSheetWidgetState extends State<OrderPaymentMethodB
                           ),
 
 
-                          _isPaymentMethodsAvailable(Get.context!, checkoutController.offlinePaymentModel?.offlineMethods) ?
+                          _isPaymentMethodsAvailable(
+                              Get.context!,
+                              checkoutController.offlinePaymentModel?.offlineMethods,
+                              onlyDigital: widget.onlyDigital) ?
                           Column(crossAxisAlignment: CrossAxisAlignment.start,
                             mainAxisSize: MainAxisSize.min, children: [
                               Row(children: [
@@ -129,12 +133,11 @@ class OrderPaymentMethodBottomSheetWidgetState extends State<OrderPaymentMethodB
                               ///change amount
                               ChangeAmountWidget(changeAmountTextController: changeAmountTextController),
 
-
-                              if((configModel?.digitalPayment ?? false) && (configModel?.paymentMethods?.isNotEmpty ?? false) && !checkoutController.isCODChecked)
+                              if((configModel?.digitalPayment ?? false) && (configModel?.paymentMethods?.isNotEmpty ?? false) && !checkoutController.isCODChecked && !shouldBlockExternalDigitalPaymentOnIos(context, widget.onlyDigital))
                                 SizedBox(height: Dimensions.paddingSizeSmall),
 
 
-                              if((configModel?.digitalPayment ?? false) && (configModel?.paymentMethods?.isNotEmpty ?? false))
+                              if((configModel?.digitalPayment ?? false) && (configModel?.paymentMethods?.isNotEmpty ?? false) && !shouldBlockExternalDigitalPaymentOnIos(context, widget.onlyDigital))
                                 Container(
                                   padding: const EdgeInsets.all(Dimensions.paddingSizeDefault),
                                   decoration: BoxDecoration(
@@ -146,7 +149,7 @@ class OrderPaymentMethodBottomSheetWidgetState extends State<OrderPaymentMethodB
 
                                   child: Column(
                                     children: [
-                                      if((configModel?.digitalPayment ?? false) && (configModel?.paymentMethods?.isNotEmpty ?? false))
+                                      if((configModel?.digitalPayment ?? false) && (configModel?.paymentMethods?.isNotEmpty ?? false) && !shouldBlockExternalDigitalPaymentOnIos(context, widget.onlyDigital))
                                         Padding(
                                           padding: const EdgeInsets.only(bottom: Dimensions.paddingSizeSmall, top: Dimensions.paddingSizeDefault),
                                           child: Row(
@@ -157,7 +160,7 @@ class OrderPaymentMethodBottomSheetWidgetState extends State<OrderPaymentMethodB
                                           ),
                                         ),
 
-                                      if((configModel?.digitalPayment ?? false) && (configModel?.paymentMethods?.isNotEmpty ?? false))
+                                      if((configModel?.digitalPayment ?? false) && (configModel?.paymentMethods?.isNotEmpty ?? false) && !shouldBlockExternalDigitalPaymentOnIos(context, widget.onlyDigital))
                                         Consumer<SplashController>(builder: (context, configProvider,_) {
                                           return ListView.separated(
                                             padding: EdgeInsets.zero,
@@ -183,12 +186,12 @@ class OrderPaymentMethodBottomSheetWidgetState extends State<OrderPaymentMethodB
                                   ),
                                 ),
 
-                              if((configModel?.digitalPayment ?? false) && (configModel?.paymentMethods?.isNotEmpty ?? false))
+                              if((configModel?.digitalPayment ?? false) && (configModel?.paymentMethods?.isNotEmpty ?? false) && !shouldBlockExternalDigitalPaymentOnIos(context, widget.onlyDigital))
                                 SizedBox(height: Dimensions.paddingSizeSmall),
 
 
 
-                              if(configModel?.offlinePayment != null && (checkoutController.offlinePaymentModel?.offlineMethods?.isNotEmpty ?? false))
+                              if(!widget.onlyDigital && configModel?.offlinePayment != null && (checkoutController.offlinePaymentModel?.offlineMethods?.isNotEmpty ?? false))
                                 Container(
                                   decoration: BoxDecoration(
                                     color: checkoutController.isOfflineChecked?Theme.of(context).primaryColor.withValues(alpha:.15): null,
@@ -284,7 +287,8 @@ class OrderPaymentMethodBottomSheetWidgetState extends State<OrderPaymentMethodB
                       onTap: () async {
                         if(orderDetailsController.isCODChecked) {
                           await orderDetailsController.duePaymentByCod(int.parse(widget.orderId), 'cash_on_delivery', changeAmountTextController.text);
-                        } else if (orderDetailsController.paymentMethodIndex != -1) {
+                        } else if (orderDetailsController.paymentMethodIndex != -1 &&
+                            !shouldBlockExternalDigitalPaymentOnIos(context, widget.onlyDigital)) {
                           await orderDetailsController.duePaymentByDigitalPayment(
                             int.parse(widget.orderId),
                             orderDetailsController.selectedDigitalPaymentMethodName,
@@ -343,13 +347,14 @@ class OrderPaymentMethodBottomSheetWidgetState extends State<OrderPaymentMethodB
 
 
 
-bool _isPaymentMethodsAvailable(BuildContext context, List<OfflineMethods>? offlineMethods) {
+bool _isPaymentMethodsAvailable(BuildContext context, List<OfflineMethods>? offlineMethods, {bool onlyDigital = false}) {
   final ConfigModel? configModel = Provider.of<SplashController>(context, listen: false).configModel;
 
-  bool isCashOnDeliveryOn = configModel?.cashOnDelivery ?? false;
+  bool isCashOnDeliveryOn = (configModel?.cashOnDelivery ?? false) && !onlyDigital;
   bool isWalletOn = configModel?.walletStatus == 1 && Provider.of<AuthController>(context, listen: false).isLoggedIn();
-  bool isOnlinePaymentMethodsOn = configModel?.paymentMethods?.isNotEmpty ?? false;
-  bool isOfflinePaymentMethodsOn = offlineMethods?.isNotEmpty ?? false;
+  bool isOnlinePaymentMethodsOn = (configModel?.paymentMethods?.isNotEmpty ?? false)
+      && !shouldBlockExternalDigitalPaymentOnIos(context, onlyDigital);
+  bool isOfflinePaymentMethodsOn = !onlyDigital && (offlineMethods?.isNotEmpty ?? false);
 
   return isCashOnDeliveryOn || isWalletOn || isOnlinePaymentMethodsOn || isOfflinePaymentMethodsOn;
 }

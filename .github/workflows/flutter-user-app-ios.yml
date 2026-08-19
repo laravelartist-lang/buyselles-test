@@ -34,10 +34,38 @@ jobs:
         with:
           fetch-depth: 2
 
+      - name: Validate signing secrets
+        working-directory: ${{ github.workspace }}
+        run: |
+          missing=0
+          required=(BUILD_CERTIFICATE_BASE64 BUILD_PROVISION_PROFILE_BASE64 P12_PASSWORD KEYCHAIN_PASSWORD GOOGLE_SERVICE_INFO_PLIST_BASE64)
+          if [ "${UPLOAD_TO_TESTFLIGHT}" = "true" ]; then
+            required+=(APP_STORE_CONNECT_API_KEY APP_STORE_CONNECT_KEY_ID APP_STORE_CONNECT_ISSUER_ID)
+          fi
+          for name in "${required[@]}"; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::Missing repository secret: ${name}"
+              missing=1
+            fi
+          done
+          [ "$missing" -eq 0 ]
+        env:
+          UPLOAD_TO_TESTFLIGHT: ${{ inputs.upload_to_testflight }}
+          BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
+          BUILD_PROVISION_PROFILE_BASE64: ${{ secrets.BUILD_PROVISION_PROFILE_BASE64 }}
+          P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+          GOOGLE_SERVICE_INFO_PLIST_BASE64: ${{ secrets.GOOGLE_SERVICE_INFO_PLIST_BASE64 }}
+          APP_STORE_CONNECT_API_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+
       - name: Detect changed paths
         id: changes
         uses: dorny/paths-filter@v3
         with:
+          base: ${{ github.event.repository.default_branch }}
+          ref: ${{ github.sha }}
           filters: |
             dependencies:
               - 'mobile/user_app/pubspec.yaml'
@@ -83,30 +111,25 @@ jobs:
           restore-keys: |
             pods-user-
 
-      - name: Validate signing secrets
+      - name: Install dependencies
+        if: inputs.clean_build || steps.changes.outputs.dependencies == 'true' || steps.dart_cache.outputs.cache-hit != 'true'
+        run: flutter pub get
+
+      - name: Skip Dart dependencies (cache hit)
+        if: inputs.clean_build != true && steps.changes.outputs.dependencies != 'true' && steps.dart_cache.outputs.cache-hit == 'true'
+        run: echo "Reusing cached Dart dependencies"
+
+      - name: Validate Xcode project and iOS release config
         run: |
-          missing=0
-          required=(BUILD_CERTIFICATE_BASE64 BUILD_PROVISION_PROFILE_BASE64 P12_PASSWORD KEYCHAIN_PASSWORD GOOGLE_SERVICE_INFO_PLIST_BASE64)
-          if [ "${UPLOAD_TO_TESTFLIGHT}" = "true" ]; then
-            required+=(APP_STORE_CONNECT_API_KEY APP_STORE_CONNECT_KEY_ID APP_STORE_CONNECT_ISSUER_ID)
-          fi
-          for name in "${required[@]}"; do
-            if [ -z "${!name:-}" ]; then
-              echo "::error::Missing repository secret: ${name}"
-              missing=1
-            fi
-          done
-          [ "$missing" -eq 0 ]
-        env:
-          UPLOAD_TO_TESTFLIGHT: ${{ inputs.upload_to_testflight }}
-          BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
-          BUILD_PROVISION_PROFILE_BASE64: ${{ secrets.BUILD_PROVISION_PROFILE_BASE64 }}
-          P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
-          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
-          GOOGLE_SERVICE_INFO_PLIST_BASE64: ${{ secrets.GOOGLE_SERVICE_INFO_PLIST_BASE64 }}
-          APP_STORE_CONNECT_API_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
-          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
-          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          bash tool/verify_ios_release.sh
+          xcodebuild -list -project ios/Runner.xcodeproj >/dev/null
+          echo "Xcode project validation passed"
+
+      - name: Analyze Dart code
+        run: flutter analyze --no-fatal-infos
+
+      - name: Run tests
+        run: flutter test
 
       - name: Install Apple signing certificate
         working-directory: ${{ github.workspace }}
@@ -157,12 +180,14 @@ jobs:
       - name: Configure Release manual signing for CI
         env:
           PROFILE_NAME: ${{ steps.provision.outputs.profile_name }}
+          TEAM_ID: ${{ steps.provision.outputs.team_id }}
         run: |
           python3 <<'PY'
           import os
           import re
 
           profile = os.environ["PROFILE_NAME"]
+          team_id = os.environ["TEAM_ID"]
           path = "ios/Runner.xcodeproj/project.pbxproj"
           text = open(path, encoding="utf-8").read()
           block_id = "97C147071CF9000F007C117D /* Release */"
@@ -186,6 +211,12 @@ jobs:
               1,
           )
           block = re.sub(
+              r'DEVELOPMENT_TEAM = [^;]+;',
+              f'DEVELOPMENT_TEAM = {team_id};',
+              block,
+              count=1,
+          )
+          block = re.sub(
               r'PROVISIONING_PROFILE_SPECIFIER = "[^"]*";',
               f'PROVISIONING_PROFILE_SPECIFIER = "{profile}";',
               block,
@@ -195,18 +226,14 @@ jobs:
           open(path, "w", encoding="utf-8").write(text)
           PY
 
-      - name: Install Dart dependencies
-        if: inputs.clean_build || steps.changes.outputs.dependencies == 'true' || steps.dart_cache.outputs.cache-hit != 'true'
-        run: flutter pub get
-
-      - name: Skip Dart dependencies (cache hit)
-        if: inputs.clean_build != true && steps.changes.outputs.dependencies != 'true' && steps.dart_cache.outputs.cache-hit == 'true'
-        run: echo "Reusing cached Dart dependencies"
-
       - name: Ensure App Store icon has no alpha channel
         if: inputs.clean_build || steps.changes.outputs.app_icon == 'true'
         run: |
           ICON="ios/Runner/Assets.xcassets/AppIcon.appiconset/1024.png"
+          if [ ! -f "$ICON" ]; then
+            echo "::warning::App Store icon not found at $ICON — skipping alpha check"
+            exit 0
+          fi
           if sips -g hasAlpha "$ICON" 2>/dev/null | grep -q 'hasAlpha: yes'; then
             TMP="${RUNNER_TEMP}/appicon1024.jpg"
             sips -s format jpeg "$ICON" --out "$TMP" >/dev/null
@@ -263,8 +290,10 @@ jobs:
         id: ipa
         run: |
           ipa_path="$(ls -1 build/ios/ipa/*.ipa | head -1)"
+          pubspec_version="$(grep '^version:' pubspec.yaml | awk '{print $2}')"
           echo "path=mobile/user_app/${ipa_path}" >> "$GITHUB_OUTPUT"
-          echo "Built IPA: mobile/user_app/${ipa_path}"
+          echo "version=${pubspec_version}" >> "$GITHUB_OUTPUT"
+          echo "Built IPA: mobile/user_app/${ipa_path} (pubspec ${pubspec_version})"
 
       - name: Upload IPA artifact
         uses: actions/upload-artifact@v4

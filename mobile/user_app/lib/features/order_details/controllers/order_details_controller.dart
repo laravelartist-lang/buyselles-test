@@ -12,6 +12,7 @@ import 'package:flutter_sixvalley_ecommerce/features/order_details/domain/servic
 import 'package:flutter_sixvalley_ecommerce/features/review/controllers/review_controller.dart';
 import 'package:flutter_sixvalley_ecommerce/features/splash/controllers/splash_controller.dart';
 import 'package:flutter_sixvalley_ecommerce/helper/api_checker.dart';
+import 'package:flutter_sixvalley_ecommerce/helper/apple_iap_payment_helper.dart';
 import 'package:flutter_sixvalley_ecommerce/helper/route_healper.dart';
 import 'package:flutter_sixvalley_ecommerce/localization/language_constrants.dart';
 import 'package:flutter_sixvalley_ecommerce/main.dart';
@@ -604,6 +605,17 @@ class OrderDetailsController with ChangeNotifier {
       String paymentMethod,
       String? guestId,
       String? orderDuePaymentNote) async {
+    if (shouldBlockExternalDigitalPaymentOnIos(Get.context!, onlyDigital)) {
+      showCustomSnackBarWidget(
+        getTranslated('choose_payment_method', Get.context!) ??
+            'Use wallet balance for digital order payments on iOS.',
+        Get.context!,
+        snackBarType: SnackBarType.warning,
+      );
+
+      return ApiResponseModel.withError('apple_iap_required');
+    }
+
     _isLoading = true;
     notifyListeners();
     ApiResponseModel apiResponse =

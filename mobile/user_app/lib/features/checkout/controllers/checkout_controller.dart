@@ -5,6 +5,7 @@ import 'package:flutter_sixvalley_ecommerce/features/checkout/domain/services/ch
 import 'package:flutter_sixvalley_ecommerce/features/offline_payment/domain/models/offline_payment_model.dart';
 import 'package:flutter_sixvalley_ecommerce/features/splash/controllers/splash_controller.dart';
 import 'package:flutter_sixvalley_ecommerce/helper/api_checker.dart';
+import 'package:flutter_sixvalley_ecommerce/helper/apple_iap_payment_helper.dart';
 import 'package:flutter_sixvalley_ecommerce/helper/route_healper.dart';
 import 'package:flutter_sixvalley_ecommerce/localization/language_constrants.dart';
 import 'package:flutter_sixvalley_ecommerce/main.dart';
@@ -171,6 +172,7 @@ class CheckoutController with ChangeNotifier {
     _paymentMethodIndex = -1;
     isCODChecked = false;
     isWalletChecked = false;
+    isAppleIapChecked = false;
     isOfflineChecked = false;
   }
 
@@ -198,23 +200,33 @@ class CheckoutController with ChangeNotifier {
   bool isOfflineChecked = false;
   bool isCODChecked = false;
   bool isWalletChecked = false;
+  bool isAppleIapChecked = false;
 
   void setOfflineChecked(String type, {bool notify = true}) {
     if(type == 'offline'){
       isOfflineChecked = !isOfflineChecked;
       isCODChecked = false;
       isWalletChecked = false;
+      isAppleIapChecked = false;
       _paymentMethodIndex = -1;
       setOfflinePaymentMethodSelectedIndex(0);
     }else if(type == 'cod'){
       isCODChecked = !isCODChecked;
       isOfflineChecked = false;
       isWalletChecked = false;
+      isAppleIapChecked = false;
       _paymentMethodIndex = -1;
     }else if(type == 'wallet'){
       isWalletChecked = !isWalletChecked;
       isOfflineChecked = false;
       isCODChecked = false;
+      isAppleIapChecked = false;
+      _paymentMethodIndex = -1;
+    }else if(type == 'apple_iap'){
+      isAppleIapChecked = !isAppleIapChecked;
+      isOfflineChecked = false;
+      isCODChecked = false;
+      isWalletChecked = false;
       _paymentMethodIndex = -1;
     }
 
@@ -233,6 +245,7 @@ class CheckoutController with ChangeNotifier {
     isCODChecked = false;
     isWalletChecked = false;
     isOfflineChecked = false;
+    isAppleIapChecked = false;
     notifyListeners();
   }
 
@@ -299,6 +312,19 @@ class CheckoutController with ChangeNotifier {
     String? couponCode,
     String? couponDiscount,
     String? paymentMethod}) async {
+    if (shouldBlockExternalDigitalPaymentOnIos(Get.context!, _onlyDigital)) {
+      _isLoading = false;
+      notifyListeners();
+      showCustomSnackBarWidget(
+        getTranslated('choose_payment_method', Get.context!) ??
+            'Use App Store payment for digital products.',
+        Get.context!,
+        snackBarType: SnackBarType.warning,
+      );
+
+      return ApiResponseModel.withError('apple_iap_required');
+    }
+
     _isLoading =true;
     notifyListeners();
 

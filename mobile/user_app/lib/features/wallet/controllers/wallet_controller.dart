@@ -4,6 +4,7 @@ import 'package:flutter_sixvalley_ecommerce/features/wallet/domain/models/wallet
 import 'package:flutter_sixvalley_ecommerce/features/wallet/domain/models/wallet_bonus_model.dart';
 import 'package:flutter_sixvalley_ecommerce/features/wallet/domain/services/wallet_service_interface.dart';
 import 'package:flutter_sixvalley_ecommerce/helper/api_checker.dart';
+import 'package:flutter_sixvalley_ecommerce/helper/apple_iap_payment_helper.dart';
 import 'package:flutter_sixvalley_ecommerce/helper/price_converter.dart';
 import 'package:flutter_sixvalley_ecommerce/helper/route_healper.dart';
 import 'package:flutter_sixvalley_ecommerce/main.dart';
@@ -91,6 +92,16 @@ class WalletController extends ChangeNotifier {
     notifyListeners();
   }
   Future <void> addFundToWallet(String amount, String paymentMethod) async {
+    if (!isWalletAddFundAllowedOnPlatform()) {
+      showCustomSnackBarWidget(
+        'Adding wallet funds via external payment is not available on iOS.',
+        Get.context!,
+        snackBarType: SnackBarType.warning,
+      );
+
+      return;
+    }
+
     _isConvert = true;
     notifyListeners();
     ApiResponseModel apiResponse = await walletServiceInterface.addFundToWallet(amount, paymentMethod);

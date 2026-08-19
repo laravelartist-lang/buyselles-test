@@ -147,6 +147,8 @@ class AppConstants {
   static const String sellerWiseCouponListApi = '/api/v1/coupons/';
   static const String sellerWiseBestSellingProduct = '/api/v1/seller/';
   static const String digitalPayment = '/api/v1/digital-payment';
+  static const String iapCartProductsUri = '/api/v1/iap/cart-products';
+  static const String iapVerifyPurchaseUri = '/api/v1/iap/verify-purchase';
   static const String offlinePaymentList =
       '/api/v1/customer/order/offline-payment-method-list';
   static const String sellerWiseCategoryList = '/api/v1/categories?shop_slug=';

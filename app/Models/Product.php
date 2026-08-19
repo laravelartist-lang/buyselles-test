@@ -78,6 +78,7 @@ class Product extends Model
         'added_by',
         'name',
         'code',
+        'apple_product_id',
         'slug',
         'category_ids',
         'category_id',

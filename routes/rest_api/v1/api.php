@@ -22,6 +22,7 @@ use App\Http\Controllers\RestAPI\v1\DealController;
 use App\Http\Controllers\RestAPI\v1\DealOfTheDayController;
 use App\Http\Controllers\RestAPI\v1\FlashDealController;
 use App\Http\Controllers\RestAPI\v1\GeneralController;
+use App\Http\Controllers\RestAPI\v1\IapController;
 use App\Http\Controllers\RestAPI\v1\MapApiController;
 use App\Http\Controllers\RestAPI\v1\NotificationController;
 use App\Http\Controllers\RestAPI\v1\OrderController;
@@ -120,6 +121,13 @@ Route::group(['prefix' => 'v1', 'middleware' => ['api_lang']], function () {
             Route::post('product-restock-request', 'addProductRestockRequest');
             Route::post('get-referral-discount-redeem', 'getReferralDiscountRedeem');
             Route::post('get-merge-guest-cart', 'getMergeGuestCart');
+        });
+    });
+
+    Route::group(['prefix' => 'iap', 'middleware' => 'apiGuestCheck'], function () {
+        Route::controller(IapController::class)->group(function () {
+            Route::get('cart-products', 'cartProducts');
+            Route::post('verify-purchase', 'verifyPurchase');
         });
     });
 
