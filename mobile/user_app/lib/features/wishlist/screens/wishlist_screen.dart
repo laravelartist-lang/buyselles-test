@@ -136,7 +136,7 @@ class _WishListScreenState extends State<WishListScreen> {
           return wishListProvider.wishList != null
             ? wishListProvider.wishList!.isNotEmpty
             ? RefreshIndicator(
-            onRefresh: () async => await  wishListProvider.getWishList(searchTextEditingController.text ?? ''),
+            onRefresh: () async => await  wishListProvider.getWishList(searchTextEditingController.text),
             child: ListView.builder(
               padding: EdgeInsets.zero,
               itemCount: wishListProvider.wishList!.length,

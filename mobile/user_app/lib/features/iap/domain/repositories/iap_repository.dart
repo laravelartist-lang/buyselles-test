@@ -12,7 +12,7 @@ class IapRepository {
 
   Future<ApiResponseModel> getCartProducts() async {
     try {
-      final response = await dioClient!.get(AppConstants.iapCartProductsUri);
+      final response = await dioClient.get(AppConstants.iapCartProductsUri);
       return ApiResponseModel.withSuccess(response);
     } catch (error) {
       return ApiResponseModel.withError(ApiErrorHandler.getMessage(error));
@@ -27,7 +27,7 @@ class IapRepository {
     String? billingAddressId,
   }) async {
     try {
-      final response = await dioClient!.post(
+      final response = await dioClient.post(
         AppConstants.iapVerifyPurchaseUri,
         data: {
           'transactions': transactions,

@@ -288,12 +288,11 @@ Future<void> facebookLogin(BuildContext context, String? fromPage, VoidCallback?
 
   try {
     await Provider.of<FacebookLoginController>(context, listen: false).login();
-    String? id, token, email, medium, name;
+    String? id, token, email, medium;
     if (Provider.of<FacebookLoginController>(Get.context!, listen: false).userData != null) {
       id = Provider.of<FacebookLoginController>(Get.context!, listen: false).userData?['id'];
       email = Provider.of<FacebookLoginController>(Get.context!, listen: false).userData?['email'];
       token = Provider.of<FacebookLoginController>(Get.context!, listen: false).result.accessToken?.tokenString;
-      name = Provider.of<FacebookLoginController>(Get.context!, listen: false).userData?['name'] ?? '';
       medium = 'facebook';
       socialLogin.email = email;
       socialLogin.medium = medium;

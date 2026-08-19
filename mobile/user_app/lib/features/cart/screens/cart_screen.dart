@@ -1002,7 +1002,6 @@ class CartScreenState extends State<CartScreen> {
       List<List<CartModel>> cartProductList,
     ) {
     final ConfigModel? configModel = Provider.of<SplashController>(context, listen: false).configModel;
-    bool hasNull;
     if (configModel!.shippingMethod =='sellerwise_shipping') {
       for (int index = 0; index < sellerGroupList.length; index++) {
         bool hasPhysical = false;
@@ -1021,7 +1020,6 @@ class CartScreenState extends State<CartScreen> {
 
 
 
-          hasNull = true;
           return (
           sellerCart: sellerGroupList[index],
           sellerIndex: index
@@ -1058,7 +1056,6 @@ class CartScreenState extends State<CartScreen> {
 
       ) {
       double total;
-      bool minimum = false;
       for(int index = 0; index < sellerGroupList.length; index++) {
         total = 0;
         for(CartModel cart in cartProductList[index]) {
@@ -1068,7 +1065,6 @@ class CartScreenState extends State<CartScreen> {
         }
         log("===Here===>$total======${sellerGroupList[index].minimumOrderAmountInfo!}>");
         if(total< sellerGroupList[index].minimumOrderAmountInfo!) {
-          minimum = true;
           return (
             productCart: cartProductList[0][0],
             sellerCart: sellerGroupList[index],

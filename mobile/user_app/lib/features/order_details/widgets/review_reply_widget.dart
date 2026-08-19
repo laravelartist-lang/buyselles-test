@@ -20,10 +20,7 @@ class ReviewReplyWidget extends StatefulWidget {
   State<ReviewReplyWidget> createState() => _ReviewReplyWidgetState();
 }
 
-class _ReviewReplyWidgetState extends State<ReviewReplyWidget> with TickerProviderStateMixin {
-
-  late AnimationController _controller;
-  late Animation<double> _animation;
+class _ReviewReplyWidgetState extends State<ReviewReplyWidget> {
 
   @override
   void initState() {

@@ -535,9 +535,6 @@ class IndicatorRangeSliderThumbShape extends RangeSliderThumbShape {
     );
 
     canvas.drawCircle(center, radius, outlinePaint);
-
-    // Pick which value to show
-    final double value = thumb == Thumb.start ? start : end;
   }
 }
 

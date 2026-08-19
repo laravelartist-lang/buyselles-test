@@ -144,9 +144,6 @@ class _SelectLanguageBottomSheetWidgetState extends State<SelectLanguageBottomSh
       itemCount: AppConstants.languages.length,
       shrinkWrap: true,
       itemBuilder: (context, index) {
-        final lang = AppConstants.languages[index];
-        final bool isSelected = lang.languageCode == localizationProvider.locale.languageCode;
-
         return InkWell(
           onTap: () {
             setState(() {
