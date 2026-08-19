@@ -176,6 +176,7 @@ jobs:
         run: |
           echo -n "$GOOGLE_SERVICE_INFO_PLIST_BASE64" | base64 --decode -o ios/GoogleService-Info.plist
           cp ios/GoogleService-Info.plist ios/Runner/GoogleService-Info.plist
+          bash tool/validate_ios_plists.sh
 
       - name: Configure Release manual signing for CI
         env:
@@ -267,8 +268,9 @@ jobs:
               "uploadSymbols": True,
           }
           with open("ios/ExportOptions.plist", "wb") as handle:
-              plistlib.dump(data, handle)
+              plistlib.dump(data, handle, fmt=plistlib.FMT_XML)
           PY
+          bash tool/validate_ios_plists.sh
 
       - name: Build IPA
         run: |

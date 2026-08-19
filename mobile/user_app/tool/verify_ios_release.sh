@@ -84,4 +84,6 @@ else
   echo "::warning::1024.png not found in repo (may be generated locally or in CI checkout)"
 fi
 
+bash tool/validate_ios_plists.sh
+
 echo "iOS release static verification passed."
