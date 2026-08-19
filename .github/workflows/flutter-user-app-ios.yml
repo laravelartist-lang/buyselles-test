@@ -119,6 +119,22 @@ jobs:
         if: inputs.clean_build != true && steps.changes.outputs.dependencies != 'true' && steps.dart_cache.outputs.cache-hit == 'true'
         run: echo "Reusing cached Dart dependencies"
 
+      - name: Install Firebase iOS config
+        env:
+          GOOGLE_SERVICE_INFO_PLIST_BASE64: ${{ secrets.GOOGLE_SERVICE_INFO_PLIST_BASE64 }}
+        run: |
+          if [ -z "${GOOGLE_SERVICE_INFO_PLIST_BASE64:-}" ]; then
+            echo "::error::GOOGLE_SERVICE_INFO_PLIST_BASE64 secret is empty"
+            exit 1
+          fi
+          echo -n "$GOOGLE_SERVICE_INFO_PLIST_BASE64" | base64 --decode -o ios/GoogleService-Info.plist
+          if [ ! -s ios/GoogleService-Info.plist ]; then
+            echo "::error::Decoded GoogleService-Info.plist is empty. Re-encode with: base64 -i ios/GoogleService-Info.plist (macOS) or base64 -w 0 ios/GoogleService-Info.plist (Linux)"
+            exit 1
+          fi
+          cp ios/GoogleService-Info.plist ios/Runner/GoogleService-Info.plist
+          bash tool/validate_ios_plists.sh --require-firebase
+
       - name: Validate Xcode project and iOS release config
         run: |
           bash tool/verify_ios_release.sh
@@ -169,14 +185,6 @@ jobs:
           TEAM_ID=$(/usr/libexec/PlistBuddy -c 'Print TeamIdentifier:0' /dev/stdin <<< "$PP_XML")
           echo "profile_name=${PROFILE_NAME}" >> "$GITHUB_OUTPUT"
           echo "team_id=${TEAM_ID}" >> "$GITHUB_OUTPUT"
-
-      - name: Install Firebase iOS config
-        env:
-          GOOGLE_SERVICE_INFO_PLIST_BASE64: ${{ secrets.GOOGLE_SERVICE_INFO_PLIST_BASE64 }}
-        run: |
-          echo -n "$GOOGLE_SERVICE_INFO_PLIST_BASE64" | base64 --decode -o ios/GoogleService-Info.plist
-          cp ios/GoogleService-Info.plist ios/Runner/GoogleService-Info.plist
-          bash tool/validate_ios_plists.sh
 
       - name: Configure Release manual signing for CI
         env:
