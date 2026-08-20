@@ -228,7 +228,7 @@ class AppleIapCatalogSyncService
                 $pricing['target_usd'],
             );
 
-            $this->client->setInAppPurchasePrice($iapId, $selectedPoint['id']);
+            $this->client->setInAppPurchasePrice($iapId, $selectedPoint['id'], $territory);
             $appleTierUsd = $selectedPoint['customer_price'];
         }
 

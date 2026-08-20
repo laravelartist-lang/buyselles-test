@@ -179,17 +179,27 @@ class AppStoreConnectClient
         return $points;
     }
 
-    public function setInAppPurchasePrice(string $inAppPurchaseId, string $pricePointId): void
+    public function setInAppPurchasePrice(string $inAppPurchaseId, string $pricePointId, string $territory = 'USA'): void
     {
-        $temporaryPriceId = '${price-'.md5($inAppPurchaseId.$pricePointId).'}';
+        $temporaryPriceId = '${price-'.md5($inAppPurchaseId.$pricePointId.$territory).'}';
 
-        $response = $this->request()->patch('/v2/inAppPurchases/'.$inAppPurchaseId, [
+        $response = $this->request()->post('/v1/inAppPurchasePriceSchedules', [
             'data' => [
-                'type' => 'inAppPurchases',
-                'id' => $inAppPurchaseId,
-                'attributes' => (object) [],
+                'type' => 'inAppPurchasePriceSchedules',
                 'relationships' => [
-                    'prices' => [
+                    'baseTerritory' => [
+                        'data' => [
+                            'type' => 'territories',
+                            'id' => $territory,
+                        ],
+                    ],
+                    'inAppPurchase' => [
+                        'data' => [
+                            'type' => 'inAppPurchases',
+                            'id' => $inAppPurchaseId,
+                        ],
+                    ],
+                    'manualPrices' => [
                         'data' => [
                             [
                                 'type' => 'inAppPurchasePrices',
@@ -205,6 +215,7 @@ class AppStoreConnectClient
                     'id' => $temporaryPriceId,
                     'attributes' => [
                         'startDate' => null,
+                        'endDate' => null,
                     ],
                     'relationships' => [
                         'inAppPurchaseV2' => [
