@@ -1,6 +1,6 @@
 # Buyselles Customer App — App Store Review Notes
 
-**Version:** 1.0.0 (build **3**)  
+**Version:** 1.0.0 (build **4**)  
 **Bundle ID:** `com.buyselles.app`
 
 Use this in **App Review Information** when submitting to App Store Connect.
