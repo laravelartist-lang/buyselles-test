@@ -15,6 +15,7 @@ import 'package:sixvalley_vendor_app/utill/styles.dart';
 import 'package:sixvalley_vendor_app/common/basewidgets/custom_snackbar_widget.dart';
 import 'package:sixvalley_vendor_app/features/auth/screens/registration_screen.dart';
 import 'package:sixvalley_vendor_app/features/dashboard/screens/dashboard_screen.dart';
+import 'package:sixvalley_vendor_app/features/kyc/screens/kyc_verification_screen.dart';
 import 'package:sixvalley_vendor_app/features/auth/screens/forget_password_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -155,8 +156,31 @@ class LoginScreenState extends State<LoginScreen> {
                             } else {
                               authProvider.clearUserEmailAndPassword();
                             }
-                           // Navigator.of(Get.context!).pushReplacement(MaterialPageRoute(builder: (_) => const DashboardScreen()));
-                            Navigator.pushAndRemoveUntil(Get.context!, MaterialPageRoute(builder: (_) => const DashboardScreen()), (route) => false);
+                            /*
+                             * An unverified vendor signs in only to finish
+                             * KYC - the backend keeps every other endpoint
+                             * locked until Sumsub approves them.
+                             */
+                            final dynamic loginData = status.response?.data;
+                            final bool kycRequired = loginData is Map &&
+                                loginData['kyc_required'] == true;
+
+                            if (kycRequired) {
+                              Navigator.pushAndRemoveUntil(
+                                Get.context!,
+                                MaterialPageRoute(
+                                    builder: (_) => const KycVerificationScreen(
+                                        showAppBar: false)),
+                                (route) => false,
+                              );
+                            } else {
+                              Navigator.pushAndRemoveUntil(
+                                Get.context!,
+                                MaterialPageRoute(
+                                    builder: (_) => const DashboardScreen()),
+                                (route) => false,
+                              );
+                            }
                           }else {
                           }
                         });

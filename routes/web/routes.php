@@ -7,6 +7,7 @@ use App\Http\Controllers\Customer\Auth\ForgotPasswordController;
 use App\Http\Controllers\Customer\Auth\LoginController;
 use App\Http\Controllers\Customer\Auth\RegisterController;
 use App\Http\Controllers\Customer\Auth\SocialAuthController;
+use App\Http\Controllers\Customer\KycController as CustomerKycController;
 use App\Http\Controllers\Customer\PaymentController;
 use App\Http\Controllers\Customer\RewardPointController;
 use App\Http\Controllers\Customer\SystemController;
@@ -413,6 +414,14 @@ Route::group(['namespace' => 'Customer', 'prefix' => 'customer', 'as' => 'custom
 
     Route::group(['prefix' => 'reward-points', 'as' => 'reward-points.', 'middleware' => ['auth:customer']], function () {
         Route::get('convert', [RewardPointController::class, 'convert'])->name('convert');
+    });
+});
+
+Route::group(['namespace' => 'Customer', 'prefix' => 'customer', 'as' => 'customer.', 'middleware' => ['customer']], function () {
+    Route::controller(CustomerKycController::class)->prefix('kyc')->as('kyc.')->group(function () {
+        Route::get('/', 'index')->name('index');
+        Route::post('token', 'token')->name('token');
+        Route::get('status', 'status')->name('status');
     });
 });
 

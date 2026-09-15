@@ -20,6 +20,7 @@ import 'package:flutter_sixvalley_ecommerce/features/deal/controllers/featured_d
 import 'package:flutter_sixvalley_ecommerce/features/deal/controllers/flash_deal_controller.dart';
 import 'package:flutter_sixvalley_ecommerce/features/location/controllers/location_controller.dart';
 import 'package:flutter_sixvalley_ecommerce/features/loyaltyPoint/controllers/loyalty_point_controller.dart';
+import 'package:flutter_sixvalley_ecommerce/features/kyc/controllers/kyc_controller.dart';
 import 'package:flutter_sixvalley_ecommerce/features/notification/controllers/notification_controller.dart';
 import 'package:flutter_sixvalley_ecommerce/features/onboarding/controllers/onboarding_controller.dart';
 import 'package:flutter_sixvalley_ecommerce/features/order/controllers/order_controller.dart';
@@ -134,6 +135,7 @@ Future<void> main() async {
       ChangeNotifierProvider(create: (context) => di.sl<CheckoutController>()),
       ChangeNotifierProvider(create: (context) => di.sl<IapPurchaseController>()),
       ChangeNotifierProvider(create: (context) => di.sl<LoyaltyPointController>()),
+      ChangeNotifierProvider(create: (context) => di.sl<KycController>()),
       ChangeNotifierProvider(create: (context) => di.sl<LocationController>()),
       ChangeNotifierProvider(create: (context) => di.sl<ContactUsController>()),
       ChangeNotifierProvider(create: (context) => di.sl<ShippingController>()),

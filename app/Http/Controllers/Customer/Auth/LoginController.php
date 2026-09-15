@@ -139,22 +139,11 @@ class LoginController extends Controller
             $user->updated_at = now();
             $user->save();
 
-            $redirect_url = '';
-            $previous_url = url()->previous();
-
-            if (
-                strpos($previous_url, 'checkout-complete') !== false ||
-                strpos($previous_url, 'offline-payment-checkout-complete') !== false ||
-                strpos($previous_url, 'track-order') !== false
-            ) {
-                $redirect_url = route('home');
-            }
-
             if ($request->ajax()) {
                 return response()->json([
                     'status' => 'success',
                     'message' => translate('login_successful'),
-                    'redirect_url' => $redirect_url,
+                    'redirect_url' => $this->customerAuthService->getCustomerAuthReturnURL(),
                 ]);
             } else {
                 return back();

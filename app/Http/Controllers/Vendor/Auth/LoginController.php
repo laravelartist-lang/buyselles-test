@@ -3,10 +3,12 @@
 namespace App\Http\Controllers\Vendor\Auth;
 
 use App\Contracts\Repositories\VendorRepositoryInterface;
+use App\Enums\KycUserType;
 use App\Enums\SessionKey;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Vendor\LoginRequest;
 use App\Repositories\VendorWalletRepository;
+use App\Services\Kyc\KycService;
 use App\Services\RecaptchaService;
 use App\Services\VendorService;
 use App\Traits\RecaptchaTrait;
@@ -24,6 +26,7 @@ class LoginController extends Controller
         private readonly VendorRepositoryInterface $vendorRepo,
         private readonly VendorService $vendorService,
         private readonly VendorWalletRepository $vendorWalletRepo,
+        private readonly KycService $kycService,
 
     ) {
         $this->middleware('guest:seller', ['except' => ['logout']]);
@@ -61,7 +64,16 @@ class LoginController extends Controller
             return back();
         }
         $passwordCheck = Hash::check($request['password'], $vendor['password']);
-        if ($passwordCheck && $vendor['status'] !== 'approved') {
+
+        /*
+         * Vendors still completing KYC are allowed in so they can finish
+         * verification. The seller middleware keeps them on the KYC screen
+         * until they are verified and approved.
+         */
+        $kycIncomplete = $this->kycService->isEnabled()
+            && ! $this->kycService->isVerified(KycUserType::VENDOR, $vendor['id']);
+
+        if ($passwordCheck && $vendor['status'] !== 'approved' && ! $kycIncomplete) {
             ToastMagic::error(translate('Not_approve_yet').'!');
 
             return back();

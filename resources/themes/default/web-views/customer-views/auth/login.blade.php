@@ -46,7 +46,7 @@
                                     id="customer-otp-login-form" class="customer-centralize-login-form"
                                     data-firebase-auth="{{ $web_config['firebase_otp_verification_status'] ? 'active' : 'deactivate' }}">
                                     @csrf
-                                    <input type="hidden" name="keep_customer_login_redirect_url" value="{{ $keepCustomerLoginRedirectUrl ?? old('keep_customer_login_redirect_url', url()->previous()) }}">
+                                    <input type="hidden" name="keep_customer_login_redirect_url" value="{{ $keepCustomerLoginRedirectUrl ?? old('keep_customer_login_redirect_url', $defaultCustomerRedirectUrl ?? route('home')) }}">
                                     <input type="hidden" name="login_type" value="otp-login">
                                     @include('web-views.customer-views.auth.partials._phone')
 
@@ -62,7 +62,7 @@
                                 <form autocomplete="off" class="customer-centralize-login-form mt-2"
                                     action="{{ route('customer.auth.login') }}" method="post" id="customer-login-form">
                                     @csrf
-                                    <input type="hidden" name="keep_customer_login_redirect_url" value="{{ $keepCustomerLoginRedirectUrl ?? old('keep_customer_login_redirect_url', url()->previous()) }}">
+                                    <input type="hidden" name="keep_customer_login_redirect_url" value="{{ $keepCustomerLoginRedirectUrl ?? old('keep_customer_login_redirect_url', $defaultCustomerRedirectUrl ?? route('home')) }}">
                                     <input type="hidden" name="login_type" value="manual-login">
                                     @include('web-views.customer-views.auth.partials._email')
                                     @include('web-views.customer-views.auth.partials._password')
@@ -83,7 +83,7 @@
                                 <form autocomplete="off" class="customer-centralize-login-form mt-2"
                                     action="{{ route('customer.auth.login') }}" method="post" id="customer-login-form">
                                     @csrf
-                                    <input type="hidden" name="keep_customer_login_redirect_url" value="{{ $keepCustomerLoginRedirectUrl ?? old('keep_customer_login_redirect_url', url()->previous()) }}">
+                                    <input type="hidden" name="keep_customer_login_redirect_url" value="{{ $keepCustomerLoginRedirectUrl ?? old('keep_customer_login_redirect_url', $defaultCustomerRedirectUrl ?? route('home')) }}">
                                     <input type="hidden" name="login_type" value="manual-login">
                                     @include('web-views.customer-views.auth.partials._email')
                                     @include('web-views.customer-views.auth.partials._password')
@@ -106,7 +106,7 @@
                                     action="{{ route('customer.auth.login') }}" method="post" id="customer-otp-login-form"
                                     data-firebase-auth="{{ $web_config['firebase_otp_verification_status'] ? 'active' : 'deactivate' }}">
                                     @csrf
-                                    <input type="hidden" name="keep_customer_login_redirect_url" value="{{ $keepCustomerLoginRedirectUrl ?? old('keep_customer_login_redirect_url', url()->previous()) }}">
+                                    <input type="hidden" name="keep_customer_login_redirect_url" value="{{ $keepCustomerLoginRedirectUrl ?? old('keep_customer_login_redirect_url', $defaultCustomerRedirectUrl ?? route('home')) }}">
                                     <input type="hidden" name="login_type" value="otp-login">
                                     @include('web-views.customer-views.auth.partials._phone')
                                     @include('web-views.customer-views.auth.partials._recaptcha')
@@ -124,7 +124,7 @@
                                         id="customer-login-form">
                                         @csrf
 
-                                        <input type="hidden" name="keep_customer_login_redirect_url" value="{{ $keepCustomerLoginRedirectUrl ?? old('keep_customer_login_redirect_url', url()->previous()) }}">
+                                        <input type="hidden" name="keep_customer_login_redirect_url" value="{{ $keepCustomerLoginRedirectUrl ?? old('keep_customer_login_redirect_url', $defaultCustomerRedirectUrl ?? route('home')) }}">
                                         <input type="hidden" name="login_type" class="auth-login-type-input"
                                             value="manual-login">
 

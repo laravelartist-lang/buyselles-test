@@ -12,6 +12,7 @@ import 'package:flutter_sixvalley_ecommerce/main.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_sixvalley_ecommerce/common/basewidget/show_custom_snakbar_widget.dart';
+import 'package:flutter_sixvalley_ecommerce/features/kyc/widgets/kyc_required_dialog.dart';
 import 'package:provider/provider.dart';
 
 
@@ -134,6 +135,18 @@ class CheckoutController with ChangeNotifier {
       callback(true, message, extractId(apiResponse.response!.data['order_ids'].toString()), _newUser);
       _resetWalletCheckoutIdempotencyKey();
       _isLoading = false;
+    } else if (isKycRequiredResponse(apiResponse.response)) {
+      // The backend refused the order because the account still has to pass
+      // KYC - explain it instead of showing a generic failure.
+      _isLoading = false;
+      notifyListeners();
+
+      await showKycRequiredDialog(
+        Get.context!,
+        message: kycBlockedMessage(apiResponse.response),
+      );
+
+      return;
     } else {
       _isLoading = false;
      ApiChecker.checkApi(apiResponse);
@@ -345,6 +358,16 @@ class CheckoutController with ChangeNotifier {
     } else if(apiResponse.error == 'Already registered ') {
       _isLoading = false;
       showCustomSnackBarWidget(getTranslated(apiResponse.error, Get.context!), Get.context!, snackBarType: SnackBarType.warning);
+    } else if (isKycRequiredResponse(apiResponse.response)) {
+      _isLoading = false;
+      notifyListeners();
+
+      await showKycRequiredDialog(
+        Get.context!,
+        message: kycBlockedMessage(apiResponse.response),
+      );
+
+      return apiResponse;
     } else if(apiResponse.response != null && apiResponse.response!.statusCode == 403) {
       _isLoading = false;
       showCustomSnackBarWidget(getTranslated(apiResponse.error, Get.context!), Get.context!, snackBarType: SnackBarType.error);

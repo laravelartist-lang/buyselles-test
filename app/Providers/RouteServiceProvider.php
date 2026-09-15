@@ -2,6 +2,8 @@
 
 namespace App\Providers;
 
+use App\Http\Controllers\Kyc\KycLaunchController;
+use App\Http\Controllers\Kyc\SumsubWebhookController;
 use App\Http\Requests\Request;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Foundation\Support\Providers\RouteServiceProvider as ServiceProvider;
@@ -56,7 +58,40 @@ class RouteServiceProvider extends ServiceProvider
         $this->mapBetaAdminRoutes();
         $this->mapBetaVendorRoutes();
         $this->mapBetaWebRoutes();
+        $this->mapKycWebhookRoutes();
+        $this->mapKycLaunchRoutes();
         $this->mapDemoRoutes();
+    }
+
+    /**
+     * Define the Sumsub WebSDK launcher used by the mobile apps.
+     *
+     * The URLs are signed, so the WebView can render the SDK for the right
+     * applicant without exposing Sumsub credentials or a session cookie.
+     */
+    protected function mapKycLaunchRoutes(): void
+    {
+        Route::middleware('signed')->group(function () {
+            Route::get('kyc/launch/{userType}/{userId}', KycLaunchController::class)
+                ->name('kyc.launch');
+            Route::get('kyc/launch/{userType}/{userId}/token', [KycLaunchController::class, 'token'])
+                ->name('kyc.launch.token');
+        });
+    }
+
+    /**
+     * Define the Sumsub webhook endpoint.
+     *
+     * Registered without middleware on purpose: Sumsub delivers signed
+     * payloads server to server, so sessions, CSRF protection and throttling
+     * must not apply.
+     */
+    protected function mapKycWebhookRoutes(): void
+    {
+        Route::post(
+            config('sumsub.webhook_path', 'webhooks/sumsub'),
+            SumsubWebhookController::class
+        )->name('kyc.sumsub.webhook');
     }
 
     /**

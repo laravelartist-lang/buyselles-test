@@ -30,6 +30,7 @@ import 'package:sixvalley_vendor_app/features/product/controllers/category_contr
 import 'package:sixvalley_vendor_app/features/product/widgets/cookies_widget.dart';
 import 'package:sixvalley_vendor_app/features/product_details/controllers/product_details_controller.dart';
 import 'package:sixvalley_vendor_app/features/customer_management/controllers/customer_controller.dart';
+import 'package:sixvalley_vendor_app/features/kyc/controllers/kyc_controller.dart';
 import 'package:sixvalley_vendor_app/features/digitalProduct/controllers/digital_files_controller.dart';
 import 'package:sixvalley_vendor_app/features/dispute/controllers/dispute_controller.dart';
 import 'package:sixvalley_vendor_app/features/reports/controllers/report_controller.dart';
@@ -159,6 +160,7 @@ Future<void> main() async {
       ChangeNotifierProvider(create: (context) => di.sl<OrderEditController>()),
       ChangeNotifierProvider(create: (context) => di.sl<DigitalFilesController>()),
       ChangeNotifierProvider(create: (context) => di.sl<CustomerManagementController>()),
+      ChangeNotifierProvider(create: (context) => di.sl<KycController>()),
       ChangeNotifierProvider(create: (context) => di.sl<ReportController>()),
       ChangeNotifierProvider(create: (context) => di.sl<DisputeController>()),
     ],

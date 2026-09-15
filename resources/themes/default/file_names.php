@@ -19,6 +19,7 @@ return [
     'account_wishlist' => 'web-views.users-profile.account-wishlist',
     'user_restock_requests' => 'web-views.users-profile.account-restock-requests',
     'user_wallet' => 'web-views.users-profile.user-wallet',
+    'user_kyc' => 'web-views.users-profile.kyc',
     'user_loyalty' => 'web-views.users-profile.user-loyalty',
     'account_tickets' => 'web-views.users-profile.account-tickets',
     'ticket_view' => 'web-views.users-profile.ticket-view',

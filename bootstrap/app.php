@@ -12,6 +12,7 @@ use App\Http\Middleware\InstallationMiddleware;
 use App\Http\Middleware\MaintenanceModeMiddleware;
 use App\Http\Middleware\ModulePermissionMiddleware;
 use App\Http\Middleware\SellerApiAuthMiddleware;
+use App\Http\Middleware\SellerApiKycMiddleware;
 use App\Http\Middleware\SellerMiddleware;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -75,6 +76,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'maintenance_mode' => MaintenanceModeMiddleware::class,
             'delivery_man_auth' => DeliveryManAuth::class,
             'seller_api_auth' => SellerApiAuthMiddleware::class,
+            'seller_api_kyc' => SellerApiKycMiddleware::class,
             'guestCheck' => GuestMiddleware::class,
             'apiGuestCheck' => APIGuestMiddleware::class,
             'logUserBrowsingNavigation' => \App\Http\Middleware\LogUserBrowsingNavigationMiddleware::class,

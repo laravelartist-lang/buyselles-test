@@ -23,6 +23,7 @@ return [
     'user_restock_requests' => 'theme-views.users-profile.account-restock-requests',
     'account_wishlist_partials' => 'theme-views.partials._wish-list-data',
     'user_wallet' => 'theme-views.users-profile.user-wallet',
+    'user_kyc' => 'theme-views.users-profile.kyc',
     'user_loyalty' => 'theme-views.users-profile.user-loyalty',
     'user_inbox' => 'theme-views.users-profile.inbox.index',
     'user_inbox_message' => 'theme-views.users-profile.inbox.messages',

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Customer;
 
 use App\Http\Controllers\Controller;
+use App\Http\Resources\Kyc\KycStatusResource;
 use App\Library\Payer;
 use App\Library\Payment as PaymentInfo;
 use App\Library\Receiver;
@@ -18,6 +19,7 @@ use App\Models\ShippingType;
 use App\Models\User;
 use App\Services\CustomerServiceFeeService;
 use App\Services\DigitalProductCodeService;
+use App\Services\Kyc\CustomerCheckoutKycGuard;
 use App\Traits\OrderEditManager;
 use App\Traits\Payment;
 use App\Traits\PaymentGatewayTrait;
@@ -35,6 +37,10 @@ use Illuminate\Support\Facades\Validator;
 class PaymentController extends Controller
 {
     use OrderEditManager, Payment, PaymentGatewayTrait;
+
+    public function __construct(
+        private readonly CustomerCheckoutKycGuard $kycGuard,
+    ) {}
 
     public function payment(Request $request): JsonResponse|Redirector|RedirectResponse
     {
@@ -131,6 +137,22 @@ class PaymentController extends Controller
             Toastr::info('Check the minimum order amount requirement');
 
             return redirect()->route('shop-cart');
+        }
+
+        $kycUser = Helpers::getCustomerInformation($request);
+        $kycBlock = $this->kycGuard->blockReason($kycUser, $request);
+        if ($kycBlock !== null) {
+            if (in_array($request['payment_request_from'], ['app'])) {
+                return response()->json([
+                    'message' => $kycBlock['message'],
+                    'kyc_required' => true,
+                    'kyc' => (new KycStatusResource($kycBlock['verification']))->resolve(),
+                ], 403);
+            }
+
+            Toastr::warning($kycBlock['message']);
+
+            return redirect()->route('customer.kyc.index');
         }
 
         if (in_array($request['payment_request_from'], ['app'])) {

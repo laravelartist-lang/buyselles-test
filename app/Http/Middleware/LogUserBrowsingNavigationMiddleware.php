@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Services\Web\CustomerAuthService;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
@@ -77,7 +78,13 @@ class LogUserBrowsingNavigationMiddleware
             $urls = array_values(array_filter($urls, fn ($url) => $url !== $currentUrl));
             if (! $request->is($excludedPatterns)) {
                 $urls[] = $currentUrl;
-                session()->put('keep_customer_login_redirect_url', $currentUrl);
+
+                $sanitizedReturnUrl = app(CustomerAuthService::class)
+                    ->sanitizeCustomerReturnUrl($currentUrl);
+
+                if ($sanitizedReturnUrl !== null) {
+                    session()->put('keep_customer_login_redirect_url', $sanitizedReturnUrl);
+                }
             }
             session()->put('recent_user_routes_history', array_slice($urls, -10));
         }

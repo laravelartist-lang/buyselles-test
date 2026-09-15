@@ -18,6 +18,7 @@ use App\Models\RefundRequest;
 use App\Models\Setting;
 use App\Models\ShippingAddress;
 use App\Models\User;
+use App\Services\Kyc\CustomerCheckoutKycGuard;
 use App\Services\OrderService;
 use App\Traits\CommonTrait;
 use App\Traits\FileManagerTrait;
@@ -40,7 +41,22 @@ class OrderController extends Controller
 
     public function __construct(
         private readonly OrderService $orderService,
+        private readonly CustomerCheckoutKycGuard $kycGuard,
     ) {}
+
+    /**
+     * Reject the checkout when the customer is obliged to complete KYC.
+     *
+     * @param  array{message: string, verification: \App\Models\KycVerification|null}  $blockReason
+     */
+    private function kycBlockedResponse(array $blockReason): JsonResponse
+    {
+        return response()->json([
+            'message' => $blockReason['message'],
+            'kyc_required' => true,
+            'kyc' => (new \App\Http\Resources\Kyc\KycStatusResource($blockReason['verification']))->resolve(),
+        ], 403);
+    }
 
     public function track_by_order_id(Request $request)
     {
@@ -145,6 +161,11 @@ class OrderController extends Controller
     public function place_order(Request $request): JsonResponse
     {
         $user = Helpers::getCustomerInformation($request);
+
+        if ($blockReason = $this->kycGuard->blockReason($user, $request)) {
+            return $this->kycBlockedResponse($blockReason);
+        }
+
         $newCustomerRegister = null;
         $cartGroupIds = CartManager::get_cart_group_ids(request: $request, type: 'checked');
         $carts = Cart::whereHas('product', function ($query) {
@@ -260,6 +281,11 @@ class OrderController extends Controller
     public function placeOrderByOfflinePayment(Request $request): JsonResponse
     {
         $user = Helpers::getCustomerInformation($request);
+
+        if ($blockReason = $this->kycGuard->blockReason($user, $request)) {
+            return $this->kycBlockedResponse($blockReason);
+        }
+
         $newCustomerRegister = null;
         $cartGroupIds = CartManager::get_cart_group_ids(request: $request, type: 'checked');
         $carts = Cart::whereHas('product', function ($query) {

@@ -919,7 +919,7 @@
 
             @if (Helpers::module_permission_check('user_section'))
                 <li
-                    class="nav-item nav-item_title {{ Request::is('admin/customer/list') || Request::is('admin/customer/view*') || Request::is('admin/customer/subscriber-list') || Request::is('admin/vendors/add') || Request::is('admin/vendors/list') || Request::is('admin/delivery-man*') ? 'scroll-here' : '' }}">
+                    class="nav-item nav-item_title {{ Request::is('admin/customer/list') || Request::is('admin/customer/view*') || Request::is('admin/customer/subscriber-list') || Request::is('admin/kyc*') || Request::is('admin/vendors/add') || Request::is('admin/vendors/list') || Request::is('admin/delivery-man*') ? 'scroll-here' : '' }}">
                     <small class="nav-subtitle" title="">{{ translate('user_management') }}</small>
                 </li>
 
@@ -980,6 +980,38 @@
                                 <span class="text-truncate">
                                     {{ translate('loyalty_Points') }}
                                 </span>
+                            </a>
+                        </li>
+                    </ul>
+                </li>
+
+                <li class="{{ Request::is('admin/kyc*') ? 'sub-menu-opened' : '' }}">
+                    <a class="nav-link nav-link-toggle {{ Request::is('admin/kyc*') ? 'active' : '' }}"
+                        href="javascript:" title="{{ translate('kyc_verification') }}">
+                        <i class="fi fi-rr-shield-check"></i>
+                        <span
+                            class="aside-mini-hidden-element flex-grow-1 d-flex justify-content-between align-items-center">
+                            <span class="text-truncate max-w-180">
+                                {{ translate('kyc_verification') }}
+                            </span>
+                            <i class="fi fi-sr-angle-down"></i>
+                        </span>
+                    </a>
+                    <ul class="aside-submenu navbar-nav">
+                        <li class="nav-item px-3 py-2 fw-semibold text-dark bg-section2 aside-mini-show-element">
+                            {{ translate('kyc_verification') }}</li>
+                        <li class="nav-item">
+                            <a class="nav-link {{ Request::is('admin/kyc') && ! Request::is('admin/kyc/settings*') ? 'active' : '' }}"
+                                href="{{ route('admin.kyc.index') }}"
+                                title="{{ translate('kyc_verifications') }}">
+                                <span class="text-truncate">{{ translate('kyc_verifications') }}</span>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link {{ Request::is('admin/kyc/settings*') ? 'active' : '' }}"
+                                href="{{ route('admin.kyc.settings') }}"
+                                title="{{ translate('sumsub_settings') }}">
+                                <span class="text-truncate">{{ translate('sumsub_settings') }}</span>
                             </a>
                         </li>
                     </ul>

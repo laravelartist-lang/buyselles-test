@@ -30,6 +30,7 @@ import 'package:flutter_sixvalley_ecommerce/features/checkout/widgets/coupon_app
 import 'package:flutter_sixvalley_ecommerce/features/checkout/widgets/create_account_widget.dart';
 import 'package:flutter_sixvalley_ecommerce/features/checkout/widgets/shipping_details_widget.dart';
 import 'package:flutter_sixvalley_ecommerce/features/checkout/widgets/wallet_payment_widget.dart';
+import 'package:flutter_sixvalley_ecommerce/features/kyc/widgets/kyc_required_dialog.dart';
 import 'package:provider/provider.dart';
 
 class CheckoutScreen extends StatefulWidget {
@@ -245,6 +246,13 @@ class CheckoutScreenState extends State<CheckoutScreen> {
                                       !orderProvider.isAcceptTerms)
                                   ? null
                                   : () async {
+                                      final bool kycAllowed =
+                                          await ensureKycAllowsCheckout(
+                                              context);
+                                      if (!kycAllowed || !context.mounted) {
+                                        return;
+                                      }
+
                                       if (_requiresShippingAddress &&
                                           orderProvider.addressIndex == null) {
                                         RouterHelper.getSavedAddressListRoute(

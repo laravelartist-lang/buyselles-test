@@ -29,6 +29,7 @@
 			<array>
 				<string>com.googleusercontent.apps.975837518429-q55pudr659qujnlnkajhaeesqpqf1slk</string>
 				<string>buyselles</string>
+				<string>buyselles-kyc</string>
 			</array>
 		</dict>
 	</array>
@@ -74,6 +75,8 @@
 
 	<key>NSCameraUsageDescription</key>
 	<string>This app need camera access for taking photo for user profile picture.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>We use the microphone only while recording your identity verification video.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>This app needs access to location to manage delivery address when add a new address.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>

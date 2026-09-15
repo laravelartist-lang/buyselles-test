@@ -23,6 +23,7 @@ use App\Http\Controllers\RestAPI\v1\DealOfTheDayController;
 use App\Http\Controllers\RestAPI\v1\FlashDealController;
 use App\Http\Controllers\RestAPI\v1\GeneralController;
 use App\Http\Controllers\RestAPI\v1\IapController;
+use App\Http\Controllers\RestAPI\v1\KycController;
 use App\Http\Controllers\RestAPI\v1\MapApiController;
 use App\Http\Controllers\RestAPI\v1\NotificationController;
 use App\Http\Controllers\RestAPI\v1\OrderController;
@@ -280,6 +281,12 @@ Route::group(['prefix' => 'v1', 'middleware' => ['api_lang']], function () {
             Route::get('info', 'info');
             Route::put('update-profile', 'update_profile');
             Route::get('account-delete/{id}', 'account_delete');
+        });
+
+        Route::controller(KycController::class)->prefix('kyc')->group(function () {
+            Route::get('status', 'status');
+            Route::post('token', 'token');
+            Route::get('launch-url', 'launchUrl');
         });
 
         Route::controller(\App\Http\Controllers\Customer\DisputeController::class)->prefix('disputes')->group(function () {

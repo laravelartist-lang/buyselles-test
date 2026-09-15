@@ -46,6 +46,8 @@
 	<string>Need BLE permission for getting printers</string>
 	<key>NSCameraUsageDescription</key>
 	<string>This app need camera access for taking photo for user profile picture.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>We use the microphone only while recording your identity verification video.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>This app uses your location to set shop address and delivery-related settings on a map.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
@@ -101,5 +103,16 @@
             </array>
         </dict>
     </dict>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>buyselles-kyc</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

@@ -12,6 +12,8 @@ class AppConstants {
   static const String baseUrl = 'https://buyselles.com';
 
   static const String loginUri = '/api/v3/seller/auth/login';
+  static const String kycStatusUri = '/api/v3/seller/kyc/status';
+  static const String kycLaunchUrlUri = '/api/v3/seller/kyc/launch-url';
   static const String configUri = '/api/v1/config';
   static const String sellerUri = '/api/v3/seller/seller-info';
   static const String sellerAndBankUpdate = '/api/v3/seller/seller-update';

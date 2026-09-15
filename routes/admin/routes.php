@@ -23,6 +23,7 @@ use App\Http\Controllers\Admin\HelpAndSupport\ContactController;
 use App\Http\Controllers\Admin\HelpAndSupport\HelpTopicController;
 use App\Http\Controllers\Admin\HelpAndSupport\SupportTicketController;
 use App\Http\Controllers\Admin\InhouseProductSaleController;
+use App\Http\Controllers\Admin\KycManagementController;
 use App\Http\Controllers\Admin\Notification\NotificationController;
 use App\Http\Controllers\Admin\Notification\PushNotificationSettingsController;
 use App\Http\Controllers\Admin\Order\OrderController;
@@ -337,6 +338,16 @@ Route::group(['prefix' => 'admin', 'as' => 'admin.', 'middleware' => ['admin', '
     });
 
     // Category
+    Route::group(['prefix' => 'kyc', 'as' => 'kyc.'], function () {
+        Route::controller(KycManagementController::class)->group(function () {
+            Route::get('/', 'index')->name('index');
+            Route::get('settings', 'settings')->name('settings');
+            Route::post('settings', 'updateSettings')->name('settings.update');
+            Route::post('{id}/sync', 'sync')->name('sync');
+            Route::post('{id}/reset', 'reset')->name('reset');
+        });
+    });
+
     Route::group(['prefix' => 'category', 'as' => 'category.', 'middleware' => ['module:product_management']], function () {
         Route::controller(CategoryController::class)->group(function () {
             Route::get('view', 'index')->name('view');

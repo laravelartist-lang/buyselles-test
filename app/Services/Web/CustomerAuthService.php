@@ -6,11 +6,23 @@ use App\Traits\EmailTemplateTrait;
 use App\Utils\Helpers;
 use App\Utils\SMSModule;
 use Exception;
+use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 
 class CustomerAuthService
 {
     use EmailTemplateTrait;
+
+    /**
+     * @var list<string>
+     */
+    private const BLOCKED_RETURN_PATH_PATTERNS = [
+        'admin/*',
+        'vendor/*',
+        'login/*',
+        'customer/auth/*',
+        'authentication-failed*',
+    ];
 
     public function getCustomerVerificationToken(): string
     {
@@ -106,24 +118,87 @@ class CustomerAuthService
         ];
     }
 
+    public function customerDashboardUrl(): string
+    {
+        return route('home');
+    }
+
+    public function sanitizeCustomerReturnUrl(?string $url): ?string
+    {
+        if ($url === null) {
+            return null;
+        }
+
+        $url = trim($url);
+
+        if ($url === '') {
+            return null;
+        }
+
+        if (str_starts_with($url, '/')) {
+            $url = url($url);
+        }
+
+        $appHost = parse_url(url('/'), PHP_URL_HOST);
+        $urlHost = parse_url($url, PHP_URL_HOST);
+
+        if ($urlHost !== null && $appHost !== null && $urlHost !== $appHost) {
+            return null;
+        }
+
+        $path = parse_url($url, PHP_URL_PATH) ?? '/';
+        $request = Request::create($path);
+
+        if ($request->is(self::BLOCKED_RETURN_PATH_PATTERNS)) {
+            return null;
+        }
+
+        return $url;
+    }
+
+    public function rememberCustomerReturnUrl(?string $url): void
+    {
+        $sanitizedUrl = $this->sanitizeCustomerReturnUrl($url);
+
+        if ($sanitizedUrl !== null) {
+            session()->put('keep_customer_login_redirect_url', $sanitizedUrl);
+
+            return;
+        }
+
+        $this->storeCustomerAuthReturnURL();
+    }
+
     public function storeCustomerAuthReturnURL(): void
     {
         $historyUrls = session('recent_user_routes_history', []);
         if (! empty($historyUrls)) {
-            $lastUrl = end($historyUrls);
-            session()->put('keep_customer_login_redirect_url', $lastUrl);
-        } else {
-            session()->forget('keep_customer_login_redirect_url');
+            $lastUrl = $this->sanitizeCustomerReturnUrl((string) end($historyUrls));
+
+            if ($lastUrl !== null) {
+                session()->put('keep_customer_login_redirect_url', $lastUrl);
+
+                return;
+            }
         }
+
+        session()->forget('keep_customer_login_redirect_url');
     }
 
     public function getCustomerAuthReturnURL(): string
     {
-        $keepReturnUrl = route('home');
         if (session()->has('keep_customer_login_redirect_url')) {
-            $keepReturnUrl = session('keep_customer_login_redirect_url');
+            $sanitizedUrl = $this->sanitizeCustomerReturnUrl(
+                (string) session('keep_customer_login_redirect_url')
+            );
+
+            if ($sanitizedUrl !== null) {
+                return $sanitizedUrl;
+            }
+
+            session()->forget('keep_customer_login_redirect_url');
         }
 
-        return $keepReturnUrl;
+        return $this->customerDashboardUrl();
     }
 }
