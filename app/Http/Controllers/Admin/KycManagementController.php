@@ -108,8 +108,8 @@ class KycManagementController extends BaseController
         }
 
         try {
-            $this->kycService->syncFromSumsub($verification);
-            ToastMagic::success(translate('updated_successfully'));
+            $this->kycService->queueSyncFromSumsub($verification);
+            ToastMagic::success(translate('kyc_refresh_queued'));
         } catch (Throwable $exception) {
             report($exception);
             ToastMagic::error(translate('something_went_wrong'));

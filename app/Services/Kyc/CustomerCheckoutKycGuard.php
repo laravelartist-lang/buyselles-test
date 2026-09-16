@@ -3,7 +3,6 @@
 namespace App\Services\Kyc;
 
 use App\Models\KycVerification;
-use App\Models\User;
 use Illuminate\Http\Request;
 
 /**
@@ -24,7 +23,9 @@ class CustomerCheckoutKycGuard
      */
     public function blockReason(mixed $user, Request $request): ?array
     {
-        if (! $this->kycService->isEnabled() || ! $user instanceof User) {
+        // Guest checkouts resolve to the string 'offline', and the KYC service
+        // accepts either of the two user models the guards can hand back.
+        if (! $this->kycService->isEnabled() || $this->kycService->resolveCustomerId($user) === null) {
             return null;
         }
 

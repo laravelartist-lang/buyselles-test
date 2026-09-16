@@ -74,6 +74,9 @@ class SumsubWebhookTest extends TestCase
         $this->assertSame('GREEN', $verification->review_answer);
         $this->assertNotNull($verification->verified_at);
         $this->assertNotNull($verification->last_synced_at);
+
+        // Sumsub sends applicantId here - the admin Reset action needs it.
+        $this->assertSame('app-123', $verification->applicant_id);
     }
 
     public function test_a_signed_rejection_webhook_records_the_reason(): void

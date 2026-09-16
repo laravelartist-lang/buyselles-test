@@ -11767,6 +11767,7 @@ return [
     'kyc_verification_required' => 'KYC verification required',
     'kyc_document_requirements' => 'Accepted documents: passport, national ID card or driving licence, plus a face scan',
     'kyc_documents_and_face_scan_required' => 'You will need a passport, national ID card or driving licence, and to complete a face scan',
+    'kyc_refresh_queued' => 'KYC refresh queued, the status will update shortly',
     'start_verification' => 'Start verification',
     'continue_verification' => 'Continue verification',
     'total_purchase' => 'Total purchase',
@@ -11820,4 +11821,6 @@ return [
     'please_wait' => 'Please wait',
     'Pay_offline' => 'Pay offline',
     'Order_verification_code' => 'Order verification code',
+    'Your_existing_session_token_does_not_authorize_you_any_more' => 'Your existing session token does not authorize you any more',
+    'the_account_is_suspended' => 'The account is suspended',
 ];

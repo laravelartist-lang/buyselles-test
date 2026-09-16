@@ -4,9 +4,11 @@ namespace App\Services\Kyc;
 
 use App\Enums\KycStatus;
 use App\Enums\KycUserType;
+use App\Jobs\SyncKycVerificationJob;
 use App\Models\KycVerification;
 use App\Models\Order;
 use App\Models\User;
+use App\User as AuthenticatedUser;
 use App\Utils\OrderManager;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -87,10 +89,28 @@ class KycService
     }
 
     /**
+     * Resolve the acting customer's id from whichever user model holds them.
+     *
+     * The `customer` and `api` guards are backed by the legacy `App\User`
+     * model (see config/auth.php) while factories and newer controllers use
+     * `App\Models\User`. They are unrelated classes over the same `users`
+     * table, so every customer decision has to accept either one - checking
+     * for a single class silently lets real customers through.
+     */
+    public function resolveCustomerId(mixed $user): ?int
+    {
+        if ($user instanceof User || $user instanceof AuthenticatedUser) {
+            return (int) $user->id;
+        }
+
+        return null;
+    }
+
+    /**
      * Resolve a customer's verification record, arming the requirement as soon
      * as their lifetime purchases already crossed the threshold.
      */
-    public function evaluateCustomerStatus(User $user): KycVerification
+    public function evaluateCustomerStatus(User|AuthenticatedUser $user): KycVerification
     {
         $verification = $this->ensureVerification(KycUserType::CUSTOMER, $user->id);
 
@@ -161,11 +181,13 @@ class KycService
      */
     public function requiresCustomerVerification(mixed $user, float $pendingAmount = 0.0): bool
     {
-        if (! $this->isEnabled() || ! $user instanceof User) {
+        $customerId = $this->resolveCustomerId($user);
+
+        if (! $this->isEnabled() || $customerId === null) {
             return false;
         }
 
-        $verification = $this->findVerification(KycUserType::CUSTOMER, $user->id);
+        $verification = $this->findVerification(KycUserType::CUSTOMER, $customerId);
 
         if ($verification?->isApproved()) {
             return false;
@@ -177,7 +199,7 @@ class KycService
             return true;
         }
 
-        return ($this->customerPurchaseTotal($user->id) + $pendingAmount) >= $this->purchaseThreshold();
+        return ($this->customerPurchaseTotal($customerId) + $pendingAmount) >= $this->purchaseThreshold();
     }
 
     /**
@@ -196,11 +218,12 @@ class KycService
     public function evaluateCustomerCheckout(mixed $user, float $pendingAmount = 0.0): array
     {
         $threshold = $this->purchaseThreshold();
-        $purchaseTotal = $user instanceof User ? $this->customerPurchaseTotal($user->id) : 0.0;
+        $customerId = $this->resolveCustomerId($user);
+        $purchaseTotal = $customerId === null ? 0.0 : $this->customerPurchaseTotal($customerId);
 
         $required = $this->requiresCustomerVerification($user, $pendingAmount);
 
-        if (! $required) {
+        if (! $required || $customerId === null) {
             return [
                 'allowed' => true,
                 'required' => false,
@@ -212,7 +235,7 @@ class KycService
             ];
         }
 
-        $verification = $this->ensureVerification(KycUserType::CUSTOMER, $user->id, required: true);
+        $verification = $this->ensureVerification(KycUserType::CUSTOMER, $customerId, required: true);
 
         return [
             'allowed' => false,
@@ -298,6 +321,29 @@ class KycService
     }
 
     /**
+     * Ask for a Sumsub refresh without blocking the current request.
+     *
+     * Every surface (web storefront, customer app, vendor app and the admin
+     * panel) polls this, so the API call is handed to SyncKycVerificationJob.
+     * The local mirror is returned untouched and the caller - and its own
+     * polling loop - picks the new state up once the job has run.
+     *
+     * Callers decide when a refresh is worth asking for; the polling surfaces
+     * skip verifications that are already approved, while the admin Sync
+     * action forces one.
+     */
+    public function queueSyncFromSumsub(KycVerification $verification): KycVerification
+    {
+        if (! $this->sumsub->isConfigured()) {
+            return $verification;
+        }
+
+        SyncKycVerificationJob::dispatch($verification->id);
+
+        return $verification;
+    }
+
+    /**
      * Apply an applicant payload (from polling or from a webhook).
      *
      * @param  array<string, mixed>  $payload
@@ -306,7 +352,7 @@ class KycService
     {
         $status = $this->sumsub->mapStatus($payload);
 
-        $verification->applicant_id = $payload['id'] ?? $verification->applicant_id;
+        $verification->applicant_id = $payload['applicantId'] ?? $payload['id'] ?? $verification->applicant_id;
         $verification->level_name = $payload['levelName'] ?? $verification->level_name;
         $verification->status = $status;
         $verification->review_answer = $payload['reviewResult']['reviewAnswer'] ?? null;

@@ -44,7 +44,7 @@ class KycController extends Controller
         $verification = $this->kycService->evaluateCustomerStatus($user);
 
         if (! $verification->isApproved()) {
-            $verification = $this->kycService->syncFromSumsub($verification);
+            $verification = $this->kycService->queueSyncFromSumsub($verification);
         }
 
         return view(VIEW_FILE_NAMES['user_kyc'], [
@@ -116,7 +116,7 @@ class KycController extends Controller
         $verification = $this->kycService->evaluateCustomerStatus($user);
 
         if (! $verification->isApproved()) {
-            $verification = $this->kycService->syncFromSumsub($verification);
+            $verification = $this->kycService->queueSyncFromSumsub($verification);
         }
 
         return response()->json([

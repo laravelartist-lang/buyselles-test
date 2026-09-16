@@ -8,6 +8,7 @@ use App\Http\Resources\Kyc\KycStatusResource;
 use App\Models\User;
 use App\Services\Kyc\KycService;
 use App\Services\Kyc\SumsubService;
+use App\User as AuthenticatedUser;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\URL;
@@ -37,7 +38,7 @@ class KycController extends Controller
         $verification = $this->kycService->evaluateCustomerStatus($user);
 
         if (! $verification->isApproved()) {
-            $verification = $this->kycService->syncFromSumsub($verification);
+            $verification = $this->kycService->queueSyncFromSumsub($verification);
         }
 
         return response()->json([
@@ -117,10 +118,18 @@ class KycController extends Controller
         ]);
     }
 
-    private function customer(Request $request): ?User
+    /**
+     * The `api` guard is backed by the legacy `App\User` model, so both
+     * user models have to be treated as a signed-in customer.
+     */
+    private function customer(Request $request): User|AuthenticatedUser|null
     {
         $user = $request->user() ?? $request['user'] ?? null;
 
-        return $user instanceof User ? $user : null;
+        if ($user instanceof User || $user instanceof AuthenticatedUser) {
+            return $user;
+        }
+
+        return null;
     }
 }

@@ -37,7 +37,7 @@ class KycController extends Controller
         $verification = $this->kycService->ensureVerification(KycUserType::VENDOR, $vendor->id);
 
         if (! $verification->isApproved()) {
-            $verification = $this->kycService->syncFromSumsub($verification);
+            $verification = $this->kycService->queueSyncFromSumsub($verification);
         }
 
         return response()->json([
