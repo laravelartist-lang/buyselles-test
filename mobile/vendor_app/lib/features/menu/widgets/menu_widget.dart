@@ -32,8 +32,7 @@ import 'package:sixvalley_vendor_app/features/shop/screens/shop_screen.dart';
 import 'package:sixvalley_vendor_app/features/wallet/screens/wallet_screen.dart';
 import 'package:sixvalley_vendor_app/features/wallet_transfer/screens/wallet_transfer_screen.dart';
 import 'package:sixvalley_vendor_app/features/bank_info/screens/bank_info_screen.dart';
-
-import '../../../main.dart';
+import 'package:sixvalley_vendor_app/features/kyc/widgets/kyc_required_dialog.dart';
 
 class MenuBottomSheetWidget extends StatefulWidget {
   const MenuBottomSheetWidget({super.key});
@@ -168,6 +167,7 @@ class _MenuBottomSheetWidgetState extends State<MenuBottomSheetWidget> {
                   onTap: () => _handleMenuTap(
                     context,
                     HtmlViewScreen(page: getPageBySlug('terms-and-conditions', splashController.defaultBusinessPages)),
+                    requiresKyc: false,
                   ),
                 ),
               if (getPageBySlug('about-us', splashController.defaultBusinessPages) != null)
@@ -177,6 +177,7 @@ class _MenuBottomSheetWidgetState extends State<MenuBottomSheetWidget> {
                   onTap: () => _handleMenuTap(
                     context,
                     HtmlViewScreen(page: getPageBySlug('about-us', splashController.defaultBusinessPages)),
+                    requiresKyc: false,
                   ),
                 ),
               if (getPageBySlug('privacy-policy', splashController.defaultBusinessPages) != null)
@@ -186,6 +187,7 @@ class _MenuBottomSheetWidgetState extends State<MenuBottomSheetWidget> {
                   onTap: () => _handleMenuTap(
                     context,
                     HtmlViewScreen(page: getPageBySlug('privacy-policy', splashController.defaultBusinessPages)),
+                    requiresKyc: false,
                   ),
                 ),
               if (getPageBySlug('refund-policy', splashController.defaultBusinessPages) != null)
@@ -195,6 +197,7 @@ class _MenuBottomSheetWidgetState extends State<MenuBottomSheetWidget> {
                   onTap: () => _handleMenuTap(
                     context,
                     HtmlViewScreen(page: getPageBySlug('refund-policy', splashController.defaultBusinessPages)),
+                    requiresKyc: false,
                   ),
                 ),
               if (getPageBySlug('return-policy', splashController.defaultBusinessPages) != null)
@@ -204,6 +207,7 @@ class _MenuBottomSheetWidgetState extends State<MenuBottomSheetWidget> {
                   onTap: () => _handleMenuTap(
                     context,
                     HtmlViewScreen(page: getPageBySlug('return-policy', splashController.defaultBusinessPages)),
+                    requiresKyc: false,
                   ),
                 ),
               if (getPageBySlug('cancellation-policy', splashController.defaultBusinessPages) != null)
@@ -213,6 +217,7 @@ class _MenuBottomSheetWidgetState extends State<MenuBottomSheetWidget> {
                   onTap: () => _handleMenuTap(
                     context,
                     HtmlViewScreen(page: getPageBySlug('cancellation-policy', splashController.defaultBusinessPages)),
+                    requiresKyc: false,
                   ),
                 ),
               CustomBottomSheetWidget(
@@ -280,12 +285,28 @@ class _MenuBottomSheetWidgetState extends State<MenuBottomSheetWidget> {
     );
   }
 
-  void _handleMenuTap(BuildContext context, Widget screen) {
+  Future<void> _handleMenuTap(
+    BuildContext context,
+    Widget screen, {
+    bool requiresKyc = true,
+  }) async {
     Navigator.pop(context);
-    Future.microtask(() => Navigator.push(
-          Get.context!,
-          MaterialPageRoute(builder: (_) => screen),
-        ));
+
+    if (requiresKyc) {
+      final bool allowed = await ensureKycAllowsVendorAction(context);
+      if (!allowed || !context.mounted) {
+        return;
+      }
+    }
+
+    if (!context.mounted) {
+      return;
+    }
+
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => screen),
+    );
   }
 
   BusinessPageModel? getPageBySlug(String slug, List<BusinessPageModel>? pagesList) {

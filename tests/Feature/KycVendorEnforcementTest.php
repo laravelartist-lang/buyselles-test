@@ -108,16 +108,66 @@ class KycVendorEnforcementTest extends TestCase
         $this->assertNotSame(route('vendor.auth.login'), $response->headers->get('Location'));
     }
 
-    public function test_the_vendor_app_is_closed_until_kyc_is_approved(): void
+    public function test_the_vendor_app_allows_dashboard_preview_before_kyc_is_approved(): void
     {
         $seller = $this->vendor();
 
-        $response = $this->withHeader('Authorization', 'Bearer '.$seller->auth_token)
-            ->getJson('api/v3/seller/seller-info');
+        $reached = false;
 
-        $response->assertStatus(403);
-        $response->assertJson(['kyc_required' => true]);
-        $response->assertJsonPath('kyc.status', KycStatus::NOT_STARTED);
+        $response = app(SellerApiKycMiddleware::class)->handle(
+            $this->vendorApiRequest('api/v3/seller/seller-info', 'GET', $seller),
+            function () use (&$reached): Response {
+                $reached = true;
+
+                return new Response('preview');
+            }
+        );
+
+        $this->assertTrue($reached, 'Dashboard preview GET was blocked before KYC approval.');
+        $this->assertSame('preview', $response->getContent());
+    }
+
+    public function test_the_vendor_app_still_blocks_mutating_routes_until_kyc_is_approved(): void
+    {
+        $seller = $this->vendor();
+
+        $reached = false;
+
+        $response = app(SellerApiKycMiddleware::class)->handle(
+            $this->vendorApiRequest('api/v3/seller/balance-withdraw', 'POST', $seller, ['amount' => 100]),
+            function () use (&$reached): Response {
+                $reached = true;
+
+                return new Response('withdrawn');
+            }
+        );
+
+        $this->assertFalse($reached, 'Mutating vendor routes must stay blocked before KYC approval.');
+        $this->assertSame(403, $response->getStatusCode());
+        $this->assertTrue(json_decode($response->getContent(), true)['kyc_required'] ?? false);
+    }
+
+    public function test_the_vendor_app_allows_read_only_order_list_before_kyc_is_approved(): void
+    {
+        $seller = $this->vendor();
+
+        $reached = false;
+
+        $response = app(SellerApiKycMiddleware::class)->handle(
+            $this->vendorApiRequest('api/v3/seller/orders/list', 'POST', $seller, [
+                'limit' => 10,
+                'offset' => 1,
+                'status' => 'all',
+            ]),
+            function () use (&$reached): Response {
+                $reached = true;
+
+                return new Response('listed');
+            }
+        );
+
+        $this->assertTrue($reached, 'Read-only order list POST was blocked before KYC approval.');
+        $this->assertSame('listed', $response->getContent());
     }
 
     public function test_the_vendor_app_keeps_the_kyc_endpoints_reachable_while_closed(): void
@@ -217,6 +267,18 @@ class KycVendorEnforcementTest extends TestCase
             'status' => $status,
             'auth_token' => bin2hex(random_bytes(24)),
         ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function vendorApiRequest(string $uri, string $method, Seller $seller, array $payload = []): Request
+    {
+        $request = Request::create($uri, $method, $payload);
+        $request->headers->set('Authorization', 'Bearer '.$seller->auth_token);
+        $request->merge(['seller' => $seller]);
+
+        return $request;
     }
 
     private function approveVendor(int $sellerId): void

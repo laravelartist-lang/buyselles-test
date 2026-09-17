@@ -3,6 +3,7 @@ import 'package:sixvalley_vendor_app/common/basewidgets/custom_snackbar_widget.d
 import 'package:sixvalley_vendor_app/data/model/response/base/api_response.dart';
 import 'package:sixvalley_vendor_app/features/kyc/domain/models/kyc_status_model.dart';
 import 'package:sixvalley_vendor_app/features/kyc/domain/services/kyc_service.dart';
+import 'package:sixvalley_vendor_app/helper/kyc_gate_helper.dart';
 import 'package:sixvalley_vendor_app/localization/language_constrants.dart';
 import 'package:sixvalley_vendor_app/main.dart';
 
@@ -33,6 +34,7 @@ class KycController with ChangeNotifier {
     if (apiResponse.response != null &&
         apiResponse.response!.statusCode == 200) {
       _kycStatus = _parseStatus(apiResponse.response!.data);
+      KycGateHelper.applyStatusIfBlocked(_kycStatus);
     } else if (notify) {
       showCustomSnackBarWidget(
         apiResponse.error?.toString() ??
@@ -98,7 +100,24 @@ class KycController with ChangeNotifier {
     return KycStatusModel.fromJson(payload);
   }
 
-  Future<KycStatusModel?> refreshAfterVerification() => getKycStatus();
+  Future<KycStatusModel?> refreshAfterVerification() async {
+    final KycStatusModel? status = await getKycStatus();
+    KycGateHelper.applyStatusIfBlocked(status);
+
+    return status;
+  }
+
+  void applyStatusFromApiData(Map<dynamic, dynamic> data) {
+    _kycStatus = _parseStatus(data);
+    notifyListeners();
+  }
+
+  void clear() {
+    _kycStatus = null;
+    _launchUrl = null;
+    _isLoading = false;
+    notifyListeners();
+  }
 
   void clearLaunchUrl() {
     _launchUrl = null;

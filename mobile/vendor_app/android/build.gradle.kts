@@ -15,6 +15,10 @@ rootProject.layout.buildDirectory.value(newBuildDir)
 subprojects {
     val newSubprojectBuildDir: Directory = newBuildDir.dir(project.name)
     project.layout.buildDirectory.value(newSubprojectBuildDir)
+
+    configurations.configureEach {
+        exclude(group = "com.android.support")
+    }
 }
 
 // Ensure :app is evaluated first

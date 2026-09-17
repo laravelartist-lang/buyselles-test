@@ -7,7 +7,10 @@ import 'package:sixvalley_vendor_app/features/auth/domain/models/register_model.
 import 'package:sixvalley_vendor_app/features/auth/screens/auth_screen.dart';
 import 'package:sixvalley_vendor_app/features/auth/widgets/info_field_widget.dart';
 import 'package:sixvalley_vendor_app/features/auth/widgets/register_successfull_dialog_widget.dart';
+import 'package:sixvalley_vendor_app/features/dashboard/screens/dashboard_screen.dart';
+import 'package:sixvalley_vendor_app/features/kyc/controllers/kyc_controller.dart';
 import 'package:sixvalley_vendor_app/features/shop/controllers/shop_controller.dart';
+import 'package:sixvalley_vendor_app/helper/kyc_gate_helper.dart';
 import 'package:sixvalley_vendor_app/features/splash/controllers/splash_controller.dart';
 import 'package:sixvalley_vendor_app/helper/email_checker.dart';
 import 'package:sixvalley_vendor_app/localization/language_constrants.dart';
@@ -202,23 +205,55 @@ class _RegistrationScreenState extends State<RegistrationScreen> with TickerProv
                             }else if(Provider.of<ShopController>(context, listen: false).tinCertificateFile != null && (( await Provider.of<ShopController>(context, listen: false).tinCertificateFile?.length() ?? 0) > (2 * 1024 * 1024)) ) {
                               showCustomSnackBarWidget(getTranslated('single_file_size_can_not_be_more_than', Get.context!), Get.context!,  sanckBarType: SnackBarType.warning);
                             } else {
+                              final String email =
+                                  authController.emailController.text.trim();
+                              final String password =
+                                  authController.passwordController.text.trim();
                               RegisterModel registerModel =  RegisterModel(
                                 fName: authController.firstNameController.text.trim(),
                                 lName: authController.lastNameController.text.trim(),
                                 phone: "${authController.countryDialCode}${authController.phoneController.text.trim()}",
-                                email: authController.emailController.text.trim(),
-                                password: authController.passwordController.text.trim(),
+                                email: email,
+                                password: password,
                                 confirmPassword: authController.confirmPasswordController.text.trim(),
                                 shopName: authController.shopNameController.text.trim(),
                                 shopAddress: authController.shopAddressController.text.trim(),
                                 businessTin: authController.tinNumberController.text.trim(),
                                 tinExpireDate: Provider.of<ShopController>(Get.context!, listen: false).tinExpireDate?.toString(),
                               );
-                              authController.registration(Get.context!, registerModel, Provider.of<ShopController>(Get.context!, listen: false).tinCertificateFile).then((value){
-                                if(value.response!.statusCode == 200){
-                                  showCupertinoModalPopup( context: Get.context!,
-                                    barrierDismissible: false,
-                                    builder: (_) => const RegisterSuccessfulWidget());
+                              authController.registration(Get.context!, registerModel, Provider.of<ShopController>(Get.context!, listen: false).tinCertificateFile).then((value) async {
+                                if (value.response!.statusCode == 200) {
+                                  final loginResponse = await authController.login(
+                                    Get.context!,
+                                    emailAddress: email,
+                                    password: password,
+                                  );
+
+                                  if (loginResponse.response?.statusCode == 200) {
+                                    KycGateHelper.markGateActive();
+                                    await Provider.of<KycController>(
+                                            Get.context!, listen: false)
+                                        .getKycStatus(notify: false);
+
+                                    if (!Get.context!.mounted) {
+                                      return;
+                                    }
+
+                                    Navigator.pushAndRemoveUntil(
+                                      Get.context!,
+                                      MaterialPageRoute(
+                                        builder: (_) => const DashboardScreen(),
+                                      ),
+                                      (route) => false,
+                                    );
+                                  } else if (Get.context!.mounted) {
+                                    showCupertinoModalPopup(
+                                      context: Get.context!,
+                                      barrierDismissible: false,
+                                      builder: (_) =>
+                                          const RegisterSuccessfulWidget(),
+                                    );
+                                  }
                                 }
                               });
                             }

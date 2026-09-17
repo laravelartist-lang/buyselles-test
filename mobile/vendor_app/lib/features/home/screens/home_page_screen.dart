@@ -15,6 +15,7 @@ import 'package:sixvalley_vendor_app/utill/dimensions.dart';
 import 'package:sixvalley_vendor_app/utill/images.dart';
 import 'package:sixvalley_vendor_app/utill/styles.dart';
 import 'package:sixvalley_vendor_app/features/home/widgets/chart_widget.dart';
+import 'package:sixvalley_vendor_app/features/home/widgets/kyc_home_banner_widget.dart';
 import 'package:sixvalley_vendor_app/features/home/widgets/locale_toggle_widget.dart';
 import 'package:sixvalley_vendor_app/features/home/widgets/completed_order_widget.dart';
 import 'package:sixvalley_vendor_app/features/home/widgets/on_going_order_widget.dart';
@@ -177,6 +178,7 @@ class _HomePageScreenState extends State<HomePageScreen> {
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const SizedBox(height: Dimensions.paddingSizeSmall),
+                      const KycHomeBannerWidget(),
                       OngoingOrderWidget(callback: widget.callback),
 
                       CompletedOrderWidget(callback: widget.callback),

@@ -1,24 +1,22 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import 'package:sixvalley_vendor_app/common/basewidgets/custom_app_bar_widget.dart';
-import 'package:sixvalley_vendor_app/common/basewidgets/custom_button_widget.dart';
 import 'package:sixvalley_vendor_app/features/kyc/controllers/kyc_controller.dart';
 import 'package:sixvalley_vendor_app/features/kyc/domain/models/kyc_status_model.dart';
+import 'package:sixvalley_vendor_app/features/profile/controllers/profile_controller.dart';
+import 'package:sixvalley_vendor_app/helper/kyc_gate_helper.dart';
 import 'package:sixvalley_vendor_app/localization/language_constrants.dart';
 import 'package:sixvalley_vendor_app/main.dart';
 import 'package:sixvalley_vendor_app/utill/dimensions.dart';
 import 'package:sixvalley_vendor_app/utill/styles.dart';
-import 'package:url_launcher/url_launcher.dart';
 
-/// Identity verification is mandatory before a vendor can use the app.
-///
-/// The backend mints a signed Sumsub launch URL for this vendor and the flow
-/// runs in the system browser, where the camera based liveness check has the
-/// permissions it needs. The status is shared with the web dashboard, so the
-/// vendor is unblocked everywhere the moment Sumsub approves them.
+/// In-app Sumsub verification via a backend-signed launch URL (same contract
+/// as the customer app). Completion is signalled through `buyselles-kyc://`.
 class KycVerificationScreen extends StatefulWidget {
   const KycVerificationScreen({super.key, this.showAppBar = true});
 
@@ -28,66 +26,18 @@ class KycVerificationScreen extends StatefulWidget {
   State<KycVerificationScreen> createState() => _KycVerificationScreenState();
 }
 
-class _KycVerificationScreenState extends State<KycVerificationScreen>
-    with WidgetsBindingObserver {
-  bool _isOpening = false;
+class _KycVerificationScreenState extends State<KycVerificationScreen> {
+  bool _requestingLaunchUrl = true;
+  bool _finished = false;
+  String? _errorMessage;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _prepare());
   }
 
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    super.dispose();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    // The verification happens in the browser - refresh as soon as the vendor
-    // comes back so an approved result unlocks the app immediately.
-    if (state == AppLifecycleState.resumed && mounted) {
-      _refreshStatus();
-    }
-  }
-
-  Future<void> _load() async {
-    if (!mounted) {
-      return;
-    }
-
-    await Provider.of<KycController>(Get.context!, listen: false)
-        .getKycStatus();
-  }
-
-  Future<void> _refreshStatus() async {
-    if (!mounted) {
-      return;
-    }
-
-    final KycStatusModel? status =
-        await Provider.of<KycController>(Get.context!, listen: false)
-            .refreshAfterVerification();
-
-    if (!mounted) {
-      return;
-    }
-
-    if (status?.isApproved == true && status?.awaitsAdminApproval != true) {
-      Navigator.of(Get.context!).maybePop(true);
-    }
-  }
-
-  Future<void> _startVerification() async {
-    if (_isOpening) {
-      return;
-    }
-
-    setState(() => _isOpening = true);
-
+  Future<void> _prepare() async {
     await _requestCameraPermission();
 
     if (!mounted) {
@@ -102,26 +52,19 @@ class _KycVerificationScreenState extends State<KycVerificationScreen>
       return;
     }
 
-    setState(() => _isOpening = false);
-
-    if (launchUrl == null || launchUrl.isEmpty) {
-      return;
-    }
-
-    final bool opened = await launchUrlInBrowser(launchUrl);
-
-    if (!opened && mounted) {
-      ScaffoldMessenger.of(Get.context!).showSnackBar(
-        SnackBar(
-          content: Text(
-            getTranslated('kyc_could_not_be_started', Get.context!) ?? '',
-          ),
-        ),
-      );
-    }
+    setState(() {
+      _requestingLaunchUrl = false;
+      _errorMessage = launchUrl == null
+          ? getTranslated('kyc_could_not_be_started', Get.context!)
+          : null;
+    });
   }
 
   Future<void> _requestCameraPermission() async {
+    if (kIsWeb) {
+      return;
+    }
+
     try {
       if (Platform.isAndroid || Platform.isIOS) {
         await Permission.camera.request();
@@ -131,139 +74,184 @@ class _KycVerificationScreenState extends State<KycVerificationScreen>
     }
   }
 
+  bool _handleBridgeUrl(WebUri? uri) {
+    if (uri == null || uri.scheme != 'buyselles-kyc') {
+      return false;
+    }
+
+    final String status = uri.queryParameters['status'] ?? 'pending';
+    final bool cancelled = uri.host == 'cancelled';
+
+    if (_finished) {
+      return true;
+    }
+
+    _finished = true;
+
+    Future<void>.delayed(const Duration(milliseconds: 100), () async {
+      if (!mounted) {
+        return;
+      }
+
+      final KycStatusModel? refreshed =
+          await Provider.of<KycController>(Get.context!, listen: false)
+              .refreshAfterVerification();
+
+      if (!mounted) {
+        return;
+      }
+
+      if (refreshed?.isApproved == true &&
+          refreshed?.awaitsAdminApproval != true) {
+        KycGateHelper.reset();
+      }
+
+      Navigator.of(Get.context!).pop(
+        KycVerificationResult(cancelled: cancelled, status: status),
+      );
+    });
+
+    return true;
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: widget.showAppBar
-          ? CustomAppBarWidget(
-              title: getTranslated('kyc_verification', context),
-              isBackButtonExist: Navigator.of(context).canPop(),
-            )
-          : null,
-      body: Consumer<KycController>(
-        builder: (context, kycController, _) {
-          if (kycController.isLoading && kycController.kycStatus == null) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          final KycStatusModel? status = kycController.kycStatus;
-
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(Dimensions.paddingSizeDefault),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                const SizedBox(height: Dimensions.paddingSizeLarge),
-                Icon(
-                  status?.isApproved == true
-                      ? Icons.verified_user
-                      : Icons.verified_user_outlined,
-                  size: 72,
-                  color: status?.isApproved == true
-                      ? Colors.green
-                      : Theme.of(context).primaryColor,
-                ),
-                const SizedBox(height: Dimensions.paddingSizeSmall),
-                const SizedBox(height: Dimensions.paddingSizeDefault),
-                Text(
-                  _statusTitle(status),
-                  textAlign: TextAlign.center,
-                  style: titilliumSemiBold.copyWith(
-                      fontSize: Dimensions.fontSizeExtraLarge,
-                      color: Theme.of(context).textTheme.titleLarge?.color),
-                ),
-                const SizedBox(height: Dimensions.paddingSizeSmall),
-                Text(
-                  _statusDescription(status),
-                  textAlign: TextAlign.center,
-                  style: titilliumRegular.copyWith(
-                      fontSize: Dimensions.fontSizeDefault,
-                      height: 1.5,
-                      color: Theme.of(context).hintColor),
-                ),
-                const SizedBox(height: Dimensions.paddingSizeLarge),
-                if (status?.isApproved != true)
-                  CustomButtonWidget(
-                    isLoading: _isOpening,
-                    btnTxt: getTranslated(
-                        status?.needsResubmission == true
-                            ? 'start_verification'
-                            : 'verify_now',
-                        context),
-                    onTap: status?.isPending == true
-                        ? _refreshStatus
-                        : _startVerification,
-                  ),
-                if (status?.isPending == true) ...[
-                  const SizedBox(height: Dimensions.paddingSizeSmall),
-                  TextButton(
-                    onPressed: _refreshStatus,
-                    child: Text(
-                      getTranslated('try_again', context) ?? '',
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          );
-        },
+    return PopScope(
+      canPop: true,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) {
+          Provider.of<KycController>(Get.context!, listen: false)
+              .clearLaunchUrl();
+        }
+      },
+      child: Scaffold(
+        appBar: widget.showAppBar
+            ? CustomAppBarWidget(
+                title: getTranslated('kyc_verification', context),
+                isBackButtonExist: Navigator.of(context).canPop(),
+              )
+            : null,
+        body: _buildBody(context),
       ),
     );
   }
 
-  String _statusTitle(KycStatusModel? status) {
-    if (status?.isApproved == true) {
-      return getTranslated('kyc_verified', Get.context!) ?? '';
+  Widget _buildBody(BuildContext context) {
+    final KycController kycController =
+        Provider.of<KycController>(context, listen: true);
+    final String? launchUrl = kycController.launchUrl;
+
+    if (_requestingLaunchUrl) {
+      return Center(
+        child: CircularProgressIndicator(
+          valueColor:
+              AlwaysStoppedAnimation<Color>(Theme.of(context).primaryColor),
+        ),
+      );
     }
 
-
-    if (status?.isPending == true) {
-      return getTranslated('kyc_under_review', Get.context!) ?? '';
+    if (_errorMessage != null || launchUrl == null || launchUrl.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(Dimensions.paddingSizeLarge),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.verified_user_outlined,
+                size: 56,
+                color: Theme.of(context).colorScheme.error,
+              ),
+              const SizedBox(height: Dimensions.paddingSizeSmall),
+              Text(
+                _errorMessage ??
+                    getTranslated('kyc_could_not_be_started', Get.context!) ??
+                    '',
+                textAlign: TextAlign.center,
+                style: titilliumRegular.copyWith(
+                  color: Theme.of(context).hintColor,
+                  fontSize: Dimensions.fontSizeDefault,
+                ),
+              ),
+              const SizedBox(height: Dimensions.paddingSizeLarge),
+              OutlinedButton(
+                onPressed: () async {
+                  setState(() {
+                    _requestingLaunchUrl = true;
+                    _errorMessage = null;
+                  });
+                  await _prepare();
+                },
+                child: Text(getTranslated('try_again', Get.context!) ?? ''),
+              ),
+            ],
+          ),
+        ),
+      );
     }
 
-    return getTranslated('complete_identity_verification', Get.context!) ?? '';
-  }
+    return InAppWebView(
+      initialUrlRequest: URLRequest(url: WebUri(launchUrl)),
+      initialSettings: InAppWebViewSettings(
+        javaScriptEnabled: true,
+        domStorageEnabled: true,
+        mediaPlaybackRequiresUserGesture: false,
+        useShouldOverrideUrlLoading: true,
+        isInspectable: kDebugMode,
+      ),
+      onPermissionRequest: (controller, request) async {
+        return PermissionResponse(
+          resources: request.resources,
+          action: PermissionResponseAction.GRANT,
+        );
+      },
+      shouldOverrideUrlLoading: (controller, action) async {
+        if (_handleBridgeUrl(action.request.url)) {
+          return NavigationActionPolicy.CANCEL;
+        }
 
-  String _statusDescription(KycStatusModel? status) {
-    if (status?.awaitsAdminApproval == true) {
-      return getTranslated(
-              'your_account_is_in_review_process', Get.context!) ??
-          '';
-    }
-
-    if (status?.isApproved == true) {
-      return getTranslated('your_account_is_verified', Get.context!) ?? '';
-    }
-
-    if (status?.isPending == true) {
-      return getTranslated(
-              'your_kyc_verification_is_under_review', Get.context!) ??
-          '';
-    }
-
-    if (status?.needsResubmission == true) {
-      return status?.rejectionReason ??
-          getTranslated(
-              'your_kyc_verification_was_rejected_please_submit_again',
-              Get.context!) ??
-          '';
-    }
-
-    return getTranslated(
-            'please_complete_your_kyc_verification_to_continue',
-            Get.context!) ??
-        '';
+        return NavigationActionPolicy.ALLOW;
+      },
+    );
   }
 }
 
-/// Opens [url] outside the app so the KYC camera step has the browser's
-/// permissions. Returns false when no browser could handle the URL.
-Future<bool> launchUrlInBrowser(String url) async {
-  final Uri? uri = Uri.tryParse(url);
+class KycVerificationResult {
+  final bool cancelled;
+  final String? status;
 
-  if (uri == null) {
-    return false;
+  KycVerificationResult({required this.cancelled, this.status});
+
+  bool get isApproved => status == 'green' || status == 'approved';
+}
+
+/// Opens in-app KYC verification. Returns true when the vendor is verified.
+Future<bool> openKycVerification(BuildContext context) async {
+  final KycController kycController =
+      Provider.of<KycController>(context, listen: false);
+
+  final KycVerificationResult? result =
+      await Navigator.of(context).push<KycVerificationResult>(
+    MaterialPageRoute(
+      settings: const RouteSettings(name: KycGateHelper.routeName),
+      builder: (_) => const KycVerificationScreen(),
+    ),
+  );
+
+  if (result == null) {
+    return kycController.isVerified;
   }
 
-  return launchUrl(uri, mode: LaunchMode.externalApplication);
+  final KycStatusModel? status = await kycController.refreshAfterVerification();
+
+  if (status?.isApproved == true && status?.awaitsAdminApproval != true) {
+    KycGateHelper.reset();
+
+    if (Get.context != null) {
+      await Provider.of<ProfileController>(Get.context!, listen: false)
+          .getSellerInfo();
+    }
+  }
+
+  return status?.isApproved ?? false;
 }

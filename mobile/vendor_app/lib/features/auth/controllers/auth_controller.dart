@@ -16,8 +16,10 @@ import 'package:sixvalley_vendor_app/features/auth/screens/otp_verification_scre
 import 'package:sixvalley_vendor_app/features/auth/widgets/reset_password_widget.dart';
 import 'package:sixvalley_vendor_app/features/shop/controllers/shop_controller.dart';
 import 'package:sixvalley_vendor_app/features/splash/domain/models/config_model.dart';
+import 'package:sixvalley_vendor_app/features/kyc/controllers/kyc_controller.dart';
 import 'package:sixvalley_vendor_app/helper/api_checker.dart';
 import 'package:sixvalley_vendor_app/helper/image_size_checker.dart';
+import 'package:sixvalley_vendor_app/helper/kyc_gate_helper.dart';
 import 'package:sixvalley_vendor_app/localization/app_localization.dart';
 import 'package:sixvalley_vendor_app/localization/language_constrants.dart';
 import 'package:sixvalley_vendor_app/main.dart';
@@ -189,6 +191,10 @@ class AuthController with ChangeNotifier {
       if (kDebugMode) {
         print("===Inside==fromUnAuthorizationError");
       }
+    }
+    KycGateHelper.reset();
+    if (Get.context != null) {
+      Provider.of<KycController>(Get.context!, listen: false).clear();
     }
     Provider.of<ShopController>(Get.context!, listen: false).clearShopModel();
     return await authServiceInterface.clearSharedData();

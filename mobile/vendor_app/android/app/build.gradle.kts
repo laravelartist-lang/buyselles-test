@@ -68,7 +68,11 @@ android {
 }
 
 // shared_preferences_android pulls datastore 1.2.0; its native .so breaks 16 KB page devices.
+// barcode_scan2 -> me.dm7.barcodescanner:zxing still declares com.android.support; AndroidX
+// already ships the same android.support.v4 shim classes, so keep only AndroidX on the classpath.
 configurations.all {
+    exclude(group = "com.android.support")
+
     resolutionStrategy {
         force("androidx.datastore:datastore:1.2.1")
         force("androidx.datastore:datastore-android:1.2.1")
