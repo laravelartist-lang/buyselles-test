@@ -63,6 +63,11 @@ Future<bool> showKycRequiredDialog(
         ),
         if (canStartVerification)
           ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Theme.of(dialogContext).primaryColor,
+              foregroundColor: Colors.white,
+              elevation: 0,
+            ),
             onPressed: () => Navigator.of(dialogContext).pop(true),
             child: Text(
               getTranslated('verify_now', dialogContext) ?? 'Verify now',
