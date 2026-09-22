@@ -4,7 +4,10 @@ import '../features/shop/domain/models/guideline_model.dart';
 
 class AppConstants {
   static const String appName = 'Vendor App'; ///Flutter SDK 3.41.1
-  static const String appVersion = '16.1';
+  static const String appVersion = '1.0.1';
+  static const String appBuildNumber = '7';
+
+  static String get appVersionDisplay => '$appVersion ($appBuildNumber)';
   static const String companyName = 'Buyselles';
   static const bool demo = false;
   static const int imageQuality = 100;

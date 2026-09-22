@@ -151,7 +151,7 @@ class ProfileScreenViewState extends State<ProfileScreenView> {
                       Text(getTranslated('app_version', context)!),
                       const Padding(
                         padding: EdgeInsets.only(left: Dimensions.fontSizeExtraSmall),
-                        child: Text(AppConstants.appVersion),
+                        child: Text(AppConstants.appVersionDisplay),
                       ),
                     ],
                   ),

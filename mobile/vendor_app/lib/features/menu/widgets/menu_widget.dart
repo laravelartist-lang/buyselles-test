@@ -235,7 +235,7 @@ class _MenuBottomSheetWidgetState extends State<MenuBottomSheetWidget> {
               ),
               CustomBottomSheetWidget(
                 image: Images.appInfo,
-                title: 'v - ${AppConstants.appVersion}',
+                title: 'v - ${AppConstants.appVersionDisplay}',
                 onTap: () {},
               ),
             ];

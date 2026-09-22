@@ -1,6 +1,6 @@
 # Buyselles Vendor — App Store Review Notes
 
-**Version:** 1.0.0 (build **6**) — marketing version unchanged; build number incremented for resubmission.
+**Version:** 1.0.1 (build **7**) — synced with `pubspec.yaml`.
 
 Use this text in **App Review Information** when submitting to App Store Connect.
 
