@@ -17,6 +17,7 @@ class SupplierOrderEligibilityService
         'failed',
         'canceled',
         'returned',
+        'pending_review',
     ];
 
     /** @var string[] */

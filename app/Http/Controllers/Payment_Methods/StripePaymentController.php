@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Payment_Methods;
 
 use App\Models\PaymentRequest;
+use App\Services\Order\PendingReviewHoldService;
+use App\Services\Supplier\SupplierAvailabilityService;
 use App\Traits\Processor;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Contracts\View\Factory;
@@ -22,8 +24,11 @@ class StripePaymentController extends Controller
 
     private PaymentRequest $payment;
 
-    public function __construct(PaymentRequest $payment)
-    {
+    public function __construct(
+        PaymentRequest $payment,
+        private readonly SupplierAvailabilityService $supplierAvailability,
+        private readonly PendingReviewHoldService $pendingReviewHold,
+    ) {
         $config = $this->payment_config('stripe', 'payment_config');
         if (! is_null($config) && $config->mode == 'live') {
             $this->config_values = json_decode($config->live_values);
@@ -58,6 +63,17 @@ class StripePaymentController extends Controller
         if (! isset($data)) {
             return response()->json($this->response_formatter(GATEWAYS_DEFAULT_204), 200);
         }
+
+        $availability = $this->supplierAvailability->checkPaymentRequest($data);
+        if (! $availability->ok) {
+            return response()->json([
+                'errors' => [
+                    'code' => 'supplier-stock',
+                    'message' => $availability->errorMessage(),
+                ],
+            ], 403);
+        }
+
         $payment_amount = $data['payment_amount'];
 
         Stripe::setApiKey($this->config_values->api_key);
@@ -108,9 +124,18 @@ class StripePaymentController extends Controller
             ]);
 
             $data = $this->payment::where(['id' => $request['payment_id']])->first();
+            $availability = $this->supplierAvailability->checkPaymentRequest($data);
 
             if (isset($data) && function_exists($data->success_hook)) {
                 call_user_func($data->success_hook, $data);
+            }
+
+            if (isset($data) && ! $availability->ok) {
+                $this->pendingReviewHold->holdOrdersForPayment(
+                    $data,
+                    PendingReviewHoldService::REASON_UNAVAILABLE,
+                    $availability->errorMessage(),
+                );
             }
 
             return $this->payment_response($data, 'success');

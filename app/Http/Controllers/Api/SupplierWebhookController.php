@@ -5,9 +5,12 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Jobs\SupplierWebhookProcessJob;
 use App\Models\SupplierApi;
+use App\Services\Order\PendingReviewHoldService;
+use App\Services\Supplier\SupplierManager;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Throwable;
 
 class SupplierWebhookController extends Controller
 {
@@ -45,6 +48,29 @@ class SupplierWebhookController extends Controller
             $request->fullUrl()
         );
 
+        $this->holdFailedSupplierOrder($supplierApi, $request);
+
         return response()->json(['status' => 'received'], 200);
+    }
+
+    private function holdFailedSupplierOrder(SupplierApi $supplierApi, Request $request): void
+    {
+        try {
+            $parsed = app(SupplierManager::class)->driver($supplierApi)->parseWebhook($request);
+
+            if ($parsed->type !== 'order_failed' || $parsed->supplierOrderId === null) {
+                return;
+            }
+
+            app(PendingReviewHoldService::class)->holdBySupplierOrderId(
+                $parsed->supplierOrderId,
+                PendingReviewHoldService::REASON_API_FAILED,
+            );
+        } catch (Throwable $exception) {
+            Log::warning('SupplierWebhookController: could not hold failed supplier order', [
+                'supplier_id' => $supplierApi->id,
+                'message' => $exception->getMessage(),
+            ]);
+        }
     }
 }
