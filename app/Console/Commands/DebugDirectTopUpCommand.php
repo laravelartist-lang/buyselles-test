@@ -7,6 +7,7 @@ use App\Models\OrderDetail;
 use App\Models\SupplierOrder;
 use App\Models\SupplierProductMapping;
 use App\Services\DirectTopUp\DirectTopUpWalletCheckoutService;
+use App\Services\Order\PendingReviewHoldService;
 use App\Services\Supplier\SupplierManager;
 use App\Utils\OrderManager;
 use Illuminate\Console\Command;
@@ -23,7 +24,7 @@ class DebugDirectTopUpCommand extends Command
 
     protected $description = 'Inspect direct top-up order fulfillment and optionally retry the supplier API call';
 
-    public function handle(SupplierManager $supplierManager): int
+    public function handle(SupplierManager $supplierManager, PendingReviewHoldService $pendingReviewHold): int
     {
         $orderId = $this->resolveOrderId();
 
@@ -136,7 +137,7 @@ class DebugDirectTopUpCommand extends Command
         $this->newLine();
 
         if ($this->option('poll')) {
-            return $this->pollSupplierOrders($supplierManager, $order, $supplierOrders);
+            return $this->pollSupplierOrders($supplierManager, $pendingReviewHold, $order, $supplierOrders);
         }
 
         if ($this->option('retry')) {
@@ -194,9 +195,11 @@ class DebugDirectTopUpCommand extends Command
 
                     $this->info('Marked order as delivered after successful top-up.');
                 } elseif (! empty($result['error'])) {
+                    $pendingReviewHold->holdForFulfillmentFailure($order->fresh(), $result['error']);
                     $this->error('Fulfillment failed: '.$result['error']);
                 }
             } catch (\Throwable $e) {
+                $pendingReviewHold->holdForFulfillmentFailure($order->fresh(), $e->getMessage());
                 $this->error('Fulfillment exception: '.$e->getMessage());
 
                 return self::FAILURE;
@@ -258,7 +261,7 @@ class DebugDirectTopUpCommand extends Command
     /**
      * @param  \Illuminate\Support\Collection<int, SupplierOrder>  $supplierOrders
      */
-    private function pollSupplierOrders(SupplierManager $supplierManager, Order $order, $supplierOrders): int
+    private function pollSupplierOrders(SupplierManager $supplierManager, PendingReviewHoldService $pendingReviewHold, Order $order, $supplierOrders): int
     {
         if ($supplierOrders->isEmpty()) {
             $this->warn('No supplier orders to poll.');
@@ -288,6 +291,7 @@ class DebugDirectTopUpCommand extends Command
                     $this->info('  Marked fulfilled.');
                 } elseif ($result->status === 'failed') {
                     $supplierManager->completeDirectTopUpSupplierOrder($supplierOrder, 'failed', $result->rawResponse);
+                    $pendingReviewHold->holdForFulfillmentFailure($order, 'Supplier order '.$supplierOrder->supplier_order_id.' failed');
                     $this->error('  Marked failed.');
                 }
             } catch (\Throwable $e) {
