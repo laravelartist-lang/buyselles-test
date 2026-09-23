@@ -81,6 +81,7 @@ class Order extends Model
         'customer_type',
         'payment_status',
         'order_status',
+        'review_reason',
         'payment_method',
         'transaction_ref',
         'payment_by',

@@ -24,6 +24,7 @@ use App\Models\StockClearanceProduct;
 use App\Models\SupplierProductMapping;
 use App\Models\Wishlist;
 use App\Services\ProductService;
+use App\Services\Supplier\SupplierAvailabilityService;
 use App\Traits\CacheManagerTrait;
 use App\Traits\FileManagerTrait;
 use App\Utils\CategoryManager;
@@ -48,6 +49,7 @@ class ProductController extends Controller
         private readonly RestockProductCustomerRepositoryInterface $restockProductCustomerRepo,
         private readonly RestockProductRepositoryInterface $restockProductRepo,
         private readonly CategoryRepositoryInterface $categoryRepo,
+        private readonly SupplierAvailabilityService $supplierAvailability,
     ) {}
 
     public function get_latest_products(Request $request): JsonResponse
@@ -405,10 +407,13 @@ class ProductController extends Controller
 
                     $hasMapping = $supplierMapping !== null
                         && (bool) ($supplierMapping->supplierApi?->is_active ?? false);
-                    $product['current_stock'] = $hasMapping ? 100 : $availableDigitalCodesCount;
-                    $product['total_current_stock'] = $hasMapping ? 100 : $availableDigitalCodesCount;
-                    $product['available_digital_codes_count'] = $hasMapping ? 100 : $availableDigitalCodesCount;
-                    $product['can_add_to_cart'] = $hasMapping || $availableDigitalCodesCount > 0;
+                    $availableUnits = $hasMapping
+                        ? $this->supplierAvailability->availableUnitsForProduct((int) $product['id'], $supplierMapping)
+                        : $availableDigitalCodesCount;
+                    $product['current_stock'] = $availableUnits;
+                    $product['total_current_stock'] = $availableUnits;
+                    $product['available_digital_codes_count'] = $availableUnits;
+                    $product['can_add_to_cart'] = $availableUnits > 0;
                     $product['direct_topup'] = null;
                 }
             }
