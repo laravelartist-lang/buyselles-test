@@ -3,6 +3,7 @@ import 'package:flutter_sixvalley_ecommerce/features/address/domain/models/addre
 import 'package:flutter_sixvalley_ecommerce/features/address/controllers/address_controller.dart';
 import 'package:flutter_sixvalley_ecommerce/features/cart/domain/models/cart_model.dart';
 import 'package:flutter_sixvalley_ecommerce/features/checkout/controllers/checkout_controller.dart';
+import 'package:flutter_sixvalley_ecommerce/features/iap/controllers/iap_purchase_controller.dart';
 import 'package:flutter_sixvalley_ecommerce/features/checkout/widgets/checkout_condition_checkbox.dart';
 import 'package:flutter_sixvalley_ecommerce/features/checkout/widgets/order_place_bottomsheet_widget.dart';
 import 'package:flutter_sixvalley_ecommerce/features/profile/controllers/profile_contrroller.dart';
@@ -29,6 +30,7 @@ import 'package:flutter_sixvalley_ecommerce/features/checkout/widgets/coupon_app
 import 'package:flutter_sixvalley_ecommerce/features/checkout/widgets/create_account_widget.dart';
 import 'package:flutter_sixvalley_ecommerce/features/checkout/widgets/shipping_details_widget.dart';
 import 'package:flutter_sixvalley_ecommerce/features/checkout/widgets/wallet_payment_widget.dart';
+import 'package:flutter_sixvalley_ecommerce/features/kyc/widgets/kyc_required_dialog.dart';
 import 'package:provider/provider.dart';
 
 class CheckoutScreen extends StatefulWidget {
@@ -244,6 +246,13 @@ class CheckoutScreenState extends State<CheckoutScreen> {
                                       !orderProvider.isAcceptTerms)
                                   ? null
                                   : () async {
+                                      final bool kycAllowed =
+                                          await ensureKycAllowsCheckout(
+                                              context);
+                                      if (!kycAllowed || !context.mounted) {
+                                        return;
+                                      }
+
                                       if (_requiresShippingAddress &&
                                           orderProvider.addressIndex == null) {
                                         RouterHelper.getSavedAddressListRoute(
@@ -416,6 +425,30 @@ class CheckoutScreenState extends State<CheckoutScreen> {
                                                   billingAddressId,
                                                 orderNote: orderNote);
                                             }
+                                          } else if (orderProvider.isAppleIapChecked) {
+                                            Provider.of<IapPurchaseController>(context, listen: false)
+                                                .purchaseDigitalCart(
+                                              couponCode: couponCode,
+                                              orderNote: orderNote,
+                                              addressId: addressId,
+                                              billingAddressId: billingAddressId,
+                                              callback: (success, message) {
+                                                if (success) {
+                                                  _callback(
+                                                    true,
+                                                    message,
+                                                    orderProvider.getFirstOrderId(message) ?? message,
+                                                    false,
+                                                  );
+                                                } else {
+                                                  showCustomSnackBarWidget(
+                                                    message,
+                                                    context,
+                                                    snackBarType: SnackBarType.error,
+                                                  );
+                                                }
+                                              },
+                                            );
                                           } else {
                                             showCustomSnackBarWidget(
                                               getTranslated(

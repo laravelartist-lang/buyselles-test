@@ -4,7 +4,10 @@ import '../features/shop/domain/models/guideline_model.dart';
 
 class AppConstants {
   static const String appName = 'Vendor App'; ///Flutter SDK 3.41.1
-  static const String appVersion = '16.1';
+  static const String appVersion = '1.0.1';
+  static const String appBuildNumber = '7';
+
+  static String get appVersionDisplay => '$appVersion ($appBuildNumber)';
   static const String companyName = 'Buyselles';
   static const bool demo = false;
   static const int imageQuality = 100;
@@ -12,6 +15,8 @@ class AppConstants {
   static const String baseUrl = 'https://buyselles.com';
 
   static const String loginUri = '/api/v3/seller/auth/login';
+  static const String kycStatusUri = '/api/v3/seller/kyc/status';
+  static const String kycLaunchUrlUri = '/api/v3/seller/kyc/launch-url';
   static const String configUri = '/api/v1/config';
   static const String sellerUri = '/api/v3/seller/seller-info';
   static const String sellerAndBankUpdate = '/api/v3/seller/seller-update';
@@ -119,6 +124,9 @@ class AppConstants {
   static const String temporaryClose = '/api/v3/seller/temporary-close';
   static const String vacation = '/api/v3/seller/vacation-add';
   static const String dynamicWithdrawMethod = '/api/v3/seller/withdraw-method-list';
+  static const String walletTransferUri = '/api/v3/seller/wallet-transfer';
+  static const String walletTransferSearchUri = '/api/v3/seller/wallet-transfer/search-customers';
+  static const String walletTransferSubmitUri = '/api/v3/seller/wallet-transfer/transfer';
   static const String orderAddressEdit = '/api/v3/seller/orders/address-update';
   static const String getNotificationList = '/api/v3/seller/notification?limit=20&offset=';
   static const String seenNotification = '/api/v3/seller/notification/view?id=';

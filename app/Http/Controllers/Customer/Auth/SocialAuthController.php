@@ -98,11 +98,7 @@ class SocialAuthController extends Controller
         $phoneVerification = getLoginConfig(key: 'phone_verification');
         $emailVerification = getLoginConfig(key: 'email_verification');
 
-        if ($request['keep_customer_login_redirect_url']) {
-            session()->put('keep_customer_login_redirect_url', $request['keep_customer_login_redirect_url']);
-        } else {
-            $this->customerAuthService->storeCustomerAuthReturnURL();
-        }
+        $this->customerAuthService->rememberCustomerReturnUrl($request->input('keep_customer_login_redirect_url'));
         $authAttemptRedirectUrl = $this->customerAuthService->getCustomerAuthReturnURL();
 
         if ($user && $user['phone']) {
@@ -436,11 +432,7 @@ class SocialAuthController extends Controller
                 $tokenVerifyStatus = (bool) $OTPVerificationData;
             }
 
-            if ($request['keep_customer_login_redirect_url']) {
-                session()->put('keep_customer_login_redirect_url', $request['keep_customer_login_redirect_url']);
-            } else {
-                $this->customerAuthService->storeCustomerAuthReturnURL();
-            }
+            $this->customerAuthService->rememberCustomerReturnUrl($request->input('keep_customer_login_redirect_url'));
             $authAttemptRedirectUrl = $this->customerAuthService->getCustomerAuthReturnURL();
 
             if ($tokenVerifyStatus) {

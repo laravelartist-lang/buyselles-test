@@ -75,27 +75,25 @@
                     </label>
                     </form>
 
-                    @if($product['added_by'] === 'seller')
-                        {{-- Partner API Approval Toggle (vendor products only) --}}
-                        <form action="{{ route('admin.products.partner-approved-toggle') }}" method="post"
-                              id="product-partner-approved{{ $product['id'] }}-form"
-                              class="admin-product-partner-approved-form">
-                            @csrf
-                            <input type="hidden" name="id" value="{{ $product['id'] }}">
-                            <label class="form-control mb-0 d-flex gap-3 align-items-center w-max-content">
-                                <span class="fw-semibold">{{ translate('Partner_API') }}</span>
-                                <label class="switcher mx-auto"
-                                       for="products-partner-approved-{{ $product['id'] }}">
-                                    <input class="switcher_input partner-approved-toggle" type="checkbox"
-                                           value="1"
-                                           id="products-partner-approved-{{ $product['id'] }}"
-                                           {{ $product['partner_approved'] ? 'checked' : '' }}
-                                           data-product-id="{{ $product['id'] }}">
-                                    <span class="switcher_control"></span>
-                                </label>
+                    {{-- Partner API Approval Toggle --}}
+                    <form action="{{ route('admin.products.partner-approved-toggle') }}" method="post"
+                          id="product-partner-approved{{ $product['id'] }}-form"
+                          class="admin-product-partner-approved-form">
+                        @csrf
+                        <input type="hidden" name="id" value="{{ $product['id'] }}">
+                        <label class="form-control mb-0 d-flex gap-3 align-items-center w-max-content">
+                            <span class="fw-semibold">{{ translate('Partner_API') }}</span>
+                            <label class="switcher mx-auto"
+                                   for="products-partner-approved-{{ $product['id'] }}">
+                                <input class="switcher_input partner-approved-toggle" type="checkbox"
+                                       value="1"
+                                       id="products-partner-approved-{{ $product['id'] }}"
+                                       {{ $product['partner_approved'] ? 'checked' : '' }}
+                                       data-product-id="{{ $product['id'] }}">
+                                <span class="switcher_control"></span>
                             </label>
-                        </form>
-                    @endif
+                        </label>
+                    </form>
 
                 @php
                     $buttonText = $product['request_status'] == 1 ? translate('Edit') : translate('Edit_&_Approved');

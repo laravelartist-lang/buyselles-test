@@ -13,6 +13,7 @@ use App\Http\Controllers\RestAPI\v3\seller\DeliverymanWithdrawController;
 use App\Http\Controllers\RestAPI\v3\seller\DigitalCodeController;
 use App\Http\Controllers\RestAPI\v3\seller\DisputeController;
 use App\Http\Controllers\RestAPI\v3\seller\EmergencyContactController;
+use App\Http\Controllers\RestAPI\v3\seller\KycController;
 use App\Http\Controllers\RestAPI\v3\seller\OrderController;
 use App\Http\Controllers\RestAPI\v3\seller\OrderEditController;
 use App\Http\Controllers\RestAPI\v3\seller\POSCartController;
@@ -24,6 +25,7 @@ use App\Http\Controllers\RestAPI\v3\seller\shippingController;
 use App\Http\Controllers\RestAPI\v3\seller\ShippingMethodController;
 use App\Http\Controllers\RestAPI\v3\seller\ShopController;
 use App\Http\Controllers\RestAPI\v3\seller\VendorPaymentInfoController;
+use App\Http\Controllers\RestAPI\v3\seller\WalletTransferController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -54,7 +56,13 @@ Route::group(['namespace' => 'RestAPI\v3\seller', 'prefix' => 'v3/seller', 'midd
         });
     });
 
-    Route::group(['middleware' => ['seller_api_auth']], function () {
+    Route::group(['middleware' => ['seller_api_auth', 'seller_api_kyc']], function () {
+        Route::controller(KycController::class)->prefix('kyc')->group(function () {
+            Route::get('status', 'status');
+            Route::post('token', 'token');
+            Route::get('launch-url', 'launchUrl');
+        });
+
         Route::controller(SellerController::class)->group(function () {
             Route::put('language-change', 'language_change');
             Route::get('seller-info', 'getSellerInfo');
@@ -76,6 +84,12 @@ Route::group(['namespace' => 'RestAPI\v3\seller', 'prefix' => 'v3/seller', 'midd
             Route::get('withdraw-method-list', 'withdraw_method_list');
             Route::post('balance-withdraw', 'withdraw_request');
             Route::delete('close-withdraw-request', 'close_withdraw_request');
+        });
+
+        Route::controller(WalletTransferController::class)->group(function () {
+            Route::get('wallet-transfer', 'index');
+            Route::get('wallet-transfer/search-customers', 'searchCustomers');
+            Route::post('wallet-transfer/transfer', 'transfer');
         });
 
         Route::controller(ShopController::class)->group(function () {

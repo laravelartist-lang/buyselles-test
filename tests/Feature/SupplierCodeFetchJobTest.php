@@ -10,6 +10,7 @@ use App\Models\OrderDetail;
 use App\Models\SupplierApi;
 use App\Models\SupplierOrder;
 use App\Models\User;
+use App\Observers\OrderObserver;
 use App\Services\Supplier\SupplierManager;
 use App\Services\Supplier\SupplierOrderEligibilityService;
 use App\Utils\OrderManager;
@@ -333,8 +334,9 @@ class SupplierCodeFetchJobTest extends TestCase
             $this->makeOrderDetail(productId: 14, digitalProductType: 'ready_after_sell'),
         ]));
 
-        $dispatcher = app(\App\Services\Supplier\SupplierOrderFulfillmentDispatcher::class);
-        $dispatcher->dispatchForOrder($order);
+        $observer = app(OrderObserver::class);
+        $method = new ReflectionMethod($observer, 'dispatchSupplierFallbackIfNeeded');
+        $method->invoke($observer, $order);
 
         Bus::assertDispatched(SupplierCodeFetchJob::class, function (SupplierCodeFetchJob $job): bool {
             return $job->orderId === 200;

@@ -28,7 +28,6 @@ class ClearanceListWidget extends StatelessWidget {
         // Reduce spacing by ~5px
         final cardWidth = screenWidth * viewportFraction;
         final reducedCardWidth = cardWidth + 5; // add 5px width to reduce space
-        final newViewportFraction = reducedCardWidth / screenWidth;
         final cardHeight = reducedCardWidth / cardAspectRatio;
 
 

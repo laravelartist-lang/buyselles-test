@@ -100,10 +100,9 @@ class AuthController with ChangeNotifier {
       Map map = apiResponse.response!.data;
 
 
-      String? message = '', token = '', temporaryToken= '', email = '', phone = '';
+      String? message = '', token = '', temporaryToken= '', phone = '';
       ProfileModel? profileModel;
       bool isPhoneVerified = false;
-      bool isMailVerified = false;
 
 
       try{
@@ -111,10 +110,8 @@ class AuthController with ChangeNotifier {
         token = map['token'];
         temporaryToken = map['temp_token'];
         if(map["user"] != null) {
-          email = map["user"]["email"];
           phone = map["user"]["phone"];
           isPhoneVerified = map["user"]["is_phone_verified"] ?? false;
-          isMailVerified = map["user"]["is_email_verified"] ?? false;
         }
       }catch(e){
         message = null;
@@ -181,14 +178,13 @@ class AuthController with ChangeNotifier {
     _isLoading = false;
     if (apiResponse.response != null && apiResponse.response!.statusCode == 200) {
       Map map = apiResponse.response!.data;
-      String? tempToken = '', token = '', message = '';
+      String? tempToken = '', token = '';
 
       if (map.containsKey('temporary_token')) {
         tempToken = map["temporary_token"];
       } else if(map.containsKey('token')) {
         token = map["token"];
       }
-      message = map["message"];
 
 
       if(token != null && token.isNotEmpty) {
@@ -258,12 +254,11 @@ class AuthController with ChangeNotifier {
       clearGuestId();
       Map map = apiResponse.response!.data;
 
-      String? temporaryToken = '', token = '', message = '', email, phone;
+      String? temporaryToken = '', token = '', email, phone;
       bool isPhoneVerified = false;
       bool isMailVerified = false;
 
       try{
-        message = map["message"];
         token = map["token"];
         temporaryToken = map["temporary_token"];
         email = map["email"];
@@ -271,7 +266,6 @@ class AuthController with ChangeNotifier {
         isPhoneVerified = map["is_phone_verified"] ?? false;
         isMailVerified = map["is_email_verified"] ?? false;
       }catch(e){
-        message = null;
         token = null;
         temporaryToken = null;
       }
@@ -415,8 +409,6 @@ class AuthController with ChangeNotifier {
     }
     _resendButtonLoading = true;
     notifyListeners();
-
-    String? vID;
 
     await FirebaseAuth.instance.verifyPhoneNumber(
       phoneNumber: phoneNumber,

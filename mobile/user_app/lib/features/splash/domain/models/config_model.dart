@@ -6,6 +6,7 @@ class ConfigModel {
   String? digitalProductSetting;
   int? systemDefaultCurrency;
   bool? digitalPayment;
+  bool? iosIapStatus;
   bool? cashOnDelivery;
   String? sellerRegistration;
   String? posActive;
@@ -98,6 +99,7 @@ class ConfigModel {
         this.digitalProductSetting,
         this.systemDefaultCurrency,
         this.digitalPayment,
+        this.iosIapStatus,
         this.cashOnDelivery,
         this.sellerRegistration,
         this.posActive,
@@ -190,6 +192,7 @@ class ConfigModel {
     digitalProductSetting = json['digital_product_setting'];
     systemDefaultCurrency = json['system_default_currency'];
     digitalPayment = json['digital_payment'];
+    iosIapStatus = json['ios_iap_status'] == true || json['ios_iap_status'] == 1;
     cashOnDelivery = json['cash_on_delivery'];
     sellerRegistration = json['seller_registration'];
     posActive = json['pos_active'];

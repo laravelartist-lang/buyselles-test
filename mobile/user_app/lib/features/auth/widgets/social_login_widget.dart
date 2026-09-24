@@ -288,12 +288,11 @@ Future<void> facebookLogin(BuildContext context, String? fromPage, VoidCallback?
 
   try {
     await Provider.of<FacebookLoginController>(context, listen: false).login();
-    String? id, token, email, medium, name;
+    String? id, token, email, medium;
     if (Provider.of<FacebookLoginController>(Get.context!, listen: false).userData != null) {
       id = Provider.of<FacebookLoginController>(Get.context!, listen: false).userData?['id'];
       email = Provider.of<FacebookLoginController>(Get.context!, listen: false).userData?['email'];
       token = Provider.of<FacebookLoginController>(Get.context!, listen: false).result.accessToken?.tokenString;
-      name = Provider.of<FacebookLoginController>(Get.context!, listen: false).userData?['name'] ?? '';
       medium = 'facebook';
       socialLogin.email = email;
       socialLogin.medium = medium;
@@ -317,16 +316,18 @@ Future<void> appleLogin(BuildContext context, String? fromPage, VoidCallback? on
 
 
 
-    id = credential.authorizationCode;
+    id = credential.userIdentifier ?? credential.authorizationCode;
     email = await Provider.of<AuthController>(Get.context!, listen: false).onConfigurationAppleEmail(credential);
 
-    token = credential.authorizationCode;
+    token = credential.identityToken ?? credential.authorizationCode;
     medium = 'apple';
     socialLogin.email = email;
     socialLogin.medium = medium;
     socialLogin.token = token;
     socialLogin.uniqueId = id;
-    socialLogin.name = credential.givenName ?? '';
+    final familyName = credential.familyName ?? '';
+    final givenName = credential.givenName ?? '';
+    socialLogin.name = [givenName, familyName].where((part) => part.isNotEmpty).join(' ').trim();
     await Provider.of<AuthController>(Get.context!, listen: false).socialLogin(socialLogin, route, fromPage, onLoginSuccess);
 
     log('id token =>${credential.identityToken}\n===> Identifier${credential.userIdentifier}\n==>Given Name ${credential.familyName}');

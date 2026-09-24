@@ -141,6 +141,7 @@ class ConfigController extends Controller
             'digital_product_setting' => (string) getWebConfig(name: 'digital_product'),
             'system_default_currency' => (int) getWebConfig(name: 'system_default_currency'),
             'digital_payment' => (bool) getWebConfig(name: 'digital_payment')['status'] ?? 0,
+            'ios_iap_status' => filter_var(getWebConfig(name: 'ios_iap_status'), FILTER_VALIDATE_BOOLEAN),
             'cash_on_delivery' => (bool) getWebConfig(name: 'cash_on_delivery')['status'] ?? 0,
             'seller_registration' => (string) getWebConfig(name: 'seller_registration') ?? 0,
             'pos_active' => (string) getWebConfig(name: 'seller_pos') ?? 0,

@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers\RestAPI\v3\seller\auth;
 
+use App\Enums\KycUserType;
 use App\Http\Controllers\Controller;
 use App\Models\Product;
 use App\Models\Seller;
 use App\Models\SellerWallet;
 use App\Models\Shop;
+use App\Services\Kyc\KycService;
 use App\Utils\Helpers;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -16,6 +18,10 @@ use Illuminate\Support\Str;
 
 class LoginController extends Controller
 {
+    public function __construct(
+        private readonly KycService $kycService,
+    ) {}
+
     public function login(Request $request): JsonResponse
     {
         $validator = Validator::make($request->all(), [
@@ -46,7 +52,16 @@ class LoginController extends Controller
             ]);
         }
 
-        if (isset($seller) && $seller['status'] == 'approved' && auth('seller')->attempt($data)) {
+        /*
+         * A vendor who has not completed KYC yet is allowed to sign in so
+         * the app can launch the verification flow - every other endpoint
+         * stays blocked by the seller_api_kyc middleware.
+         */
+        $kycIncomplete = isset($seller)
+            && $this->kycService->isEnabled()
+            && ! $this->kycService->isVerified(KycUserType::VENDOR, $seller['id']);
+
+        if (isset($seller) && ($seller['status'] == 'approved' || $kycIncomplete) && auth('seller')->attempt($data)) {
             $token = Str::random(50);
             Seller::where(['id' => auth('seller')->id()])->update(['auth_token' => $token]);
             if (SellerWallet::where('seller_id', $seller['id'])->first() == false) {
@@ -63,7 +78,11 @@ class LoginController extends Controller
                 ]);
             }
 
-            return response()->json(['token' => $token], 200);
+            return response()->json([
+                'token' => $token,
+                'kyc_required' => $this->kycService->isEnabled()
+                    && ! $this->kycService->isVerified(KycUserType::VENDOR, $seller['id']),
+            ], 200);
         } elseif (isset($seller) && $seller['status'] == 'pending') {
             $errors = [];
             $errors[] = ['code' => 'auth-001', 'message' => translate('your_account_is_in_review_process').'. '.translate('please_wait_for_admin_approval')];

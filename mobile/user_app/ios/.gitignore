@@ -26,6 +26,7 @@ ServiceDefinitions.json
 Runner/GeneratedPluginRegistrant.*
 pubspec.lock
 get_demo_code.sh
+GoogleService-Info.plist
 
 # Exceptions to above rules.
 !default.mode1v3

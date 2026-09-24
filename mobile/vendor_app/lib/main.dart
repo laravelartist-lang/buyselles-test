@@ -5,6 +5,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_downloader/flutter_downloader.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -29,12 +30,14 @@ import 'package:sixvalley_vendor_app/features/product/controllers/category_contr
 import 'package:sixvalley_vendor_app/features/product/widgets/cookies_widget.dart';
 import 'package:sixvalley_vendor_app/features/product_details/controllers/product_details_controller.dart';
 import 'package:sixvalley_vendor_app/features/customer_management/controllers/customer_controller.dart';
+import 'package:sixvalley_vendor_app/features/kyc/controllers/kyc_controller.dart';
 import 'package:sixvalley_vendor_app/features/digitalProduct/controllers/digital_files_controller.dart';
 import 'package:sixvalley_vendor_app/features/dispute/controllers/dispute_controller.dart';
 import 'package:sixvalley_vendor_app/features/reports/controllers/report_controller.dart';
 import 'package:sixvalley_vendor_app/features/restock/controllers/restock_controller.dart';
 import 'package:sixvalley_vendor_app/features/vat_management/controllers/vat_controller.dart';
 import 'package:sixvalley_vendor_app/features/wallet/controllers/wallet_controller.dart';
+import 'package:sixvalley_vendor_app/features/wallet_transfer/controllers/wallet_transfer_controller.dart';
 import 'package:sixvalley_vendor_app/localization/app_localization.dart';
 import 'package:sixvalley_vendor_app/features/auth/controllers/auth_controller.dart';
 import 'package:sixvalley_vendor_app/features/settings/controllers/business_controller.dart';
@@ -76,6 +79,10 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  if (!kIsWeb && Platform.isAndroid) {
+    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  }
 
   if(Firebase.apps.isEmpty) {
     await Firebase.initializeApp();
@@ -132,6 +139,7 @@ Future<void> main() async {
       ChangeNotifierProvider(create: (context) => di.sl<LocationController>()),
       ChangeNotifierProvider(create: (context) => di.sl<NotificationController>()),
       ChangeNotifierProvider(create: (context) => di.sl<WalletController>()),
+      ChangeNotifierProvider(create: (context) => di.sl<WalletTransferController>()),
       ChangeNotifierProvider(create: (context) => di.sl<OrderDetailsController>()),
       ChangeNotifierProvider(create: (context) => di.sl<ProductDetailsController>()),
       ChangeNotifierProvider(create: (context) => di.sl<BarcodeController>()),
@@ -152,6 +160,7 @@ Future<void> main() async {
       ChangeNotifierProvider(create: (context) => di.sl<OrderEditController>()),
       ChangeNotifierProvider(create: (context) => di.sl<DigitalFilesController>()),
       ChangeNotifierProvider(create: (context) => di.sl<CustomerManagementController>()),
+      ChangeNotifierProvider(create: (context) => di.sl<KycController>()),
       ChangeNotifierProvider(create: (context) => di.sl<ReportController>()),
       ChangeNotifierProvider(create: (context) => di.sl<DisputeController>()),
     ],

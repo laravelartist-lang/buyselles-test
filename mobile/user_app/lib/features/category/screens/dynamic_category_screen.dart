@@ -347,7 +347,7 @@ class _DynamicCategoryScreenState extends State<DynamicCategoryScreen> {
       return;
     }
 
-    final int nextStepIndex = resolvedStep!;
+    final int nextStepIndex = resolvedStep;
 
     await _recomputeStepPlan(forStep: nextStepIndex, contextChanged: contextChanged);
 

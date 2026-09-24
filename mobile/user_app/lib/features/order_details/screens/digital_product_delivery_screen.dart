@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_sixvalley_ecommerce/common/basewidget/custom_app_bar_widget.dart';
 import 'package:flutter_sixvalley_ecommerce/features/order_details/controllers/order_details_controller.dart';
 import 'package:flutter_sixvalley_ecommerce/features/order_details/controllers/digital_export_controller.dart';
-import 'package:flutter_sixvalley_ecommerce/features/order_details/controllers/thermal_print_controller.dart';
-import 'package:flutter_sixvalley_ecommerce/features/order_details/widgets/printer_selection_dialog.dart';
 import 'package:flutter_sixvalley_ecommerce/features/order_details/screens/thermal_print_preview_screen.dart';
 import 'package:flutter_sixvalley_ecommerce/helper/route_healper.dart';
 import 'package:flutter_sixvalley_ecommerce/localization/language_constrants.dart';

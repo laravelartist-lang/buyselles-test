@@ -10,14 +10,15 @@ enum SnackBarType {
   success,
 }
 
-void showCustomSnackBarWidget(String? message, BuildContext? context, {bool isError = true, bool isToaster = false, SnackBarType sanckBarType = SnackBarType.success}) {
+void showCustomSnackBarWidget(String? message, BuildContext? context, {bool isError = true, bool isToaster = false, SnackBarType? sanckBarType}) {
+    final resolvedType = sanckBarType ?? (isError ? SnackBarType.error : SnackBarType.success);
     final scaffold = ScaffoldMessenger.of(context ?? Get.context!);
     scaffold.showSnackBar(
       SnackBar(
         elevation: 0.0,
         backgroundColor: Colors.transparent,
         padding: EdgeInsets.zero,
-        content: CustomToast(text: message ?? '', sanckBarType: sanckBarType),
+        content: CustomToast(text: message ?? '', sanckBarType: resolvedType),
         duration: const Duration(seconds: 2),
         behavior: SnackBarBehavior.floating,
       ),

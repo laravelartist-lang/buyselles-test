@@ -10,7 +10,6 @@ import 'package:flutter_sixvalley_ecommerce/features/order_details/domain/models
 import 'package:flutter_sixvalley_ecommerce/features/order_details/widgets/review_button_widget.dart';
 import 'package:flutter_sixvalley_ecommerce/features/product_details/domain/models/product_details_model.dart';
 import 'package:flutter_sixvalley_ecommerce/features/refund/controllers/refund_controller.dart';
-import 'package:flutter_sixvalley_ecommerce/features/splash/domain/models/config_model.dart';
 import 'package:flutter_sixvalley_ecommerce/helper/price_converter.dart';
 import 'package:flutter_sixvalley_ecommerce/helper/route_healper.dart';
 import 'package:flutter_sixvalley_ecommerce/localization/controllers/localization_controller.dart';
@@ -368,13 +367,6 @@ class _OrderDetailsWidgetState extends State<OrderDetailsWidget> {
     return refundController.isRefund
         && (widget.orderDetailsModel.id == refundController.getSelectedOrderDetailsId);
   }
-
-  bool _canRefundRequest(ConfigModel? configModel) => widget.orderDetailsModel.order?.status == 'delivered'
-      && widget.orderDetailsModel.refundReq == 0
-      && widget.orderType != "POS"
-      && widget.orderDetailsModel.refundStartedAt != null
-      && DateTime.parse(widget.orderDetailsModel.refundStartedAt!).difference(DateTime.now()).inDays.abs() <= (configModel?.refundDayLimit ?? 0)
-      && (configModel?.refundDayLimit != 0);
 
   void _downloadProduct(){
     String url = widget.orderDetailsModel.productDetails!.digitalProductType == 'ready_after_sell'?

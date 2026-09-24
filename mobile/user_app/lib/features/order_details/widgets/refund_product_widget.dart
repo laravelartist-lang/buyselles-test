@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_sixvalley_ecommerce/common/basewidget/custom_directionality_widget.dart';
 import 'package:flutter_sixvalley_ecommerce/common/basewidget/custom_image_widget.dart';
 import 'package:flutter_sixvalley_ecommerce/features/order/controllers/order_controller.dart';
-import 'package:flutter_sixvalley_ecommerce/features/order_details/controllers/order_details_controller.dart';
 import 'package:flutter_sixvalley_ecommerce/features/order_details/domain/models/order_details_model.dart';
 import 'package:flutter_sixvalley_ecommerce/features/product_details/domain/models/product_details_model.dart';
 import 'package:flutter_sixvalley_ecommerce/features/refund/controllers/refund_controller.dart';
@@ -365,20 +364,4 @@ class _RefundProductWidgetState extends State<RefundProductWidget> {
       && widget.orderDetailsModel.refundStartedAt != null
       && DateTime.parse(widget.orderDetailsModel.refundStartedAt!).difference(DateTime.now()).inDays.abs() <= (configModel?.refundDayLimit ?? 0)
       && (configModel?.refundDayLimit != 0);
-
-  void _downloadProduct(){
-    String url = widget.orderDetailsModel.productDetails!.digitalProductType == 'ready_after_sell'?
-    '${widget.orderDetailsModel.digitalFileAfterSellFullUrl?.path}':
-    '${widget.orderDetailsModel.productDetails?.digitalFileReadyFullUrl?.path}';
-
-    String filename = widget.orderDetailsModel.productDetails!.digitalProductType == 'ready_after_sell'?
-    '${widget.orderDetailsModel.digitalFileAfterSellFullUrl?.key}':
-    '${widget.orderDetailsModel.productDetails?.digitalFileReadyFullUrl?.key}';
-
-    Provider.of<OrderDetailsController>(context, listen: false).productDownload(
-        url: url,
-        fileName: filename,
-        index: widget.index
-    );
-  }
 }

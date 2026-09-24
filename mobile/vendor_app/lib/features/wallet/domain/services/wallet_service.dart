@@ -28,6 +28,8 @@ class WalletService implements WalletServiceInterface{
         apiResponse.response!.statusCode == 200) {
       return apiResponse;
     }
+
+    return apiResponse;
   }
 
 
@@ -39,7 +41,13 @@ class WalletService implements WalletServiceInterface{
 
   @override
   Future closeWithdrawRequest(int? id, String balance) async {
-    return walletRepoInterface.closeWithdrawRequest(id, balance);
+    ApiResponse apiResponse = await walletRepoInterface.closeWithdrawRequest(id, balance);
+    if (apiResponse.response != null &&
+        apiResponse.response!.statusCode == 200) {
+      return apiResponse;
+    }
+
+    return apiResponse;
   }
 
 }

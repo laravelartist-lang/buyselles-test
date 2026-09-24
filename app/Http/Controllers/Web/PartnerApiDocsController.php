@@ -3,19 +3,15 @@
 namespace App\Http\Controllers\Web;
 
 use App\Http\Controllers\Controller;
-use App\Services\Partner\PartnerApiDocumentationExamplesService;
 use App\Services\Partner\PartnerPostmanCollectionService;
 use Illuminate\Contracts\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class PartnerApiDocsController extends Controller
 {
-    public function index(PartnerApiDocumentationExamplesService $examplesService): View
+    public function index(): View
     {
-        return view('partner-api.documentation', [
-            'apiExamples' => $examplesService->build(),
-            'apiExampleFormatter' => $examplesService,
-        ]);
+        return view('partner-api.documentation');
     }
 
     public function downloadPostman(PartnerPostmanCollectionService $postmanService): StreamedResponse

@@ -49,6 +49,7 @@ class CustomerAuthController extends Controller
 
             return view('web-views.customer-views.auth.login', [
                 'keepCustomerLoginRedirectUrl' => $keepCustomerLoginRedirectUrl,
+                'defaultCustomerRedirectUrl' => $this->customerAuthService->customerDashboardUrl(),
                 'recaptcha' => $recaptcha,
                 'mathNum1' => $mathNum1,
                 'mathNum2' => $mathNum2,
@@ -72,11 +73,7 @@ class CustomerAuthController extends Controller
             return back();
         }
 
-        if ($request['keep_customer_login_redirect_url']) {
-            session()->put('keep_customer_login_redirect_url', $request['keep_customer_login_redirect_url']);
-        } else {
-            $this->customerAuthService->storeCustomerAuthReturnURL();
-        }
+        $this->customerAuthService->rememberCustomerReturnUrl($request->input('keep_customer_login_redirect_url'));
         $authAttemptRedirectUrl = $this->customerAuthService->getCustomerAuthReturnURL();
 
         $loginOptions = json_decode($this->loginSetupRepo->getFirstWhere(params: ['key' => 'login_options'])?->value ?? [], true);
@@ -183,11 +180,7 @@ class CustomerAuthController extends Controller
             'password' => 'required',
         ]);
 
-        if ($request['keep_customer_login_redirect_url']) {
-            session()->put('keep_customer_login_redirect_url', $request['keep_customer_login_redirect_url']);
-        } else {
-            $this->customerAuthService->storeCustomerAuthReturnURL();
-        }
+        $this->customerAuthService->rememberCustomerReturnUrl($request->input('keep_customer_login_redirect_url'));
         $authAttemptRedirectUrl = $this->customerAuthService->getCustomerAuthReturnURL();
 
         $user = $this->customerRepo->getByIdentity(filters: ['identity' => $request['user_identity']]);
@@ -415,11 +408,7 @@ class CustomerAuthController extends Controller
             return redirect()->back();
         }
 
-        if ($request['keep_customer_login_redirect_url']) {
-            session()->put('keep_customer_login_redirect_url', $request['keep_customer_login_redirect_url']);
-        } else {
-            $this->customerAuthService->storeCustomerAuthReturnURL();
-        }
+        $this->customerAuthService->rememberCustomerReturnUrl($request->input('keep_customer_login_redirect_url'));
         $authAttemptRedirectUrl = $this->customerAuthService->getCustomerAuthReturnURL();
 
         $firebaseOTPVerification = getWebConfig(name: 'firebase_otp_verification') ?? [];
@@ -583,11 +572,7 @@ class CustomerAuthController extends Controller
             return back();
         }
 
-        if ($request['keep_customer_login_redirect_url']) {
-            session()->put('keep_customer_login_redirect_url', $request['keep_customer_login_redirect_url']);
-        } else {
-            $this->customerAuthService->storeCustomerAuthReturnURL();
-        }
+        $this->customerAuthService->rememberCustomerReturnUrl($request->input('keep_customer_login_redirect_url'));
         $authAttemptRedirectUrl = $this->customerAuthService->getCustomerAuthReturnURL();
 
         $user = $this->customerRepo->getFirstWhere(params: ['phone' => base64_decode($request['identity'])]);
@@ -733,11 +718,7 @@ class CustomerAuthController extends Controller
             return back();
         }
 
-        if ($request['keep_customer_login_redirect_url']) {
-            session()->put('keep_customer_login_redirect_url', $request['keep_customer_login_redirect_url']);
-        } else {
-            $this->customerAuthService->storeCustomerAuthReturnURL();
-        }
+        $this->customerAuthService->rememberCustomerReturnUrl($request->input('keep_customer_login_redirect_url'));
         $authAttemptRedirectUrl = $this->customerAuthService->getCustomerAuthReturnURL();
 
         $this->customerRepo->updateWhere(params: ['phone' => $responseData['phoneNumber']], data: ['is_phone_verified' => 1]);

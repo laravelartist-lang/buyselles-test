@@ -2,8 +2,13 @@
 
 namespace App\Observers;
 
+use App\Jobs\DirectTopUpFulfillmentJob;
+use App\Jobs\SupplierCodeFetchJob;
 use App\Models\Order;
-use App\Services\Supplier\MappedProductFulfillmentService;
+use App\Models\SupplierOrder;
+use App\Models\SupplierProductMapping;
+use App\Services\DigitalProductCodeService;
+use App\Services\Supplier\SupplierOrderEligibilityService;
 use App\Traits\PushNotificationTrait;
 use Illuminate\Support\Facades\Log;
 
@@ -12,7 +17,8 @@ class OrderObserver
     use PushNotificationTrait;
 
     public function __construct(
-        private readonly MappedProductFulfillmentService $mappedProductFulfillment,
+        private readonly DigitalProductCodeService $codeService,
+        private readonly SupplierOrderEligibilityService $supplierOrderEligibilityService,
     ) {}
 
     /**
@@ -24,13 +30,16 @@ class OrderObserver
     {
         if ($order->payment_status === 'paid') {
             try {
-                $this->mappedProductFulfillment->fulfillStorefrontOrder($order);
+                $this->codeService->assignAndNotify($order);
             } catch (\Throwable $e) {
-                Log::error('OrderObserver: digital fulfillment failed on create', [
+                Log::error('OrderObserver: digital code assignment/email failed on create', [
                     'order_id' => $order->id,
                     'error' => $e->getMessage(),
                 ]);
             }
+
+            $this->dispatchSupplierFallbackIfNeeded($order);
+            $this->dispatchDirectTopUpIfNeeded($order);
         }
     }
 
@@ -44,13 +53,95 @@ class OrderObserver
     {
         if ($order->wasChanged('payment_status') && $order->payment_status === 'paid') {
             try {
-                $this->mappedProductFulfillment->fulfillStorefrontOrder($order);
+                $this->codeService->assignAndNotify($order);
             } catch (\Throwable $e) {
-                Log::error('OrderObserver: digital fulfillment failed', [
+                Log::error('OrderObserver: digital code assignment/email failed', [
                     'order_id' => $order->id,
                     'error' => $e->getMessage(),
                 ]);
             }
+
+            $this->dispatchSupplierFallbackIfNeeded($order);
+            $this->dispatchDirectTopUpIfNeeded($order);
+        }
+    }
+
+    /**
+     * Check if any digital order details still need codes after local pool assignment.
+     * If a product has active supplier mappings, dispatch a SupplierCodeFetchJob to acquire codes.
+     */
+    private function dispatchSupplierFallbackIfNeeded(Order $order): void
+    {
+        try {
+            if ($this->supplierOrderEligibilityService->orderNeedsSupplierCodeFetch($order)) {
+                SupplierCodeFetchJob::dispatch($order->id);
+                Log::info('OrderObserver: dispatched SupplierCodeFetchJob for unfulfilled codes', [
+                    'order_id' => $order->id,
+                ]);
+            }
+        } catch (\Throwable $e) {
+            Log::error('OrderObserver: supplier fallback check failed', [
+                'order_id' => $order->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    private function dispatchDirectTopUpIfNeeded(Order $order): void
+    {
+        try {
+            if (\App\Services\DirectTopUp\DirectTopUpWalletCheckoutService::isDirectTopUpAlreadyFulfilled($order)) {
+                return;
+            }
+
+            if (SupplierOrder::query()
+                ->where('order_id', $order->id)
+                ->whereIn('status', ['pending', 'processing', 'partial'])
+                ->exists()) {
+                return;
+            }
+
+            $order->loadMissing('orderDetails');
+
+            if (! $order->orderDetails) {
+                return;
+            }
+
+            $needsDirectTopUp = false;
+
+            foreach ($order->orderDetails as $detail) {
+                if ($detail->direct_topup_quantity === null || empty($detail->direct_topup_account_id)) {
+                    continue;
+                }
+
+                $productId = $detail->product_id;
+                if (! $productId) {
+                    continue;
+                }
+
+                $hasMapping = SupplierProductMapping::query()
+                    ->where('product_id', $productId)
+                    ->where('is_active', true)
+                    ->whereHas('supplierApi', fn ($q) => $q->where('is_active', true)->where('supports_direct_top_up', true))
+                    ->exists();
+
+                if ($hasMapping) {
+                    $needsDirectTopUp = true;
+                    break;
+                }
+            }
+
+            if ($needsDirectTopUp) {
+                DirectTopUpFulfillmentJob::dispatch($order->id);
+                Log::info('OrderObserver: dispatched DirectTopUpFulfillmentJob', [
+                    'order_id' => $order->id,
+                ]);
+            }
+        } catch (\Throwable $e) {
+            Log::error('OrderObserver: direct top-up dispatch failed', [
+                'order_id' => $order->id,
+                'error' => $e->getMessage(),
+            ]);
         }
     }
 

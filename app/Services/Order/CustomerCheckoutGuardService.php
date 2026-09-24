@@ -23,6 +23,31 @@ class CustomerCheckoutGuardService
         Collection $carts,
         callable $processor,
     ): array {
+        return $this->executeGuardedCheckout($request, $carts, 'wallet', $processor);
+    }
+
+    /**
+     * @param  callable(): array{http_status: int, payload: array<string, mixed>}  $processor
+     * @return array{http_status: int, payload: array<string, mixed>, idempotent_replay?: bool, checkout_in_progress?: bool}
+     */
+    public function executeIapCheckout(
+        Request $request,
+        Collection $carts,
+        callable $processor,
+    ): array {
+        return $this->executeGuardedCheckout($request, $carts, 'iap', $processor);
+    }
+
+    /**
+     * @param  callable(): array{http_status: int, payload: array<string, mixed>}  $processor
+     * @return array{http_status: int, payload: array<string, mixed>, idempotent_replay?: bool, checkout_in_progress?: bool}
+     */
+    private function executeGuardedCheckout(
+        Request $request,
+        Collection $carts,
+        string $checkoutMethod,
+        callable $processor,
+    ): array {
         $customerScope = $this->resolveCustomerScope($request);
         $cartFingerprint = $this->buildCartFingerprint($carts);
         $idempotencyKey = $this->resolveIdempotencyKey($request);
@@ -30,7 +55,7 @@ class CustomerCheckoutGuardService
         $lock = Cache::lock('customer_checkout:'.$customerScope, 30);
 
         try {
-            return $lock->block(10, function () use ($customerScope, $cartFingerprint, $idempotencyKey, $processor, $request): array {
+            return $lock->block(10, function () use ($customerScope, $cartFingerprint, $idempotencyKey, $processor, $request, $checkoutMethod): array {
                 if ($idempotencyKey !== null) {
                     $existing = CustomerCheckoutIdempotency::query()
                         ->where('customer_scope', $customerScope)
@@ -44,7 +69,7 @@ class CustomerCheckoutGuardService
 
                 $recent = CustomerCheckoutIdempotency::query()
                     ->where('customer_scope', $customerScope)
-                    ->where('checkout_method', 'wallet')
+                    ->where('checkout_method', $checkoutMethod)
                     ->where('cart_fingerprint', $cartFingerprint)
                     ->where('created_at', '>=', now()->subMinutes(self::REPLAY_WINDOW_MINUTES))
                     ->whereIn('status', [
@@ -60,7 +85,7 @@ class CustomerCheckoutGuardService
 
                 $processing = CustomerCheckoutIdempotency::query()
                     ->where('customer_scope', $customerScope)
-                    ->where('checkout_method', 'wallet')
+                    ->where('checkout_method', $checkoutMethod)
                     ->where('cart_fingerprint', $cartFingerprint)
                     ->where('status', CustomerCheckoutIdempotency::STATUS_PROCESSING)
                     ->where('created_at', '>=', now()->subMinutes(2))
@@ -78,7 +103,7 @@ class CustomerCheckoutGuardService
 
                 $record = CustomerCheckoutIdempotency::query()->create([
                     'customer_scope' => $customerScope,
-                    'checkout_method' => 'wallet',
+                    'checkout_method' => $checkoutMethod,
                     'idempotency_key' => $idempotencyKey,
                     'cart_fingerprint' => $cartFingerprint,
                     'status' => CustomerCheckoutIdempotency::STATUS_PROCESSING,

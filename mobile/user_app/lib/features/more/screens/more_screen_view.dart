@@ -11,6 +11,7 @@ import 'package:flutter_sixvalley_ecommerce/theme/controllers/theme_controller.d
 import 'package:flutter_sixvalley_ecommerce/utill/custom_themes.dart';
 import 'package:flutter_sixvalley_ecommerce/utill/dimensions.dart';
 import 'package:flutter_sixvalley_ecommerce/utill/images.dart';
+import 'package:flutter_sixvalley_ecommerce/features/kyc/screens/kyc_verification_screen.dart';
 import 'package:flutter_sixvalley_ecommerce/features/more/widgets/profile_info_section_widget.dart';
 import 'package:flutter_sixvalley_ecommerce/features/more/widgets/more_horizontal_section_widget.dart';
 import 'package:provider/provider.dart';
@@ -96,6 +97,13 @@ class _MoreScreenState extends State<MoreScreen> {
                                 MenuButtonWidget(image: Images.user, title: getTranslated('profile', context),
                                   onTap: () {
                                     RouterHelper.getProfileScreen1Route(action: RouteAction.push);
+                                  },
+                                ),
+
+                              if(authController.isLoggedIn())
+                                MenuButtonWidget(image: Images.preference, title: getTranslated('kyc_verification', context),
+                                  onTap: () async {
+                                    await openKycVerification(context);
                                   },
                                 ),
 

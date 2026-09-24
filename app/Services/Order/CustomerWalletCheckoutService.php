@@ -3,11 +3,13 @@
 namespace App\Services\Order;
 
 use App\Http\Controllers\RestAPI\v1\OrderController;
+use App\Http\Resources\Kyc\KycStatusResource;
 use App\Models\Cart;
 use App\Models\Order;
 use App\Models\ShippingAddress;
 use App\Services\CustomerServiceFeeService;
 use App\Services\DirectTopUp\DirectTopUpWalletCheckoutService;
+use App\Services\Kyc\CustomerCheckoutKycGuard;
 use App\Utils\CartManager;
 use App\Utils\Convert;
 use App\Utils\CustomerManager;
@@ -22,6 +24,7 @@ class CustomerWalletCheckoutService
         private readonly CustomerCheckoutGuardService $checkoutGuard,
         private readonly DirectTopUpWalletCheckoutService $directTopUpCheckout,
         private readonly CustomerServiceFeeService $customerServiceFeeService,
+        private readonly CustomerCheckoutKycGuard $kycGuard,
     ) {}
 
     /**
@@ -75,6 +78,18 @@ class CustomerWalletCheckoutService
                 'http_status' => 403,
                 'payload' => [
                     'message' => translate('login_first'),
+                ],
+            ];
+        }
+
+        $kycBlock = $this->kycGuard->blockReason($user, $request);
+        if ($kycBlock !== null) {
+            return [
+                'http_status' => 403,
+                'payload' => [
+                    'message' => $kycBlock['message'],
+                    'kyc_required' => true,
+                    'kyc' => (new KycStatusResource($kycBlock['verification']))->resolve(),
                 ],
             ];
         }

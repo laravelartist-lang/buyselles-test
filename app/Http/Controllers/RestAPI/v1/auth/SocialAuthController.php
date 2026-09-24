@@ -321,37 +321,41 @@ class SocialAuthController extends Controller
                 $res = $client->request('GET', 'https://graph.facebook.com/'.$uniqueId.'?access_token='.$token.'&&fields=name,email');
                 $data = json_decode($res->getBody()->getContents(), true);
             } elseif ($request['medium'] == 'apple') {
-                $apple_login = BusinessSetting::where(['type' => 'apple_login'])->first();
-                if ($apple_login) {
-                    $apple_login = json_decode($apple_login->value, true)[0];
+                if (substr_count($token, '.') === 2) {
+                    $data = $this->verifyAppleIdentityToken($token);
+                } else {
+                    $apple_login = BusinessSetting::where(['type' => 'apple_login'])->first();
+                    if ($apple_login) {
+                        $apple_login = json_decode($apple_login->value, true)[0];
+                    }
+                    $teamId = $apple_login['team_id'];
+                    $keyId = $apple_login['key_id'];
+                    $sub = $apple_login['client_id'];
+                    $aud = 'https://appleid.apple.com';
+                    $iat = strtotime('now');
+                    $exp = strtotime('+60days');
+                    $keyContent = file_get_contents(dynamicStorage(path: 'storage/app/public/apple-login/'.$apple_login['service_file']));
+                    $token = JWT::encode([
+                        'iss' => $teamId,
+                        'iat' => $iat,
+                        'exp' => $exp,
+                        'aud' => $aud,
+                        'sub' => $sub,
+                    ], $keyContent, 'ES256', $keyId);
+
+                    $redirect_uri = $apple_login['redirect_url'] ?? 'www.example.com/apple-callback';
+
+                    $response = Http::asForm()->post('https://appleid.apple.com/auth/token', [
+                        'grant_type' => 'authorization_code',
+                        'code' => $uniqueId,
+                        'redirect_uri' => $redirect_uri,
+                        'client_id' => $sub,
+                        'client_secret' => $token,
+                    ]);
+                    $socialResponse = $response;
+                    $claims = explode('.', $response['id_token'])[1];
+                    $data = json_decode(base64_decode($claims), true);
                 }
-                $teamId = $apple_login['team_id'];
-                $keyId = $apple_login['key_id'];
-                $sub = $apple_login['client_id'];
-                $aud = 'https://appleid.apple.com';
-                $iat = strtotime('now');
-                $exp = strtotime('+60days');
-                $keyContent = file_get_contents(dynamicStorage(path: 'storage/app/public/apple-login/'.$apple_login['service_file']));
-                $token = JWT::encode([
-                    'iss' => $teamId,
-                    'iat' => $iat,
-                    'exp' => $exp,
-                    'aud' => $aud,
-                    'sub' => $sub,
-                ], $keyContent, 'ES256', $keyId);
-
-                $redirect_uri = $apple_login['redirect_url'] ?? 'www.example.com/apple-callback';
-
-                $response = Http::asForm()->post('https://appleid.apple.com/auth/token', [
-                    'grant_type' => 'authorization_code',
-                    'code' => $uniqueId,
-                    'redirect_uri' => $redirect_uri,
-                    'client_id' => $sub,
-                    'client_secret' => $token,
-                ]);
-                $socialResponse = $response;
-                $claims = explode('.', $response['id_token'])[1];
-                $data = json_decode(base64_decode($claims), true);
             }
         } catch (Exception $exception) {
             $errors = [];
@@ -372,10 +376,18 @@ class SocialAuthController extends Controller
             ], 401);
         }
 
-        if (! isset($claims) && isset($data) && isset($data['email'])) {
+        if (! isset($claims) && isset($data) && isset($data['email']) && $request['medium'] !== 'apple') {
             if (strcasecmp($email, $data['email']) != 0) {
                 return response()->json(['error' => translate('email_does_not_match')], 403);
             }
+        }
+
+        if ($request['medium'] === 'apple' && empty($data['email']) && ! empty($email)) {
+            $data['email'] = $email;
+        }
+
+        if ($request['medium'] === 'apple' && empty($data['email'])) {
+            return response()->json(['error' => translate('email_does_not_match')], 403);
         }
 
         $existingUser = $this->customerRepo->getFirstWhere(params: ['email' => $data['email']]);
@@ -485,5 +497,40 @@ class SocialAuthController extends Controller
         $token = $user->createToken('LaravelAuthApp')->accessToken;
 
         return response()->json(['token' => $token]);
+    }
+
+    /**
+     * @return array{email?: string, sub?: string}|null
+     */
+    private function verifyAppleIdentityToken(string $identityToken): ?array
+    {
+        $parts = explode('.', $identityToken);
+        if (count($parts) < 2) {
+            return null;
+        }
+
+        $payload = json_decode(base64_decode(strtr($parts[1], '-_', '+/')), true);
+        if (! is_array($payload)) {
+            return null;
+        }
+
+        if (($payload['iss'] ?? '') !== 'https://appleid.apple.com') {
+            return null;
+        }
+
+        $expectedAudience = (string) (config('app.ios_bundle_id') ?: 'com.buyselles.app');
+        $audience = $payload['aud'] ?? null;
+        if ($audience !== null && $audience !== $expectedAudience) {
+            return null;
+        }
+
+        if (isset($payload['exp']) && (int) $payload['exp'] < time()) {
+            return null;
+        }
+
+        return [
+            'email' => $payload['email'] ?? null,
+            'sub' => $payload['sub'] ?? null,
+        ];
     }
 }

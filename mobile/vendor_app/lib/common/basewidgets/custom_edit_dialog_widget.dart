@@ -55,6 +55,9 @@ class CustomEditDialogWidgetState extends State<CustomEditDialogWidget> {
     });
   }
 
+  bool get _hasNoWithdrawMethods =>
+      walletController.myMethodsIds.isEmpty && walletController.methodsIds.isEmpty;
+
   @override
   Widget build(BuildContext context) {
     List<DropdownMenuItem<MethodModel>> dropdownItems = [];
@@ -131,7 +134,7 @@ class CustomEditDialogWidgetState extends State<CustomEditDialogWidget> {
                       ),
                       child: Column(children: [
 
-                        if(groupItems.isEmpty)
+                        if(_hasNoWithdrawMethods)
                           GuidelineWarningWidget(
                             guidelineStatus: GuidelineStatus.warning,
                             content: RichText(
@@ -180,7 +183,7 @@ class CustomEditDialogWidgetState extends State<CustomEditDialogWidget> {
                             showCrossButton: false,
                           ),
 
-                        if(groupItems.isEmpty)
+                        if(_hasNoWithdrawMethods)
                           const SizedBox(height: Dimensions.paddingSizeSmall),
 
                         Container(
@@ -405,9 +408,6 @@ class CustomEditDialogWidgetState extends State<CustomEditDialogWidget> {
     }else if(bal > double.parse(PriceConverter.convertPriceWithoutSymbol(context, Provider.of<ProfileController>(context, listen: false).userInfoModel!.wallet!.totalEarning))) {
       Navigator.of(context).pop();
       showCustomSnackBarWidget(getTranslated('insufficient_balance', context), context, isToaster: true, sanckBarType: SnackBarType.warning);
-    }else if(bal <= 1) {
-      Navigator.of(context).pop();
-      showCustomSnackBarWidget(getTranslated('minimum_amount', context), context, isToaster: true, sanckBarType: SnackBarType.warning);
     }else if(bal <= 1) {
       Navigator.of(context).pop();
       showCustomSnackBarWidget(getTranslated('minimum_amount', context), context, isToaster: true, sanckBarType: SnackBarType.warning);

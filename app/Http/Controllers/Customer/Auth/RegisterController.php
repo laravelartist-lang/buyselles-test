@@ -74,11 +74,7 @@ class RegisterController extends Controller
             return back();
         }
 
-        if ($request['keep_customer_login_redirect_url']) {
-            session()->put('keep_customer_login_redirect_url', $request['keep_customer_login_redirect_url']);
-        } else {
-            $this->customerAuthService->storeCustomerAuthReturnURL();
-        }
+        $this->customerAuthService->rememberCustomerReturnUrl($request->input('keep_customer_login_redirect_url'));
 
         $referUser = $request['referral_code'] ? $this->customerRepo->getFirstWhere(params: ['referral_code' => $request['referral_code']]) : null;
         $referralConfig = getWebConfig(name: 'ref_earning_customer');

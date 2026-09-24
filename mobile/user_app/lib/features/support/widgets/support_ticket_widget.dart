@@ -200,17 +200,15 @@ class SupportTicketWidget extends StatelessWidget {
 
 class _ContentLabel extends StatelessWidget {
   final String labelText;
-  final TextStyle? labelTextStyle;
   const _ContentLabel({
     required this.labelText,
-    this.labelTextStyle
   });
 
   @override
   Widget build(BuildContext context) {
     return Row(children: [
 
-      Text(labelText, style: labelTextStyle ?? textRegular.copyWith(
+      Text(labelText, style: textRegular.copyWith(
             fontWeight: FontWeight.w400,
             color: Theme.of(context).textTheme.bodyLarge?.color,
       ), overflow: TextOverflow.ellipsis),

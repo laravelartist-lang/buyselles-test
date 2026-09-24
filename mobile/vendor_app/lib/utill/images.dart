@@ -4,10 +4,10 @@ class Images {
   static const String onBoardingOne = 'assets/images/onboarding_image_one.png';
   static const String onBoardingTwo = 'assets/images/onboarding_image_two.png';
   static const String onBoardingThree = 'assets/images/onboarding_image_three.png';
-  static const String logo = 'assets/images/buyselles-logo.png';
-  static const String whiteLogo = 'assets/images/buyselles-logo.png';
-  static const String logoWithAppName = 'assets/images/buyselles-logo.png';
-  static const String logoWithNameImage = 'assets/images/buyselles-logo.png';
+  static const String logo = 'assets/images/buyselles-new-logo.jpeg';
+  static const String whiteLogo = 'assets/images/buyselles-new-logo.jpeg';
+  static const String logoWithAppName = 'assets/images/buyselles-new-logo.jpeg';
+  static const String logoWithNameImage = 'assets/images/buyselles-new-logo.jpeg';
   static const String home = 'assets/images/home.png';
   static const String addBtn = 'assets/images/add.png';
   static const String wallet = 'assets/images/wallet.png';

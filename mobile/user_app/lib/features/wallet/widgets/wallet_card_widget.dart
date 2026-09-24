@@ -3,6 +3,7 @@ import 'package:flutter_sixvalley_ecommerce/common/basewidget/show_custom_snakba
 import 'package:flutter_sixvalley_ecommerce/features/splash/controllers/splash_controller.dart';
 import 'package:flutter_sixvalley_ecommerce/features/wallet/controllers/wallet_controller.dart';
 import 'package:flutter_sixvalley_ecommerce/features/wallet/widgets/add_fund_dialogue_widget.dart';
+import 'package:flutter_sixvalley_ecommerce/helper/apple_iap_payment_helper.dart';
 import 'package:flutter_sixvalley_ecommerce/helper/price_converter.dart';
 import 'package:flutter_sixvalley_ecommerce/localization/language_constrants.dart';
 import 'package:flutter_sixvalley_ecommerce/main.dart';
@@ -76,7 +77,8 @@ class WalletCardWidget extends StatelessWidget {
   }
 
   bool canAddFundToWallet(BuildContext context) {
-    return Provider.of<SplashController>(context, listen: false).configModel?.addFundsToWallet == 1 &&
+    return isWalletAddFundAllowedOnPlatform() &&
+        Provider.of<SplashController>(context, listen: false).configModel?.addFundsToWallet == 1 &&
           (Provider.of<SplashController>(context, listen: false).configModel?.digitalPayment ?? false) &&
         (Provider.of<SplashController>(context, listen: false).configModel?.paymentMethods?.isNotEmpty ?? false);
   }

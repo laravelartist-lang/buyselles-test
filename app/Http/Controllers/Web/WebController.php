@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Web;
 use App\Contracts\Repositories\RobotsMetaContentRepositoryInterface;
 use App\Events\DigitalProductOtpVerificationEvent;
 use App\Http\Controllers\Controller;
+use App\Http\Resources\Kyc\KycStatusResource;
 use App\Models\Brand;
 use App\Models\BusinessSetting;
 use App\Models\Cart;
@@ -35,6 +36,7 @@ use App\Models\User;
 use App\Models\Wishlist;
 use App\Services\CustomerServiceFeeService;
 use App\Services\DigitalCodeCustomerExportService;
+use App\Services\Kyc\CustomerCheckoutKycGuard;
 use App\Services\ProductService;
 use App\Services\RecaptchaService;
 use App\Services\ShopService;
@@ -88,7 +90,33 @@ class WebController extends Controller
         private readonly RobotsMetaContentRepositoryInterface $robotsMetaContentRepo,
         private readonly ProductService $productService,
         private readonly ShopService $shopService,
+        private readonly CustomerCheckoutKycGuard $kycGuard,
     ) {}
+
+    /**
+     * Block checkout when the customer still has to complete KYC.
+     */
+    private function kycBlockedResponse(Request $request): JsonResponse|RedirectResponse|null
+    {
+        $block = $this->kycGuard->blockReason(Helpers::getCustomerInformation($request), $request);
+
+        if ($block === null) {
+            return null;
+        }
+
+        if ($request->ajax()) {
+            return response()->json([
+                'status' => 0,
+                'message' => $block['message'],
+                'kyc_required' => true,
+                'kyc' => (new KycStatusResource($block['verification']))->resolve(),
+            ], 403);
+        }
+
+        Toastr::warning($block['message']);
+
+        return redirect()->route('customer.kyc.index');
+    }
 
     public function maintenance_mode(): View|RedirectResponse
     {
@@ -622,6 +650,10 @@ class WebController extends Controller
 
     public function getCashOnDeliveryCheckoutComplete(Request $request): View|RedirectResponse|JsonResponse
     {
+        if ($kycResponse = $this->kycBlockedResponse($request)) {
+            return $kycResponse;
+        }
+
         if ($request['payment_method'] != 'cash_on_delivery') {
             if ($request->ajax()) {
                 return response()->json([
@@ -887,6 +919,10 @@ class WebController extends Controller
 
     public function getOfflinePaymentCheckoutComplete(Request $request): View|RedirectResponse
     {
+        if ($kycResponse = $this->kycBlockedResponse($request)) {
+            return $kycResponse;
+        }
+
         if ($request['payment_method'] != 'offline_payment') {
             return back()->with('error', 'Something went wrong!');
         }
@@ -1005,6 +1041,10 @@ class WebController extends Controller
 
     public function checkout_complete_wallet(Request $request): View|RedirectResponse
     {
+        if ($kycResponse = $this->kycBlockedResponse($request)) {
+            return $kycResponse;
+        }
+
         // Check if cart is digital-only — no shipping address required
         $isDigitalOnlyCart = ! Cart::where(auth('customer')->check()
             ? ['customer_id' => auth('customer')->id()]

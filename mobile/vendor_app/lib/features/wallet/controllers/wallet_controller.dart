@@ -74,6 +74,7 @@ class WalletController with ChangeNotifier{
     methodList = [];
     methodsIds = [];
     ApiResponse response = await walletServiceInterface.getDynamicWithDrawMethod();
+    if (response.response != null && response.response!.statusCode == 200) {
       response.response!.data.forEach((method) => methodList.add(WithdrawModel.fromJson(method)));
       getInputFieldList();
       for(int index = 0; index < methodList.length; index++) {
@@ -86,6 +87,9 @@ class WalletController with ChangeNotifier{
           )
         );
       }
+    } else {
+      ApiChecker.checkApi(response);
+    }
     notifyListeners();
   }
 
@@ -123,19 +127,25 @@ class WalletController with ChangeNotifier{
 
 
     ApiResponse apiResponse = await walletServiceInterface.withdrawBalance(keyList, inputValueList, methodSelected?.id, balance);
-    if(Provider.of<ShopController>(Get.context!, listen: false).shopModel?.setupGuideApp != null && Provider.of<ShopController>(Get.context!, listen: false).shopModel?.setupGuideApp?['withdraw_setup'] != 1) {
-      Provider.of<ShopController>(Get.context!, listen: false).updateTutorialFlow('withdraw_setup');
-      Provider.of<ShopController>(Get.context!, listen: false).updateSetupGuideApp('withdraw_setup', 1);
-    }
+    _isLoading = false;
+    notifyListeners();
+
+    if (apiResponse.response?.statusCode == 200) {
+      if(Provider.of<ShopController>(Get.context!, listen: false).shopModel?.setupGuideApp != null && Provider.of<ShopController>(Get.context!, listen: false).shopModel?.setupGuideApp?['withdraw_setup'] != 1) {
+        Provider.of<ShopController>(Get.context!, listen: false).updateTutorialFlow('withdraw_setup');
+        Provider.of<ShopController>(Get.context!, listen: false).updateSetupGuideApp('withdraw_setup', 1);
+      }
 
       inputValueList.clear();
       inputFieldControllerList.clear();
       Provider.of<TransactionController>(Get.context!, listen: false).getTransactionList(Get.context!,'all','','');
       Provider.of<ProfileController>(Get.context!, listen: false).getSellerInfo();
-      _isLoading = false;
-      notifyListeners();
       showCustomSnackBarWidget(getTranslated('withdraw_request_sent_successfully', Get.context!), Get.context!, isToaster: true, isError: false);
       Navigator.pop(Get.context!);
+    } else {
+      ApiChecker.checkApi(apiResponse);
+    }
+
     return apiResponse;
   }
 
@@ -191,12 +201,19 @@ class WalletController with ChangeNotifier{
     notifyListeners();
 
     ApiResponse apiResponse = await walletServiceInterface.closeWithdrawRequest(id, balance);
-    if(apiResponse.response?.statusCode == 200) {
-      Provider.of<ProfileController>(Get.context!, listen: false).updateWalletAmount(balance);
-      Provider.of<ShopController>(Get.context!, listen: false).getShopInfo();
-    }
     _isLoading = false;
     notifyListeners();
+
+    if (apiResponse.response?.statusCode == 200) {
+      Provider.of<ProfileController>(Get.context!, listen: false).updateWalletAmount(balance);
+      Provider.of<ShopController>(Get.context!, listen: false).getShopInfo();
+      Provider.of<TransactionController>(Get.context!, listen: false).getTransactionList(Get.context!, 'all', '', '');
+      showCustomSnackBarWidget(getTranslated('withdraw_request_deleted', Get.context!), Get.context!, isError: false);
+      Navigator.pop(Get.context!);
+    } else {
+      ApiChecker.checkApi(apiResponse);
+    }
+
     return apiResponse;
   }
 

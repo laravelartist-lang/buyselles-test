@@ -6,9 +6,15 @@ import 'package:sixvalley_vendor_app/data/model/response/base/api_response.dart'
 import 'package:sixvalley_vendor_app/main.dart';
 import 'package:sixvalley_vendor_app/features/auth/controllers/auth_controller.dart';
 import 'package:sixvalley_vendor_app/features/auth/screens/auth_screen.dart';
+import 'package:sixvalley_vendor_app/helper/kyc_gate_helper.dart';
 
 class ApiChecker {
   static void checkApi(ApiResponse apiResponse,  {bool firebaseResponse = false}) {
+    if (KycGateHelper.handleIfRequired(apiResponse) ||
+        KycGateHelper.shouldSuppressFeedback(apiResponse)) {
+      return;
+    }
+
     if(apiResponse.error.toString() == 'unauthorized') {
       Provider.of<AuthController>(Get.context!,listen: false).clearSharedData();
 

@@ -297,21 +297,18 @@ trait OrderEditManager
 
         foreach ($editedOrder as $details) {
             $product = json_decode($details['product_details'] ?? '', true);
-            $dbProduct = $productList?->firstWhere('id', $details['product_id']);
-            $activeProduct = $dbProduct ?? $product;
-
-            $currentStock = max(0, (int) data_get($dbProduct, 'current_stock', data_get($product, 'current_stock', 0)));
-            $variationRaw = data_get($dbProduct, 'variation', data_get($product, 'variation', []));
-            $variations = is_array($variationRaw) ? $variationRaw : (json_decode($variationRaw ?? '[]', true) ?? []);
+            $activeProduct = $productList?->firstWhere('id', $details['product_id']) ?? $product;
+            $currentStock = max(0, $activeProduct['current_stock']);
+            $variations = is_array($activeProduct['variation']) ? $activeProduct['variation'] : json_decode($activeProduct['variation'], true);
             $firstVariation = collect($variations)->first(function ($variation) use ($details) {
-                return ($variation['type'] ?? null) == $details['variant'];
+                return $variation['type'] == $details['variant'];
             });
 
             if ($details['variant'] && $firstVariation) {
                 $currentStock = $firstVariation['qty'] ?? 0;
             }
 
-            $checkDetails = collect($order?->details)?->where('product_id', $details['product_id'])->firstWhere('variant', $details['variant']);
+            $checkDetails = collect($order?->details)?->where('product_id', $activeProduct['id'])->firstWhere('variant', $details['variant']);
             if ($checkDetails) {
                 $currentStock += $checkDetails['qty'] ?? 1;
             }

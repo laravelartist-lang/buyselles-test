@@ -39,8 +39,7 @@ class _StockOutProductWidgetState extends State<StockOutProductWidget> {
   @override
   Widget build(BuildContext context) {
 
-    int variationLength = 0;
-    variationLength = widget.productModel.variation!.length;
+    final int variationLength = widget.productModel.variation?.length ?? 0;
     return Padding(
       padding: const EdgeInsets.fromLTRB(Dimensions.paddingSizeExtraSmall,
           0, Dimensions.paddingSizeExtraSmall,Dimensions.paddingSizeSmall,),

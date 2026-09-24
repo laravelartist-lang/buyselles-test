@@ -15,6 +15,9 @@ import 'package:sixvalley_vendor_app/utill/styles.dart';
 import 'package:sixvalley_vendor_app/common/basewidgets/custom_snackbar_widget.dart';
 import 'package:sixvalley_vendor_app/features/auth/screens/registration_screen.dart';
 import 'package:sixvalley_vendor_app/features/dashboard/screens/dashboard_screen.dart';
+import 'package:sixvalley_vendor_app/features/kyc/controllers/kyc_controller.dart';
+import 'package:sixvalley_vendor_app/features/kyc/domain/models/kyc_status_model.dart';
+import 'package:sixvalley_vendor_app/helper/kyc_gate_helper.dart';
 import 'package:sixvalley_vendor_app/features/auth/screens/forget_password_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -155,8 +158,30 @@ class LoginScreenState extends State<LoginScreen> {
                             } else {
                               authProvider.clearUserEmailAndPassword();
                             }
-                           // Navigator.of(Get.context!).pushReplacement(MaterialPageRoute(builder: (_) => const DashboardScreen()));
-                            Navigator.pushAndRemoveUntil(Get.context!, MaterialPageRoute(builder: (_) => const DashboardScreen()), (route) => false);
+                            /*
+                             * An unverified vendor signs in only to finish
+                             * KYC - the backend keeps every other endpoint
+                             * locked until Sumsub approves them.
+                             */
+                            final dynamic loginData = status.response?.data;
+                            if (loginData is Map &&
+                                loginData['kyc_required'] == true) {
+                              KycGateHelper.markGateActive();
+                            }
+
+                            final KycStatusModel? kycStatus =
+                                await Provider.of<KycController>(
+                                        Get.context!, listen: false)
+                                    .getKycStatus(notify: false);
+                            KycGateHelper.applyStatusIfBlocked(kycStatus);
+
+                            Navigator.pushAndRemoveUntil(
+                              Get.context!,
+                              MaterialPageRoute(
+                                builder: (_) => const DashboardScreen(),
+                              ),
+                              (route) => false,
+                            );
                           }else {
                           }
                         });

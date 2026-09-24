@@ -20,7 +20,10 @@ import 'package:sixvalley_vendor_app/utill/dimensions.dart';
 import 'package:sixvalley_vendor_app/utill/images.dart';
 import 'package:sixvalley_vendor_app/utill/styles.dart';
 import 'package:sixvalley_vendor_app/features/home/screens/home_page_screen.dart';
+import 'package:sixvalley_vendor_app/features/kyc/controllers/kyc_controller.dart';
+import 'package:sixvalley_vendor_app/features/kyc/widgets/kyc_required_dialog.dart';
 import 'package:sixvalley_vendor_app/features/menu/widgets/menu_widget.dart';
+import 'package:sixvalley_vendor_app/helper/kyc_gate_helper.dart';
 import 'package:sixvalley_vendor_app/features/order/screens/order_screen.dart';
 import 'package:sixvalley_vendor_app/features/refund/screens/refund_screen.dart';
 
@@ -57,11 +60,20 @@ class DashboardScreenState extends State<DashboardScreen> {
       Provider.of<AiController>(context,listen: false).generateLimitCheck();
     }
 
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final status = await Provider.of<KycController>(context, listen: false)
+          .getKycStatus(notify: false);
+      KycGateHelper.applyStatusIfBlocked(status);
+    });
+
     _screens = [
-      HomePageScreen(callback: () {
-        setState(() {
-          setPage(1);
-        });
+      HomePageScreen(callback: () async {
+        final bool allowed = await ensureKycAllowsVendorAction(context);
+        if (allowed && mounted) {
+          setState(() {
+            setPage(1);
+          });
+        }
       }),
 
       const OrderScreen(),
@@ -101,7 +113,14 @@ class DashboardScreenState extends State<DashboardScreen> {
             _barItem(Images.refund, getTranslated('refund', context), 2),
             _barItem(Images.menu, getTranslated('menu', context), 3)
           ],
-          onTap: (int index) {
+          onTap: (int index) async {
+            if (index == 1 || index == 2) {
+              final bool allowed = await ensureKycAllowsVendorAction(context);
+              if (!allowed || !mounted) {
+                return;
+              }
+            }
+
             if (index != 3) {
               setState(() {
                 setPage(index);

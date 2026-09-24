@@ -12,6 +12,10 @@ import 'package:sixvalley_vendor_app/features/digitalProduct/domain/services/dig
 import 'package:sixvalley_vendor_app/features/digitalProduct/domain/services/digital_code_service_interface.dart';
 import 'package:sixvalley_vendor_app/features/digitalProduct/domain/services/digital_files_service.dart';
 import 'package:sixvalley_vendor_app/features/digitalProduct/domain/services/digital_files_service_interface.dart';
+import 'package:sixvalley_vendor_app/features/kyc/controllers/kyc_controller.dart';
+import 'package:sixvalley_vendor_app/features/kyc/domain/repositories/kyc_repository.dart';
+import 'package:sixvalley_vendor_app/features/kyc/domain/repositories/kyc_repository_interface.dart';
+import 'package:sixvalley_vendor_app/features/kyc/domain/services/kyc_service.dart';
 import 'package:sixvalley_vendor_app/features/customer_management/controllers/customer_controller.dart';
 import 'package:sixvalley_vendor_app/features/customer_management/domain/repositories/customer_repository.dart';
 import 'package:sixvalley_vendor_app/features/customer_management/domain/repositories/customer_repository_interface.dart';
@@ -162,6 +166,11 @@ import 'package:sixvalley_vendor_app/features/wallet/domain/repositories/wallet_
 import 'package:sixvalley_vendor_app/features/wallet/domain/repositories/wallet_repository_interface.dart';
 import 'package:sixvalley_vendor_app/features/wallet/domain/services/wallet_service.dart';
 import 'package:sixvalley_vendor_app/features/wallet/domain/services/wallet_service_interface.dart';
+import 'package:sixvalley_vendor_app/features/wallet_transfer/controllers/wallet_transfer_controller.dart';
+import 'package:sixvalley_vendor_app/features/wallet_transfer/domain/repositories/wallet_transfer_repository.dart';
+import 'package:sixvalley_vendor_app/features/wallet_transfer/domain/repositories/wallet_transfer_repository_interface.dart';
+import 'package:sixvalley_vendor_app/features/wallet_transfer/domain/services/wallet_transfer_service.dart';
+import 'package:sixvalley_vendor_app/features/wallet_transfer/domain/services/wallet_transfer_service_interface.dart';
 import 'package:sixvalley_vendor_app/features/pos/controllers/cart_controller.dart';
 import 'package:sixvalley_vendor_app/features/chat/controllers/chat_controller.dart';
 import 'package:sixvalley_vendor_app/features/coupon/controllers/coupon_controller.dart';
@@ -242,6 +251,8 @@ Future<void> init() async {
   sl.registerLazySingleton(() => notificationRepoInterface);
   WalletRepositoryInterface walletRepoInterface = WalletRepository(dioClient: sl());
   sl.registerLazySingleton(() => walletRepoInterface);
+  WalletTransferRepositoryInterface walletTransferRepoInterface = WalletTransferRepository(dioClient: sl());
+  sl.registerLazySingleton(() => walletTransferRepoInterface);
   LocationRepositoryInterface locationRepositoryInterface = LocationRepository(dioClient: sl());
   sl.registerLazySingleton(() => locationRepositoryInterface);
   CartRepositoryInterface cartRepositoryInterface = CartRepository(dioClient: sl(), sharedPreferences: sl());
@@ -271,7 +282,9 @@ Future<void> init() async {
   DigitalCodeRepositoryInterface digitalCodeRepositoryInterface = DigitalCodeRepository(dioClient: sl());
   sl.registerLazySingleton(() => digitalCodeRepositoryInterface);
   CustomerRepositoryInterface customerRepositoryInterface = CustomerRepository(dioClient: sl());
+  KycRepositoryInterface kycRepositoryInterface = KycRepository(dioClient: sl());
   sl.registerLazySingleton(() => customerRepositoryInterface);
+  sl.registerLazySingleton(() => kycRepositoryInterface);
   ReportRepositoryInterface reportRepositoryInterface = ReportRepository(dioClient: sl());
   sl.registerLazySingleton(() => reportRepositoryInterface);
   DisputeRepositoryInterface disputeRepositoryInterface = DisputeRepository(dioClient: sl());
@@ -314,6 +327,8 @@ Future<void> init() async {
   sl.registerLazySingleton(() => notificationServiceInterface);
   WalletServiceInterface walletServiceInterface = WalletService(walletRepoInterface: sl());
   sl.registerLazySingleton(() => walletServiceInterface);
+  WalletTransferServiceInterface walletTransferServiceInterface = WalletTransferService(walletTransferRepositoryInterface: sl());
+  sl.registerLazySingleton(() => walletTransferServiceInterface);
   LocationServiceInterface locationServiceInterface = LocationService(locationRepositoryInterface: sl());
   sl.registerLazySingleton(() => locationServiceInterface);
   CartServiceInterface cartServiceInterface = CartService(cartRepositoryInterface: sl());
@@ -343,7 +358,9 @@ Future<void> init() async {
   DigitalCodeServiceInterface digitalCodeServiceInterface = DigitalCodeService(digitalCodeRepositoryInterface: sl());
   sl.registerLazySingleton(() => digitalCodeServiceInterface);
   CustomerServiceInterface customerManagementServiceInterface = CustomerService(customerRepositoryInterface: sl());
+  KycServiceInterface kycServiceInterface = KycService(kycRepositoryInterface: sl());
   sl.registerLazySingleton(() => customerManagementServiceInterface);
+  sl.registerLazySingleton(() => kycServiceInterface);
   ReportServiceInterface reportServiceInterface = ReportService(reportRepositoryInterface: sl());
   sl.registerLazySingleton(() => reportServiceInterface);
   DisputeServiceInterface disputeServiceInterface = DisputeService(disputeRepositoryInterface: sl());
@@ -383,6 +400,7 @@ Future<void> init() async {
   sl.registerLazySingleton(() => DigitalFilesRepository(dioClient: sl()));
   sl.registerLazySingleton(() => DigitalCodeRepository(dioClient: sl()));
   sl.registerLazySingleton(() => CustomerRepository(dioClient: sl()));
+  sl.registerLazySingleton(() => KycRepository(dioClient: sl()));
   sl.registerLazySingleton(() => ReportRepository(dioClient: sl()));
 
   // Controller
@@ -404,6 +422,7 @@ Future<void> init() async {
   sl.registerFactory(() => TransactionController(transactionServiceInterface: sl()));
   sl.registerFactory(() => NotificationController(notificationServiceInterface: sl()));
   sl.registerFactory(() => WalletController(walletServiceInterface: sl()));
+  sl.registerFactory(() => WalletTransferController(walletTransferServiceInterface: sl()));
   sl.registerFactory(() => OrderDetailsController(orderDetailsServiceInterface: sl()));
   sl.registerFactory(() => ProductDetailsController(productDetailsServiceInterface: sl()));
   sl.registerFactory(() => ThemeController(sharedPreferences: sl()));
@@ -432,6 +451,7 @@ Future<void> init() async {
   sl.registerFactory(() => DigitalFilesController(digitalFilesServiceInterface: sl()));
   sl.registerFactory(() => DigitalCodeController(digitalCodeServiceInterface: sl()));
   sl.registerFactory(() => CustomerManagementController(customerServiceInterface: sl()));
+  sl.registerFactory(() => KycController(kycServiceInterface: sl()));
   sl.registerFactory(() => ReportController(reportServiceInterface: sl()));
   sl.registerFactory(() => DisputeController(disputeServiceInterface: sl()));
 }

@@ -10,6 +10,7 @@ import 'package:sixvalley_vendor_app/features/profile/domain/models/profile_info
 import 'package:sixvalley_vendor_app/features/profile/domain/services/profice_service_interface.dart';
 import 'package:sixvalley_vendor_app/features/splash/controllers/splash_controller.dart';
 import 'package:sixvalley_vendor_app/helper/api_checker.dart';
+import 'package:sixvalley_vendor_app/helper/kyc_gate_helper.dart';
 import 'package:http/http.dart' as http;
 import 'package:sixvalley_vendor_app/helper/country_code_helper.dart';
 import 'package:sixvalley_vendor_app/localization/language_constrants.dart';
@@ -46,13 +47,14 @@ class ProfileController with ChangeNotifier {
       if (apiResponse.error is String) {
         errorMessage = apiResponse.error.toString();
       } else {
-        errorMessage = apiResponse.error.errors[0].message;
-      }
-      if (kDebugMode) {
-        print(errorMessage);
+        errorMessage = apiResponse.error?.errors?.first.message;
       }
       responseModel = ResponseModel(false, errorMessage);
-      ApiChecker.checkApi(apiResponse);
+      if (!KycGateHelper.shouldSuppressFeedback(apiResponse)) {
+        ApiChecker.checkApi(apiResponse);
+      } else {
+        KycGateHelper.handleIfRequired(apiResponse);
+      }
     }
     notifyListeners();
     return responseModel;

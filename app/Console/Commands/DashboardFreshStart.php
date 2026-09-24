@@ -3,8 +3,10 @@
 namespace App\Console\Commands;
 
 use App\Models\Seller;
+use App\Models\User;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class DashboardFreshStart extends Command
 {
@@ -25,7 +27,7 @@ class DashboardFreshStart extends Command
         $this->line('  <fg=red>❌ All Orders</> (pending, confirmed, delivered, canceled — everything)');
         $this->line('  <fg=red>❌ All Order Transactions & Earnings</>');
         $this->line('  <fg=red>❌ All Digital Product Codes</> (including the ones you uploaded)');
-        $this->line('  <fg=red>❌ All Wallet Balances</> (admin, vendors, customers)');
+        $this->line('  <fg=red>❌ All Wallet Balances</> (admin, vendors, customers, transfers)');
         $this->line('  <fg=red>❌ All Chats & Support Tickets</>');
         $this->line('  <fg=red>❌ All Reviews & Wishlists</>');
         $this->line('  <fg=red>❌ All Notifications</>');
@@ -49,7 +51,7 @@ class DashboardFreshStart extends Command
             return;
         }
 
-        DB::statement('SET FOREIGN_KEY_CHECKS=0');
+        Schema::disableForeignKeyConstraints();
 
         $tables = [
             // Disputes / Escrow
@@ -97,6 +99,7 @@ class DashboardFreshStart extends Command
             'carts',
 
             // Wallets
+            'wallet_transfers',
             'admin_wallet_histories',
             'admin_wallets',
             'seller_wallet_histories',
@@ -160,10 +163,26 @@ class DashboardFreshStart extends Command
             $bar->advance();
         }
 
-        DB::statement('SET FOREIGN_KEY_CHECKS=1');
+        Schema::enableForeignKeyConstraints();
         $bar->finish();
 
         $this->newLine(2);
+
+        // Reset denormalized wallet columns on users
+        if (DB::getSchemaBuilder()->hasColumn('users', 'wallet_balance')) {
+            $userReset = ['wallet_balance' => 0];
+            if (DB::getSchemaBuilder()->hasColumn('users', 'loyalty_point')) {
+                $userReset['loyalty_point'] = 0;
+            }
+            DB::table('users')->update($userReset);
+            $this->info('✓ User wallet balances and loyalty points reset to zero.');
+        }
+
+        if (DB::getSchemaBuilder()->hasTable('reseller_api_keys')
+            && DB::getSchemaBuilder()->hasColumn('reseller_api_keys', 'wallet_balance')) {
+            DB::table('reseller_api_keys')->update(['wallet_balance' => 0]);
+            $this->info('✓ Reseller API key wallet balances reset to zero.');
+        }
 
         // Re-create admin wallet row
         DB::table('admin_wallets')->insert([
@@ -183,6 +202,7 @@ class DashboardFreshStart extends Command
         $walletData = $sellers->map(fn ($s) => [
             'seller_id' => $s->id,
             'total_earning' => 0,
+            'pending_balance' => 0,
             'withdrawn' => 0,
             'pending_withdraw' => 0,
             'commission_given' => 0,
@@ -196,6 +216,20 @@ class DashboardFreshStart extends Command
         if (! empty($walletData)) {
             DB::table('seller_wallets')->insert($walletData);
             $this->info('✓ '.count($walletData).' seller wallet(s) re-created.');
+        }
+
+        // Re-create customer wallet rows for all existing users
+        $customerWalletData = User::query()->pluck('id')->map(fn ($userId) => [
+            'customer_id' => $userId,
+            'balance' => 0,
+            'royality_points' => 0,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ])->toArray();
+
+        if (! empty($customerWalletData)) {
+            DB::table('customer_wallets')->insert($customerWalletData);
+            $this->info('✓ '.count($customerWalletData).' customer wallet(s) re-created.');
         }
 
         // Reset product current_stock to 0 for all products (since codes are wiped)

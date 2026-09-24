@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -17,13 +16,9 @@ import 'package:sixvalley_vendor_app/features/auth/controllers/auth_controller.d
 import 'package:sixvalley_vendor_app/features/splash/controllers/splash_controller.dart';
 import 'package:sixvalley_vendor_app/main.dart';
 import 'package:sixvalley_vendor_app/notification/models/notification_body.dart';
-import 'package:sixvalley_vendor_app/utill/app_constants.dart';
-import 'package:sixvalley_vendor_app/utill/dimensions.dart';
-import 'package:sixvalley_vendor_app/utill/images.dart';
-import 'package:sixvalley_vendor_app/utill/styles.dart';
 import 'package:sixvalley_vendor_app/features/auth/screens/auth_screen.dart';
 import 'package:sixvalley_vendor_app/features/dashboard/screens/dashboard_screen.dart';
-import 'package:sixvalley_vendor_app/features/splash/widgets/splash_painter_widget.dart';
+import 'package:sixvalley_vendor_app/utill/app_constants.dart';
 
 class SplashScreen extends StatefulWidget {
   final NotificationBody? body;
@@ -47,115 +42,155 @@ class SplashScreenState extends State<SplashScreen> {
       if(isSuccess) {
         Provider.of<SplashController>(Get.context!, listen: false).getBusinessPagesList('default');
         Provider.of<SplashController>(Get.context!, listen: false).initShippingTypeList(Get.context!,'');
-        Timer(const Duration(seconds: 1), () async {
-          final config = Provider.of<SplashController>(Get.context!, listen: false).configModel;
-          SellerAppVersionControl? appVersion = Provider.of<SplashController>(Get.context!, listen: false).configModel?.sellerAppVersionControl;
-          String? minimumVersion = '0';
-
-          if(Platform.isAndroid) {
-            minimumVersion =  appVersion?.forAndroid?.version ?? '0';
-          } else if(Platform.isIOS) {
-            minimumVersion = appVersion?.forIos?.version ?? '0';
-          }
-
-
-          if(compareVersions(minimumVersion, AppConstants.appVersion) == 1) {
-            Navigator.of(Get.context!).pushReplacement(MaterialPageRoute(builder: (_) => const UpdateScreen()));
-          } else if(config?.maintenanceModeData?.maintenanceStatus == 1 && config?.maintenanceModeData?.selectedMaintenanceSystem?.vendorApp == 1) {
-            Navigator.of(Get.context!).pushReplacement(MaterialPageRoute(
-              builder: (_) => const MaintenanceScreen(),
-              settings: const RouteSettings(name: 'MaintenanceScreen'),
-            ));
-          } else {
-            if(widget.body != null) {
-              String notificationType = widget.body?.type??"";
-
-              switch(notificationType.toLowerCase()) {
-                case 'chatting' : {
-                  Navigator.of(Get.context!).pushReplacement(MaterialPageRoute(builder: (context) => InboxScreen(fromNotification: true, initIndex: widget.body?.messageKey ==  'message_from_delivery_man' ? 1 : 0)));
-                }
-                break;
-
-                case 'theme' : {
-                  Navigator.of(Get.context!).pushReplacement(MaterialPageRoute(builder: (context) => const NotificationScreen()));
-                }
-                break;
-
-                case 'order' : {
-                  Navigator.of(Get.context!).pushReplacement(MaterialPageRoute(builder: (context) => OrderDetailsScreen(orderId: int.parse(widget.body!.orderId.toString()), fromNotification: true)));
-                }
-                break;
-
-                case 'wallet' : {
-                  Navigator.of(Get.context!).pushReplacement(MaterialPageRoute(builder: (context) => const WalletScreen(fromNotification: true)));
-                }
-                break;
-
-                case 'wallet_withdraw' : {
-                  Navigator.of(Get.context!).pushReplacement(MaterialPageRoute(builder: (context) => const WalletScreen(fromNotification: true)));
-                }
-                break;
-
-                case 'product_request_approved_message' : {
-                  Navigator.of(Get.context!).pushReplacement(MaterialPageRoute(builder: (context) => const ProductListMenuScreen(fromNotification: true)));
-                }
-                break;
-
-                case 'refund' : {
-                  Navigator.of(Get.context!).pushReplacement(MaterialPageRoute(builder: (context) =>  RefundDetailsScreen(fromNotification: true, refundModel: RefundModel(id: widget.body!.refundId), orderDetailsId: widget.body!.orderDetailsId)));
-                }
-                break;
-
-                default: {
-                  Navigator.of(Get.context!).pushReplacement(MaterialPageRoute(builder: (context) => const NotificationScreen()));
-                } break;
-              }
-
-            } else {
-              if(Provider.of<AuthController>(context, listen: false).isLoggedIn()) {
-                await Provider.of<AuthController>(context, listen: false).updateToken(context);
-                Navigator.of(Get.context!).pushReplacement(MaterialPageRoute(builder: (BuildContext context) => const DashboardScreen()));
-              } else {
-                Navigator.of(Get.context!).pushReplacement(MaterialPageRoute(builder: (BuildContext context) => const AuthScreen()));
-              }
-            }
-          }
-        });
+        _routeAfterConfig();
       }
     });
+  }
+
+  Future<void> _routeAfterConfig() async {
+    if (!mounted) {
+      return;
+    }
+
+    final config = Provider.of<SplashController>(context, listen: false).configModel;
+    final SellerAppVersionControl? appVersion =
+        config?.sellerAppVersionControl;
+    String minimumVersion = '0';
+
+    if (Platform.isAndroid) {
+      minimumVersion = appVersion?.forAndroid?.version ?? '0';
+    } else if (Platform.isIOS) {
+      minimumVersion = appVersion?.forIos?.version ?? '0';
+    }
+
+    if (compareVersions(minimumVersion, AppConstants.appVersion) == 1) {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => const UpdateScreen()),
+      );
+
+      return;
+    }
+
+    if (config?.maintenanceModeData?.maintenanceStatus == 1 &&
+        config?.maintenanceModeData?.selectedMaintenanceSystem?.vendorApp == 1) {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => const MaintenanceScreen(),
+          settings: const RouteSettings(name: 'MaintenanceScreen'),
+        ),
+      );
+
+      return;
+    }
+
+    if (widget.body != null) {
+      final String notificationType = widget.body?.type ?? '';
+
+      switch (notificationType.toLowerCase()) {
+        case 'chatting':
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              builder: (context) => InboxScreen(
+                fromNotification: true,
+                initIndex: widget.body?.messageKey ==
+                        'message_from_delivery_man'
+                    ? 1
+                    : 0,
+              ),
+            ),
+          );
+          break;
+
+        case 'theme':
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              builder: (context) => const NotificationScreen(),
+            ),
+          );
+          break;
+
+        case 'order':
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              builder: (context) => OrderDetailsScreen(
+                orderId: int.parse(widget.body!.orderId.toString()),
+                fromNotification: true,
+              ),
+            ),
+          );
+          break;
+
+        case 'wallet':
+        case 'wallet_withdraw':
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              builder: (context) => const WalletScreen(fromNotification: true),
+            ),
+          );
+          break;
+
+        case 'product_request_approved_message':
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              builder: (context) =>
+                  const ProductListMenuScreen(fromNotification: true),
+            ),
+          );
+          break;
+
+        case 'refund':
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              builder: (context) => RefundDetailsScreen(
+                fromNotification: true,
+                refundModel: RefundModel(id: widget.body!.refundId),
+                orderDetailsId: widget.body!.orderDetailsId,
+              ),
+            ),
+          );
+          break;
+
+        default:
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              builder: (context) => const NotificationScreen(),
+            ),
+          );
+          break;
+      }
+
+      return;
+    }
+
+    if (Provider.of<AuthController>(context, listen: false).isLoggedIn()) {
+      await Provider.of<AuthController>(context, listen: false)
+          .updateToken(context);
+
+      if (!mounted) {
+        return;
+      }
+
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (context) => const DashboardScreen()),
+      );
+    } else {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (context) => const AuthScreen()),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-        backgroundColor: Theme.of(context).primaryColor,
-        body: Stack(
-          clipBehavior: Clip.none, children: [
-          SizedBox(
-            width: MediaQuery.of(context).size.width,
-            height: MediaQuery.of(context).size.height,
-            child: CustomPaint(
-              painter: SplashPainterWidget(),
-            ),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      body: Center(
+        child: CircularProgressIndicator(
+          valueColor: AlwaysStoppedAnimation<Color>(
+            Theme.of(context).primaryColor,
           ),
-
-          Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Hero(
-                    tag:'logo',
-                    child: Image.asset(Images.whiteLogo, height: 80.0,
-                        fit: BoxFit.cover, width: 80.0)),
-                const SizedBox(height: Dimensions.paddingSizeExtraLarge,),
-                Text(AppConstants.appName, style: titilliumBold.copyWith(fontSize: Dimensions.fontSizeWallet,
-                    color: Colors.white),
-                ),
-              ],
-            ),
-          ),
-        ],
-        )
+        ),
+      ),
     );
   }
 

@@ -13,6 +13,7 @@ use App\Http\Controllers\Vendor\ChattingController;
 use App\Http\Controllers\Vendor\Coupon\CouponController;
 use App\Http\Controllers\Vendor\CustomerController;
 use App\Http\Controllers\Vendor\DashboardController;
+use App\Http\Controllers\Vendor\KycController;
 use App\Http\Controllers\Vendor\DeliveryMan\DeliveryManController;
 use App\Http\Controllers\Vendor\DeliveryMan\DeliveryManWalletController;
 use App\Http\Controllers\Vendor\DeliveryMan\DeliveryManWithdrawController;
@@ -77,6 +78,14 @@ Route::group(['middleware' => ['maintenance_mode', 'actch:admin_panel']], functi
         });
 
         Route::group(['middleware' => ['seller']], function () {
+            Route::group(['prefix' => 'kyc', 'as' => 'kyc.'], function () {
+                Route::controller(KycController::class)->group(function () {
+                    Route::get('/', 'index')->name('index');
+                    Route::post('token', 'token')->name('token');
+                    Route::get('status', 'status')->name('status');
+                });
+            });
+
             Route::group(['prefix' => 'dashboard', 'as' => 'dashboard.'], function () {
                 Route::controller(DashboardController::class)->group(function () {
                     Route::get('/', 'index')->name('index');

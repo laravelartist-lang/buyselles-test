@@ -14,6 +14,7 @@ return [
     */
 
     'name' => env('APP_NAME', '6vally'),
+    'ios_bundle_id' => env('IOS_BUNDLE_ID', 'com.buyselles.app'),
     'mode' => env('APP_MODE', 'dev'),
 
     /*
