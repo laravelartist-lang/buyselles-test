@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Product;
+use App\Services\Supplier\SupplierAvailabilityService;
 use App\Utils\CartManager;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\Request;
@@ -17,6 +18,10 @@ class DirectTopUpCartTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        $this->mock(SupplierAvailabilityService::class, function ($mock): void {
+            $mock->shouldReceive('checkCartItem')->andReturn(['ok' => true, 'error' => '']);
+        });
 
         Cache::flush();
         $this->recreateTable('business_settings', function (Blueprint $table): void {

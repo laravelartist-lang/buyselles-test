@@ -13,6 +13,7 @@ use App\Models\ShippingMethod;
 use App\Models\ShippingType;
 use App\Models\Shop;
 use App\Services\DirectTopUp\DirectTopUpService;
+use App\Services\Supplier\SupplierAvailabilityService;
 use App\Services\Supplier\SupplierManager;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Str;
@@ -718,6 +719,14 @@ class CartManager
             }
         }
 
+        $supplierRejection = self::supplierAvailabilityRejection(
+            product: $product,
+            quantity: (float) $request['quantity'],
+        );
+        if ($supplierRejection !== null) {
+            return $supplierRejection;
+        }
+
         $user = Helpers::getCustomerInformation($request);
         $guestId = session('guest_id') ?? ($request->guest_id ?? 0);
 
@@ -905,9 +914,11 @@ class CartManager
                 && $mapping->supplierApi->is_active;
 
             if ($hasActiveMapping && ! $cart->isDirectTopUp()) {
-                $available = app(SupplierManager::class)->getAvailableStockForMapping($mapping);
-
-                if ($available < $request->quantity) {
+                $supplierRejection = self::supplierAvailabilityRejection(
+                    product: $product,
+                    quantity: (float) $request->quantity,
+                );
+                if ($supplierRejection !== null) {
                     $status = 0;
                     $qty = $cart['quantity'];
                 }
@@ -1357,6 +1368,15 @@ class CartManager
             return ['status' => 0, 'message' => (string) reset($errors)];
         }
 
+        $supplierRejection = self::supplierAvailabilityRejection(
+            product: $product,
+            quantity: $directTopUpQuantity,
+            directTopUpQuantity: $directTopUpQuantity,
+        );
+        if ($supplierRejection !== null) {
+            return $supplierRejection;
+        }
+
         $lineTotal = $directTopUpService->calculateTotalPrice($product, $directTopUpQuantity);
         $getProductDiscount = getProductPriceByType(product: $product, type: 'discounted_amount', result: 'value', price: $lineTotal);
 
@@ -1488,6 +1508,19 @@ class CartManager
             ];
         }
 
+        $supplierRejection = self::supplierAvailabilityRejection(
+            product: $product,
+            quantity: $directTopUpQuantity,
+            directTopUpQuantity: $directTopUpQuantity,
+        );
+        if ($supplierRejection !== null) {
+            return [
+                'status' => 0,
+                'qty' => $cart->direct_topup_quantity,
+                'message' => $supplierRejection['message'],
+            ];
+        }
+
         $lineTotal = $directTopUpService->calculateTotalPrice($product, $directTopUpQuantity);
         $getProductDiscount = getProductPriceByType(product: $product, type: 'discounted_amount', result: 'value', price: $lineTotal);
 
@@ -1510,5 +1543,26 @@ class CartManager
             'qty' => $directTopUpQuantity,
             'message' => translate('successfully_updated!'),
         ];
+    }
+
+    /**
+     * @return array{status: int, message: string}|null
+     */
+    private static function supplierAvailabilityRejection(Product $product, float $quantity, ?float $directTopUpQuantity = null): ?array
+    {
+        $probe = (object) [
+            'product_id' => $product->id,
+            'qty' => $quantity,
+            'quantity' => $quantity,
+            'product' => $product,
+            'direct_topup_quantity' => $directTopUpQuantity,
+        ];
+
+        $result = app(SupplierAvailabilityService::class)->checkCartItem($probe);
+        if ($result['ok']) {
+            return null;
+        }
+
+        return ['status' => 0, 'message' => $result['error']];
     }
 }

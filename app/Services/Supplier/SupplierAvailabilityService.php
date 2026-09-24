@@ -83,7 +83,7 @@ class SupplierAvailabilityService
     /**
      * @return array{ok: bool, error: string}
      */
-    protected function checkCartItem(object $cart): array
+    public function checkCartItem(object $cart): array
     {
         $productId = $this->cartProductId($cart);
         $quantity = $this->cartQuantity($cart);

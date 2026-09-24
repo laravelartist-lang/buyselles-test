@@ -6,6 +6,7 @@ use App\Models\Cart;
 use App\Models\Product;
 use App\Models\SupplierApi;
 use App\Models\SupplierProductMapping;
+use App\Services\Supplier\SupplierAvailabilityService;
 use App\Utils\CartManager;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\Request;
@@ -82,6 +83,7 @@ class HeaderCartQuantityLimitsTest extends TestCase
             $table->integer('minimum_order_qty')->default(1);
             $table->decimal('unit_price', 24, 2)->default(0);
             $table->boolean('status')->default(true);
+            $table->boolean('partner_api_only')->default(false);
             $table->timestamps();
         });
 
@@ -275,6 +277,13 @@ class HeaderCartQuantityLimitsTest extends TestCase
         ]);
 
         Cache::put('supplier_stock:'.$mappingId, 5, 3600);
+
+        $this->mock(SupplierAvailabilityService::class, function ($mock): void {
+            $mock->shouldReceive('checkCartItem')->andReturn([
+                'ok' => false,
+                'error' => 'Gift Card is out of stock at the supplier.',
+            ]);
+        });
 
         $response = CartManager::update_cart_qty(Request::create('/cart/updateQuantity-guest', 'POST', [
             'key' => $cartId,

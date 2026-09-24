@@ -63,6 +63,11 @@ class StripeSupplierCheckoutGateTest extends TestCase
 
         $this->assertStringContainsString('checkPaymentRequest', $controller);
         $this->assertStringContainsString('holdOrdersForPayment', $controller);
+        $this->assertLessThan(
+            strpos($controller, 'Session::create'),
+            strpos($controller, 'checkPaymentRequest'),
+            'Stripe Session::create must stay behind the live supplier check.'
+        );
         $this->assertStringNotContainsString('Refund::', $controller);
         $this->assertStringNotContainsString('refunds->create', $controller);
         $this->assertStringNotContainsString('Refund::', $holdService);
@@ -205,5 +210,17 @@ class TestableSupplierAvailabilityService extends SupplierAvailabilityService
     protected function cachedBalanceResult(object $mapping): BalanceResult
     {
         return $this->balance ?? BalanceResult::unsupported();
+    }
+
+    protected function message(string $key, string $productName): string
+    {
+        return match ($key) {
+            'supplier_unavailable_for_item' => $productName.' is currently unavailable from the supplier.',
+            'supplier_stock_unavailable' => $productName.' is out of stock at the supplier.',
+            'supplier_stock_check_failed' => 'Unable to verify supplier stock for '.$productName.'.',
+            'supplier_balance_unavailable' => 'Supplier balance is insufficient for '.$productName.'.',
+            'supplier_balance_check_failed' => 'Unable to verify supplier balance for '.$productName.'.',
+            default => $productName.' is currently unavailable.',
+        };
     }
 }

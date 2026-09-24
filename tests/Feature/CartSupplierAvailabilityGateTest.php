@@ -11,17 +11,13 @@ use Illuminate\Support\Facades\Cache;
 use Tests\Concerns\ManagesTestDatabaseSchema;
 use Tests\TestCase;
 
-class SupplierDenominationCartTest extends TestCase
+class CartSupplierAvailabilityGateTest extends TestCase
 {
     use ManagesTestDatabaseSchema;
 
     protected function setUp(): void
     {
         parent::setUp();
-
-        $this->mock(SupplierAvailabilityService::class, function ($mock): void {
-            $mock->shouldReceive('checkCartItem')->andReturn(['ok' => true, 'error' => '']);
-        });
 
         Cache::flush();
         $this->recreateTable('business_settings', function (Blueprint $table): void {
@@ -199,97 +195,107 @@ class SupplierDenominationCartTest extends TestCase
         });
     }
 
-    public function test_add_to_cart_infers_default_denomination_when_variable_amount_disabled(): void
+    public function test_add_to_cart_is_blocked_when_supplier_is_empty(): void
     {
-        $productId = 48;
-        $mappingId = $this->seedPubgStyleMapping($productId, isCustomizable: false);
-        $matchedDenomId = $this->seedFixedDenomination($mappingId, '3313615', 1.0, 0);
-        $this->seedFixedDenomination($mappingId, '3313616', 5.0, 1);
+        $productId = 601;
+        $this->seedMappedDigitalProduct($productId);
+        $this->mockUnavailableSupplier('PUBG UC is out of stock at the supplier.');
 
-        $product = $this->makeDigitalProduct($productId);
-        session(['guest_id' => 88001]);
-
-        $request = Request::create('/api/v1/cart/add', 'POST', [
-            'id' => $productId,
-            'quantity' => 1,
-        ]);
+        session(['guest_id' => 88061]);
 
         $response = CartManager::addToCartDigitalProduct(
-            request: $request,
-            product: $product,
+            request: Request::create('/cart/add', 'POST', [
+                'id' => $productId,
+                'quantity' => 1,
+            ]),
+            product: $this->makeDigitalProduct($productId),
+            shippingType: 'order_wise',
+            sellerShippingList: null,
+        );
+
+        $this->assertSame(0, $response['status']);
+        $this->assertSame('PUBG UC is out of stock at the supplier.', $response['message']);
+        $this->assertArrayNotHasKey('redirect_to', $response);
+        $this->assertNull($this->app['db']->table('carts')->where('product_id', $productId)->first());
+    }
+
+    public function test_buy_now_does_not_redirect_to_checkout_when_supplier_is_empty(): void
+    {
+        $productId = 602;
+        $this->seedMappedDigitalProduct($productId);
+        $this->mockUnavailableSupplier('Supplier balance is insufficient for PUBG UC.');
+
+        session(['guest_id' => 88062]);
+
+        $response = CartManager::addToCartDigitalProduct(
+            request: Request::create('/cart/add', 'POST', [
+                'id' => $productId,
+                'quantity' => 1,
+                'buy_now' => 1,
+            ]),
+            product: $this->makeDigitalProduct($productId),
+            shippingType: 'order_wise',
+            sellerShippingList: null,
+        );
+
+        $this->assertSame(0, $response['status']);
+        $this->assertArrayNotHasKey('redirect_to', $response);
+        $this->assertNull($this->app['db']->table('carts')->where('product_id', $productId)->first());
+    }
+
+    public function test_add_to_cart_succeeds_when_supplier_is_available(): void
+    {
+        $productId = 603;
+        $this->seedMappedDigitalProduct($productId);
+        $this->mockAvailableSupplier();
+
+        session(['guest_id' => 88063]);
+
+        $response = CartManager::addToCartDigitalProduct(
+            request: Request::create('/cart/add', 'POST', [
+                'id' => $productId,
+                'quantity' => 1,
+            ]),
+            product: $this->makeDigitalProduct($productId),
             shippingType: 'order_wise',
             sellerShippingList: null,
         );
 
         $this->assertSame(1, $response['status']);
-
-        $cart = $this->app['db']->table('carts')->where('product_id', $productId)->first();
-        $this->assertNotNull($cart);
-        $this->assertSame($matchedDenomId, (int) $cart->supplier_denomination_id);
-        $this->assertEquals(1.0, (float) $cart->custom_amount);
+        $this->assertNotNull($this->app['db']->table('carts')->where('product_id', $productId)->first());
     }
 
-    public function test_add_to_cart_requires_denomination_when_customizable(): void
+    public function test_stripe_session_creation_stays_behind_live_supplier_check(): void
     {
-        $productId = 49;
-        $mappingId = $this->seedPubgStyleMapping($productId, isCustomizable: true);
-        $this->seedFixedDenomination($mappingId, '3313615', 1.0, 0);
+        $controller = file_get_contents(dirname(__DIR__, 2).'/app/Http/Controllers/Payment_Methods/StripePaymentController.php');
+        $paymentController = file_get_contents(dirname(__DIR__, 2).'/app/Http/Controllers/Customer/PaymentController.php');
 
-        $product = $this->makeDigitalProduct($productId);
-
-        $request = Request::create('/api/v1/cart/add', 'POST', [
-            'id' => $productId,
-            'quantity' => 1,
-        ]);
-
-        $response = CartManager::addToCartDigitalProduct(
-            request: $request,
-            product: $product,
-            shippingType: 'order_wise',
-            sellerShippingList: null,
+        $this->assertStringContainsString('checkPaymentRequest', $controller);
+        $this->assertLessThan(
+            strpos($controller, 'Session::create'),
+            strpos($controller, 'checkPaymentRequest')
         );
-
-        $this->assertSame(0, $response['status']);
+        $this->assertStringContainsString('checkCarts($carts)', $paymentController);
     }
 
-    public function test_add_to_cart_requires_custom_amount_for_variable_denomination(): void
+    private function mockUnavailableSupplier(string $message): void
     {
-        $productId = 50;
-        $mappingId = $this->seedPubgStyleMapping($productId, isCustomizable: true);
-
-        $variableDenomId = $this->app['db']->table('supplier_product_denominations')->insertGetId([
-            'supplier_product_mapping_id' => $mappingId,
-            'supplier_product_id' => 'VAR-1',
-            'name' => 'Variable',
-            'type' => 'variable',
-            'min_face_value' => 10,
-            'max_face_value' => 100,
-            'face_value_currency' => 'USD',
-            'is_active' => true,
-            'sort_order' => 0,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-
-        $product = $this->makeDigitalProduct($productId);
-
-        $request = Request::create('/api/v1/cart/add', 'POST', [
-            'id' => $productId,
-            'quantity' => 1,
-            'supplier_denomination_id' => $variableDenomId,
-        ]);
-
-        $response = CartManager::addToCartDigitalProduct(
-            request: $request,
-            product: $product,
-            shippingType: 'order_wise',
-            sellerShippingList: null,
-        );
-
-        $this->assertSame(0, $response['status']);
+        $this->mock(SupplierAvailabilityService::class, function ($mock) use ($message): void {
+            $mock->shouldReceive('checkCartItem')->andReturn([
+                'ok' => false,
+                'error' => $message,
+            ]);
+        });
     }
 
-    private function seedPubgStyleMapping(int $productId, bool $isCustomizable): int
+    private function mockAvailableSupplier(): void
+    {
+        $this->mock(SupplierAvailabilityService::class, function ($mock): void {
+            $mock->shouldReceive('checkCartItem')->andReturn(['ok' => true, 'error' => '']);
+        });
+    }
+
+    private function seedMappedDigitalProduct(int $productId): void
     {
         $this->app['db']->table('products')->insert([
             'id' => $productId,
@@ -310,7 +316,7 @@ class SupplierDenominationCartTest extends TestCase
             'updated_at' => now(),
         ]);
 
-        return $this->app['db']->table('supplier_product_mappings')->insertGetId([
+        $mappingId = $this->app['db']->table('supplier_product_mappings')->insertGetId([
             'product_id' => $productId,
             'supplier_api_id' => 1,
             'supplier_product_id' => '3313615',
@@ -318,25 +324,22 @@ class SupplierDenominationCartTest extends TestCase
             'markup_type' => 'percent',
             'markup_value' => 12,
             'is_active' => true,
-            'is_customizable' => $isCustomizable,
+            'is_customizable' => false,
             'is_direct_topup' => false,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
-    }
 
-    private function seedFixedDenomination(int $mappingId, string $supplierProductId, float $faceValue, int $sortOrder): int
-    {
-        return $this->app['db']->table('supplier_product_denominations')->insertGetId([
+        $this->app['db']->table('supplier_product_denominations')->insert([
             'supplier_product_mapping_id' => $mappingId,
-            'supplier_product_id' => $supplierProductId,
-            'name' => 'Denom '.$faceValue,
+            'supplier_product_id' => '3313615',
+            'name' => '1 UC',
             'type' => 'fixed',
-            'face_value' => $faceValue,
+            'face_value' => 1.0,
             'face_value_currency' => 'USD',
-            'cost_price' => $faceValue * 0.9,
+            'cost_price' => 0.9,
             'is_active' => true,
-            'sort_order' => $sortOrder,
+            'sort_order' => 0,
             'created_at' => now(),
             'updated_at' => now(),
         ]);

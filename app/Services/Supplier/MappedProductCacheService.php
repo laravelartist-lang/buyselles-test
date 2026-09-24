@@ -109,6 +109,10 @@ class MappedProductCacheService
 
     private function resolveDirectTopUpMinQuantity(SupplierProductMapping $mapping): ?int
     {
+        if ($mapping->usesFixedDirectTopUpBundle()) {
+            return 1;
+        }
+
         if ($mapping->direct_topup_bundle_quantity !== null) {
             $bundleQuantity = (float) $mapping->direct_topup_bundle_quantity;
 
