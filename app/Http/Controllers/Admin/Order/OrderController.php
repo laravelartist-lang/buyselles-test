@@ -176,6 +176,7 @@ class OrderController extends BaseController
             'canceled_order' => $allOrders->where('order_status', 'canceled')->count(),
             'returned_order' => $allOrders->where('order_status', 'returned')->count(),
             'failed_order' => $allOrders->where('order_status', 'failed')->count(),
+            'pending_review_order' => $allOrders->where('order_status', 'pending_review')->count(),
         ];
 
         $orders = $this->orderRepo->getListWhereIn(orderBy: ['id' => 'desc'], searchValue: $request['searchValue'], filters: $filters, whereIn: $filterWhereIn, relations: ['customer', 'seller.shop', 'orderEditHistory'], dataLimit: getWebConfig(name: WebConfigKey::PAGINATION_LIMIT));
@@ -417,6 +418,7 @@ class OrderController extends BaseController
             'returned' => 0,
             'failed' => 0,
             'canceled' => 0,
+            'pending_review' => 0,
         ];
         $orders?->map(function ($order) use (&$status_array) { // Pass by reference using &
             if (isset($status_array[$order->order_status])) {

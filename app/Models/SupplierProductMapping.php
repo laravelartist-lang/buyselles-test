@@ -27,6 +27,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property bool $is_customizable
  * @property bool $is_direct_topup
  * @property string|null $direct_topup_account_label
+ * @property string|null $direct_topup_bundle_mode customizable|fixed
  * @property string|null $direct_topup_region
  * @property float|null $direct_topup_bundle_quantity
  * @property float|null $min_amount
@@ -43,6 +44,10 @@ class SupplierProductMapping extends Model
     public const CODE_SOURCE_LOCAL_FIRST = 'local_first';
 
     public const CODE_SOURCE_SUPPLIER_FIRST = 'supplier_first';
+
+    public const DIRECT_TOPUP_BUNDLE_CUSTOMIZABLE = 'customizable';
+
+    public const DIRECT_TOPUP_BUNDLE_FIXED = 'fixed';
 
     protected $fillable = [
         'product_id',
@@ -61,6 +66,7 @@ class SupplierProductMapping extends Model
         'is_customizable',
         'is_direct_topup',
         'direct_topup_account_label',
+        'direct_topup_bundle_mode',
         'direct_topup_region',
         'direct_topup_bundle_quantity',
         'min_amount',
@@ -81,6 +87,7 @@ class SupplierProductMapping extends Model
             'is_customizable' => 'boolean',
             'is_direct_topup' => 'boolean',
             'direct_topup_account_label' => 'string',
+            'direct_topup_bundle_mode' => 'string',
             'direct_topup_region' => 'string',
             'direct_topup_bundle_quantity' => 'decimal:4',
             'min_amount' => 'decimal:2',
@@ -149,6 +156,31 @@ class SupplierProductMapping extends Model
     public function isLocalFirst(): bool
     {
         return ! $this->isSupplierFirst();
+    }
+
+    public function directTopUpBundleMode(): string
+    {
+        if (! $this->is_direct_topup) {
+            return self::DIRECT_TOPUP_BUNDLE_CUSTOMIZABLE;
+        }
+
+        $mode = strtolower(trim((string) ($this->direct_topup_bundle_mode ?? '')));
+
+        return $mode === self::DIRECT_TOPUP_BUNDLE_FIXED
+            ? self::DIRECT_TOPUP_BUNDLE_FIXED
+            : self::DIRECT_TOPUP_BUNDLE_CUSTOMIZABLE;
+    }
+
+    public function usesFixedDirectTopUpBundle(): bool
+    {
+        return (bool) $this->is_direct_topup
+            && $this->directTopUpBundleMode() === self::DIRECT_TOPUP_BUNDLE_FIXED;
+    }
+
+    public function usesCustomizableDirectTopUpBundle(): bool
+    {
+        return (bool) $this->is_direct_topup
+            && ! $this->usesFixedDirectTopUpBundle();
     }
 
     /**
@@ -250,6 +282,10 @@ class SupplierProductMapping extends Model
      */
     public function resolveDirectTopUpBundleQuantity(): float
     {
+        if ($this->usesFixedDirectTopUpBundle()) {
+            return 1.0;
+        }
+
         if ($this->direct_topup_bundle_quantity !== null) {
             $bundleQuantity = (float) $this->direct_topup_bundle_quantity;
 
@@ -266,6 +302,10 @@ class SupplierProductMapping extends Model
      */
     public function getDirectTopUpAdminDisplayCost(): float
     {
+        if ($this->usesFixedDirectTopUpBundle()) {
+            return round((float) $this->cost_price, $this->resolveDisplayDecimalPlaces());
+        }
+
         $quantity = $this->resolveDirectTopUpBundleQuantity();
 
         if ($quantity <= 0) {
@@ -280,6 +320,10 @@ class SupplierProductMapping extends Model
      */
     public function getDirectTopUpAdminDisplaySellPrice(): float
     {
+        if ($this->usesFixedDirectTopUpBundle()) {
+            return $this->calculateSellPrice();
+        }
+
         $quantity = $this->resolveDirectTopUpBundleQuantity();
 
         if ($quantity <= 0) {

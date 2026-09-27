@@ -357,6 +357,10 @@ class DirectTopUpService
     {
         $mapping = $this->getMapping($product);
 
+        if ($mapping !== null && $mapping->usesFixedDirectTopUpBundle()) {
+            return 1.0;
+        }
+
         if ($mapping !== null && $mapping->direct_topup_bundle_quantity !== null) {
             $bundleQuantity = (float) $mapping->direct_topup_bundle_quantity;
 

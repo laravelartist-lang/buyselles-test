@@ -102,6 +102,7 @@ class DirectTopUpServiceTest extends TestCase
             $table->boolean('is_active')->default(true);
             $table->boolean('is_direct_topup')->default(false);
             $table->string('direct_topup_account_label', 255)->nullable();
+            $table->string('direct_topup_bundle_mode', 20)->default('customizable');
             $table->decimal('direct_topup_bundle_quantity', 20, 4)->nullable();
             $table->timestamps();
         });
@@ -184,6 +185,40 @@ class DirectTopUpServiceTest extends TestCase
         $product->save();
 
         $this->assertSame(1000.0, $this->service->resolveBundleQuantity($product->fresh(['supplierMapping'])));
+    }
+
+    public function test_resolve_bundle_quantity_returns_one_for_fixed_bundle_mode(): void
+    {
+        $product = $this->makeDirectTopUpProduct();
+
+        $this->app['db']->table('supplier_product_mappings')
+            ->where('product_id', $product->id)
+            ->update([
+                'direct_topup_bundle_mode' => 'fixed',
+                'direct_topup_bundle_quantity' => null,
+            ]);
+
+        $product->unsetRelation('supplierMapping');
+
+        $this->assertSame(1.0, $this->service->resolveBundleQuantity($product->fresh(['supplierMapping'])));
+    }
+
+    public function test_validate_purchase_accepts_quantity_one_for_fixed_bundle_mode(): void
+    {
+        $product = $this->makeDirectTopUpProduct();
+
+        $this->app['db']->table('supplier_product_mappings')
+            ->where('product_id', $product->id)
+            ->update([
+                'direct_topup_bundle_mode' => 'fixed',
+                'direct_topup_bundle_quantity' => null,
+            ]);
+
+        $product->unsetRelation('supplierMapping');
+
+        $errors = $this->service->validatePurchase($product->fresh(['supplierMapping']), 'player123', 1);
+
+        $this->assertArrayNotHasKey('direct_topup_quantity', $errors);
     }
 
     public function test_validate_purchase_rejects_mismatched_bundle_quantity(): void

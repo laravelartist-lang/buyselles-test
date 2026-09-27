@@ -20,6 +20,7 @@ use App\Models\User;
 use App\Services\CustomerServiceFeeService;
 use App\Services\DigitalProductCodeService;
 use App\Services\Kyc\CustomerCheckoutKycGuard;
+use App\Services\Supplier\SupplierAvailabilityService;
 use App\Traits\OrderEditManager;
 use App\Traits\Payment;
 use App\Traits\PaymentGatewayTrait;
@@ -40,6 +41,7 @@ class PaymentController extends Controller
 
     public function __construct(
         private readonly CustomerCheckoutKycGuard $kycGuard,
+        private readonly SupplierAvailabilityService $supplierAvailability,
     ) {}
 
     public function payment(Request $request): JsonResponse|Redirector|RedirectResponse
@@ -125,6 +127,21 @@ class PaymentController extends Controller
                 }
             } else {
                 Toastr::error(translate('the_following_items_in_your_cart_are_currently_out_of_stock'));
+            }
+
+            return redirect()->route('shop-cart');
+        }
+
+        $supplierAvailability = $this->supplierAvailability->checkCarts($carts);
+        if (! $supplierAvailability->ok) {
+            $errorMsg = $supplierAvailability->errorMessage();
+
+            if (in_array($request['payment_request_from'], ['app'])) {
+                return response()->json(['errors' => ['code' => 'supplier-stock', 'message' => $errorMsg]], 403);
+            }
+
+            foreach ($supplierAvailability->errors as $supplierErrorMsg) {
+                Toastr::warning($supplierErrorMsg);
             }
 
             return redirect()->route('shop-cart');
