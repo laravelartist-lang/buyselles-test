@@ -13,7 +13,8 @@ use Illuminate\Support\Facades\Log;
 
 /**
  * Daily price sync job — refreshes mapped supplier cost prices from live API data.
- * Uses SupplierManager::syncStock() so each read is recorded in supplier_api_logs.
+ * Uses SupplierManager::syncStock() (pricing/cost sync only — not auto-restock) so each
+ * read is recorded in supplier_api_logs.
  */
 class SyncSupplierMappingPricesJob implements ShouldQueue
 {

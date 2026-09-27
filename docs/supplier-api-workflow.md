@@ -31,7 +31,7 @@ This document explains the full lifecycle of a supplier product: from fetching t
 │  Browse Catalog ──────────┼──► SyncSupplierCatalogJob           │
 │  Add Mapping              │       └─► BambooDriver::fetchProducts│
 │  Sync Prices Button ──────┼──► SyncSupplierMappingPricesJob (manual) │
-│                           │       └─► syncStock() per mapping   │
+│                           │       └─► syncStock() per mapping (cost/price only)   │
 ├───────────────────────────┴─────────────────────────────────────┤
 │                 ORDER FULFILLMENT PIPELINE                      │
 │                                                                 │
@@ -288,7 +288,7 @@ assignAndNotify($order)
 
 ## 8. Stage 7 — Price sync (daily + manual)
 
-`SyncSupplierMappingPricesJob` runs **daily at 01:00** and can be triggered manually from **Admin → Supplier Mappings → Sync Prices**. It calls `SupplierManager::syncStock()` per mapping (API read only).
+`SyncSupplierMappingPricesJob` runs **daily at 01:00** and can be triggered manually from **Admin → Supplier Mappings → Sync Prices**. It calls `SupplierManager::syncStock()` per mapping (API read only — not auto-restock).
 
 ```
 Schedule (daily) or admin Sync Prices → SyncSupplierMappingPricesJob

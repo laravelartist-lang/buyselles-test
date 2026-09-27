@@ -742,10 +742,18 @@ class SupplierManager
     }
 
     /**
-     * Sync stock for a specific product-supplier mapping.
-     * Checks remote stock and updates cost price. Does not place supplier orders —
-     * automatic pre-stocking (auto_restock) was removed 2026-07-13 after it created
-     * thousands of supplier API orders with no customer checkout.
+     * Sync supplier mapping cost price from the live API (legacy method name: syncStock).
+     *
+     * This is **not** auto-restock and does **not** place supplier orders or buy codes.
+     * It only reads fetchStock(), updates mapping cost_price / cost_currency, may adjust
+     * storefront price via applyApiPriceIfManualDepleted(), and sets last_synced_at.
+     *
+     * Scheduled/manual runs: SyncSupplierMappingPricesJob and Admin → Sync Prices.
+     *
+     * Do not confuse with DigitalProductCodeService::syncStock(int $productId), which
+     * recalculates local products.current_stock from the digital code pool.
+     *
+     * Supplier auto_restock (pre-purchase inventory) was removed 2026-07-13.
      */
     public function syncStock(SupplierProductMapping $mapping): void
     {

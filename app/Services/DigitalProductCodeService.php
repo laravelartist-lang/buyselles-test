@@ -505,6 +505,11 @@ class DigitalProductCodeService
         ]);
     }
 
+    /**
+     * Recalculate products.current_stock from the local digital code pool.
+     *
+     * Not related to SupplierManager::syncStock() (supplier API cost/price sync).
+     */
     public function syncStock(int $productId): void
     {
         $available = DigitalProductCode::query()

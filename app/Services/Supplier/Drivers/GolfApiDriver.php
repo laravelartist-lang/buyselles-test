@@ -240,8 +240,8 @@ class GolfApiDriver implements SupplierDriverInterface
      * For "charge" type products, the response indicates direct top-up status.
      *
      * When the product defines custom_fields, they are included with empty
-     * string values since this method is called for bulk restocking where
-     * no end-user account ID is available. If the API rejects empty values,
+     * string values when no end-user account ID is available (e.g. code products).
+     * If the API rejects empty values,
      * the call will throw and the SupplierManager's fallback chain will
      * attempt the next supplier.
      */
