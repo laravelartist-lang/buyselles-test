@@ -26,3 +26,4 @@ temp-data-folder/
 /public/Modules/Gateways
 *.json
 !mobile/**/*.json
+.env.bak*
