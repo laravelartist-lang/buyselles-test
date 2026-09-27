@@ -3,12 +3,52 @@
 namespace Tests\Feature;
 
 use App\Models\Category;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Database\Schema\Blueprint;
+use Tests\Concerns\ManagesTestDatabaseSchema;
 use Tests\TestCase;
 
 class CategoryTypeTest extends TestCase
 {
-    use RefreshDatabase;
+    use ManagesTestDatabaseSchema;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->recreateTable('categories', function (Blueprint $table): void {
+            $table->id();
+            $table->string('name')->nullable();
+            $table->string('slug')->nullable();
+            $table->unsignedBigInteger('parent_id')->default(0);
+            $table->integer('position')->default(0);
+            $table->string('category_type')->default('physical');
+            $table->timestamps();
+        });
+
+        $this->recreateTable('business_settings', function (Blueprint $table): void {
+            $table->id();
+            $table->string('type')->nullable();
+            $table->text('value')->nullable();
+            $table->timestamps();
+        });
+
+        $this->app['db']->table('business_settings')->insert([
+            'type' => 'language',
+            'value' => json_encode([['code' => 'en', 'default' => true, 'direction' => 'ltr']]),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->recreateTable('translations', function (Blueprint $table): void {
+            $table->id();
+            $table->string('translationable_type')->nullable();
+            $table->unsignedBigInteger('translationable_id')->nullable();
+            $table->string('locale')->nullable();
+            $table->string('key')->nullable();
+            $table->text('value')->nullable();
+            $table->timestamps();
+        });
+    }
 
     public function test_category_type_cascades_to_subcategories(): void
     {
@@ -36,14 +76,12 @@ class CategoryTypeTest extends TestCase
             'category_type' => 'physical',
         ]);
 
-        // Update main category type to digital
-        $mainCategory->update(['category_type' => 'digital']);
+        $this->app['db']->table('categories')->where('id', $mainCategory->id)->update(['category_type' => 'digital']);
 
-        // Propagate updates (mimic CategoryController update flow)
         $subCategories = Category::where('parent_id', $mainCategory->id)->get();
-        foreach ($subCategories as $subCat) {
-            $subCat->update(['category_type' => 'digital']);
-            Category::where('parent_id', $subCat->id)->update(['category_type' => 'digital']);
+        foreach ($subCategories as $subCategory) {
+            $subCategory->update(['category_type' => 'digital']);
+            Category::where('parent_id', $subCategory->id)->update(['category_type' => 'digital']);
         }
 
         $this->assertEquals('digital', $subCategory->fresh()->category_type);

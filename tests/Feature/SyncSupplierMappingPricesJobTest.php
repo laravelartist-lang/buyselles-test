@@ -137,5 +137,7 @@ class SyncSupplierMappingPricesJobTest extends TestCase
             ->with(Mockery::on(fn (SupplierProductMapping $passed): bool => $passed->id === $mapping->id));
 
         (new SyncSupplierMappingPricesJob)->handle($manager);
+
+        $this->addToAssertionCount(1);
     }
 }

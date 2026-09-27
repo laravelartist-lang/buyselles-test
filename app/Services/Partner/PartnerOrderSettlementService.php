@@ -9,6 +9,7 @@ use App\Models\Product;
 use App\Models\Shop;
 use App\Utils\OrderManager;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class PartnerOrderSettlementService
 {
@@ -67,7 +68,7 @@ class PartnerOrderSettlementService
             'seller_amount' => $catalogSubtotal - $adminMargin,
             'admin_commission' => $adminMargin + $serviceFee,
             'received_by' => 'admin',
-            'status' => 'disburse',
+            'status' => 'pending_disburse',
             'delivery_charge' => 0,
             'tax' => 0,
             'delivered_by' => 'admin',
@@ -75,10 +76,53 @@ class PartnerOrderSettlementService
             'created_at' => now(),
             'updated_at' => now(),
         ]);
+    }
+
+    public function finalizeSettlement(Order $order): void
+    {
+        if ($order->payment_method !== 'partner_wallet') {
+            return;
+        }
+
+        $transaction = $this->findPartnerOrderTransaction($order->id);
+
+        if ($transaction === null) {
+            return;
+        }
+
+        if ($transaction->status === 'disburse') {
+            return;
+        }
+
+        if ($transaction->status !== 'pending_disburse') {
+            return;
+        }
+
+        $commissionAmount = (float) $transaction->admin_commission;
+
+        if ($commissionAmount <= 0) {
+            DB::table('order_transactions')
+                ->where('id', $transaction->id)
+                ->update([
+                    'status' => 'disburse',
+                    'updated_at' => now(),
+                ]);
+
+            return;
+        }
+
+        OrderManager::getCheckOrCreateAdminWallet();
 
         AdminWallet::query()
             ->where('admin_id', 1)
-            ->increment('commission_earned', $adminMargin + $serviceFee);
+            ->increment('commission_earned', $commissionAmount);
+
+        DB::table('order_transactions')
+            ->where('id', $transaction->id)
+            ->update([
+                'status' => 'disburse',
+                'updated_at' => now(),
+            ]);
     }
 
     public function reverseSettlement(Order $order): bool
@@ -87,19 +131,27 @@ class PartnerOrderSettlementService
             return false;
         }
 
+        $transaction = $this->findPartnerOrderTransaction($order->id);
+
+        if ($transaction === null) {
+            return false;
+        }
+
         $adminMargin = (float) $order->admin_commission;
         $serviceFee = (float) ($order->customer_service_fee ?? 0);
         $reversalAmount = $adminMargin + $serviceFee;
 
-        if ($reversalAmount <= 0) {
+        if ($reversalAmount <= 0 && $transaction->status !== 'pending_disburse') {
             return false;
         }
 
-        OrderManager::getCheckOrCreateAdminWallet();
+        if ($transaction->status === 'disburse') {
+            OrderManager::getCheckOrCreateAdminWallet();
 
-        AdminWallet::query()
-            ->where('admin_id', 1)
-            ->decrement('commission_earned', $reversalAmount);
+            AdminWallet::query()
+                ->where('admin_id', 1)
+                ->decrement('commission_earned', (float) $transaction->admin_commission);
+        }
 
         DB::table('order_transactions')
             ->where('order_id', $order->id)
@@ -114,5 +166,16 @@ class PartnerOrderSettlementService
         ]);
 
         return true;
+    }
+
+    private function findPartnerOrderTransaction(int $orderId): ?object
+    {
+        $query = DB::table('order_transactions')->where('order_id', $orderId);
+
+        if (Schema::hasColumn('order_transactions', 'payment_method')) {
+            $query->where('payment_method', 'partner_wallet');
+        }
+
+        return $query->orderByDesc('id')->first();
     }
 }

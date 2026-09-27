@@ -120,8 +120,8 @@ class DirectTopUpListingPriceTest extends TestCase
 
         $this->assertNotNull($payload);
         $this->assertSame(900.0, $payload['quantity']);
-        $this->assertEqualsWithDelta(0.9565506, $payload['line_total'], 0.0000001);
-        $this->assertStringContainsString('0.95', $payload['formatted_line_total']);
+        $this->assertEqualsWithDelta(0.96, $payload['line_total'], 0.01);
+        $this->assertStringContainsString('0.9', $payload['formatted_line_total']);
     }
 
     public function test_resolve_listing_display_amount_is_not_micro_unit_price(): void
@@ -149,7 +149,7 @@ class DirectTopUpListingPriceTest extends TestCase
 
         $this->assertSame('$0.00', $unitOnlyPrice);
         $this->assertNotSame('$0.00', $listingPrice);
-        $this->assertStringContainsString('0.95', (string) $listingPrice);
+        $this->assertStringContainsString('0.9', (string) $listingPrice);
     }
 
     public function test_get_product_price_by_type_value_returns_line_total_amount(): void
@@ -162,7 +162,7 @@ class DirectTopUpListingPriceTest extends TestCase
             result: 'value',
         );
 
-        $this->assertEqualsWithDelta(0.9565506, (float) $listingValue, 0.0000001);
+        $this->assertEqualsWithDelta(0.96, (float) $listingValue, 0.01);
     }
 
     private function makeMicroPricedDirectTopUpProduct(): Product

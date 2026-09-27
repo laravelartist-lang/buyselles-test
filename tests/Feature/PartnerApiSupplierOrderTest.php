@@ -10,9 +10,11 @@ use App\Models\Order;
 use App\Models\OrderDetail;
 use App\Models\SupplierOrder;
 use App\Models\SupplierProductMapping;
+use App\Services\Order\OrderFulfillmentStatusService;
 use App\Services\Supplier\Presets\SecretOrcaPreset;
 use App\Services\Supplier\SupplierManager;
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\Crypt;
 use Mockery;
 use Tests\Concerns\ManagesTestDatabaseSchema;
 use Tests\Concerns\SetsUpPartnerApiTestSchema;
@@ -63,9 +65,65 @@ class PartnerApiSupplierOrderTest extends TestCase
         $this->assertSame('admin', $order->seller_is);
 
         $adminWallet = AdminWallet::query()->where('admin_id', 1)->first();
-        $this->assertSame(3.0, (float) $adminWallet->commission_earned);
+        $this->assertSame(0.0, (float) $adminWallet->commission_earned);
+
+        $this->assertDatabaseHas('order_transactions', [
+            'order_id' => $order->id,
+            'payment_method' => 'partner_wallet',
+            'status' => 'pending_disburse',
+        ]);
 
         Bus::assertDispatched(SupplierCodeFetchJob::class);
+    }
+
+    public function test_supplier_pending_order_finalizes_admin_commission_when_delivered(): void
+    {
+        Bus::fake([SupplierCodeFetchJob::class, SupplierOrderPollJob::class]);
+
+        $this->seedProduct(id: 24, name: 'Supplier Pending Delivery');
+        $this->seedSupplierMapping(productId: 24, driver: 'golf_api', costPrice: 7);
+        $this->assignProductToPartnerCatalog(productId: 24, partnerPrice: 10);
+
+        $manager = Mockery::mock(SupplierManager::class);
+        $manager->shouldReceive('getAvailableStockForMapping')->andReturn(5);
+        $this->app->instance(SupplierManager::class, $manager);
+
+        $response = $this->postJson('/api/v1/partner/orders', [
+            'product_id' => 24,
+            'quantity' => 1,
+        ], $this->partnerApiHeaders());
+
+        $response->assertCreated();
+        $order = Order::query()->findOrFail($response->json('data.order_id'));
+        $orderDetail = OrderDetail::query()->where('order_id', $order->id)->firstOrFail();
+
+        $this->app['db']->table('digital_product_codes')->insert([
+            'product_id' => 24,
+            'code' => Crypt::encryptString('DELIVERED-CODE-24'),
+            'code_hash' => hash('sha256', 'delivered-code-24'),
+            'status' => 'sold',
+            'source' => 'supplier',
+            'is_active' => true,
+            'order_id' => $order->id,
+            'order_detail_id' => $orderDetail->id,
+            'assigned_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        app(OrderFulfillmentStatusService::class)->syncOrderFulfillmentStatus($order->fresh());
+
+        $order->refresh();
+        $this->assertSame('delivered', $order->order_status);
+
+        $adminWallet = AdminWallet::query()->where('admin_id', 1)->first();
+        $this->assertSame(3.0, (float) $adminWallet->commission_earned);
+
+        $this->assertDatabaseHas('order_transactions', [
+            'order_id' => $order->id,
+            'payment_method' => 'partner_wallet',
+            'status' => 'disburse',
+        ]);
     }
 
     public function test_create_order_on_local_product_returns_fulfilled_with_codes(): void

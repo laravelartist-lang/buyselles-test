@@ -481,6 +481,21 @@ class SupplierMappingController extends BaseController
     }
 
     /**
+     * Whether a supplier catalog SKU is already linked to a mapping on this supplier API.
+     */
+    private function supplierProductAlreadyMapped(
+        int $supplierApiId,
+        string $supplierProductId,
+        ?int $exceptMappingId = null,
+    ): bool {
+        return SupplierProductMapping::query()
+            ->where('supplier_api_id', $supplierApiId)
+            ->where('supplier_product_id', $supplierProductId)
+            ->when($exceptMappingId, fn (Builder $query) => $query->where('id', '!=', $exceptMappingId))
+            ->exists();
+    }
+
+    /**
      * Apply the most specific category filter, matching admin product list behaviour.
      * When a sub-sub category is selected, only sub_sub_category_id is used so products
      * with a stale or missing category_id are still included.

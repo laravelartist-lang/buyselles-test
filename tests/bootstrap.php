@@ -30,6 +30,23 @@ $testingEnvironment = [
     'BROADCAST_DRIVER' => 'log',
 ];
 
+// Prevent .env / shell MySQL credentials from overriding PHPUnit isolation.
+$blockedDatabaseEnvKeys = [
+    'DATABASE_URL',
+    'DB_HOST',
+    'DB_PORT',
+    'DB_USERNAME',
+    'DB_PASSWORD',
+    'DB_SOCKET',
+    'MYSQL_DATABASE',
+    'MYSQL_HOST',
+];
+
+foreach ($blockedDatabaseEnvKeys as $key) {
+    putenv($key);
+    unset($_ENV[$key], $_SERVER[$key]);
+}
+
 foreach ($testingEnvironment as $key => $value) {
     putenv("{$key}={$value}");
     $_ENV[$key] = $value;

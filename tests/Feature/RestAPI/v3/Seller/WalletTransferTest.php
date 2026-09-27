@@ -10,11 +10,13 @@ use App\Models\WalletTransfer;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use Tests\Concerns\ApprovesVendorKycForSellerApiTests;
 use Tests\Concerns\ManagesTestDatabaseSchema;
 use Tests\TestCase;
 
 class WalletTransferTest extends TestCase
 {
+    use ApprovesVendorKycForSellerApiTests;
     use ManagesTestDatabaseSchema;
 
     private Seller $seller;
@@ -56,6 +58,8 @@ class WalletTransferTest extends TestCase
             'phone' => '9876543210',
             'wallet_balance' => 0,
         ]);
+
+        $this->approveVendorKycForSellerApi($this->seller->id);
     }
 
     public function test_transfer_debits_vendor_and_credits_customer(): void

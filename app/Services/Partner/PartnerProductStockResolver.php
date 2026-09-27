@@ -28,7 +28,13 @@ class PartnerProductStockResolver
         }
 
         if ($mapping->isSupplierFirst()) {
-            return max(0, $this->supplierManager->getAvailableStockForMapping($mapping, useCache: false));
+            $supplierStock = max(0, $this->supplierManager->getAvailableStockForMapping($mapping, useCache: false));
+
+            if ($supplierStock > 0) {
+                return $supplierStock;
+            }
+
+            return $this->localAvailableCount((int) $product->id);
         }
 
         return $this->localAvailableCount((int) $product->id)

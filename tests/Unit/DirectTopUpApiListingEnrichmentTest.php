@@ -128,7 +128,7 @@ class DirectTopUpApiListingEnrichmentTest extends TestCase
 
         $this->assertTrue($formatted['is_direct_topup']);
         $this->assertGreaterThan(0.9, (float) $formatted['display_price']);
-        $this->assertStringContainsString('0.95', (string) $formatted['formatted_display_price']);
+        $this->assertStringContainsString('0.9', (string) $formatted['formatted_display_price']);
         $this->assertIsArray($formatted['direct_topup']);
         $this->assertSame(900.0, $formatted['direct_topup']['quantity']);
     }

@@ -287,6 +287,7 @@ class SupplierController extends BaseController
         $size = min((int) $request->get('size', 50), 100);
         $page = max((int) $request->get('page', 0), 0);
         $search = trim((string) $request->get('search', ''));
+        $exceptMappingId = (int) $request->get('except_mapping_id', 0);
 
         $catalogKey = \App\Jobs\SyncSupplierCatalogJob::catalogCacheKey($supplier->id);
         $syncService = app(\App\Services\Supplier\SupplierCatalogSyncService::class);
@@ -308,6 +309,20 @@ class SupplierController extends BaseController
             $filtered = $filtered->filter(
                 fn ($p) => str_contains(mb_strtolower((string) ($p['name'] ?? '')), $needle)
                     || str_contains(mb_strtolower((string) ($p['id'] ?? '')), $needle)
+            );
+        }
+
+        $mappedSupplierProductIds = \App\Models\SupplierProductMapping::query()
+            ->where('supplier_api_id', $supplier->id)
+            ->when($exceptMappingId > 0, fn ($query) => $query->where('id', '!=', $exceptMappingId))
+            ->pluck('supplier_product_id')
+            ->filter()
+            ->map(fn ($id) => (string) $id)
+            ->all();
+
+        if ($mappedSupplierProductIds !== []) {
+            $filtered = $filtered->reject(
+                fn ($item) => in_array((string) ($item['id'] ?? ''), $mappedSupplierProductIds, true)
             );
         }
 

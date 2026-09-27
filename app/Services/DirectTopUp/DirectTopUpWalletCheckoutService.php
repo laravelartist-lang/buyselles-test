@@ -122,7 +122,9 @@ class DirectTopUpWalletCheckoutService
                 'payment_status' => 'paid',
             ]);
 
-            OrderManager::getWalletManageOnOrderStatusChange($order->fresh(), 'admin');
+            $order = $order->fresh();
+            $this->fulfillmentStatusService->syncOrderFulfillmentStatus($order);
+            OrderManager::getWalletManageOnOrderStatusChange($order, 'admin');
         }
 
         OrderManager::completeDeferredCheckout();

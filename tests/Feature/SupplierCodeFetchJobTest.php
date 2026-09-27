@@ -235,7 +235,8 @@ class SupplierCodeFetchJobTest extends TestCase
 
         (new SupplierCodeFetchJob($order->id))->handle(
             $manager,
-            app(\App\Services\Supplier\SupplierFulfillmentFailureService::class)
+            app(\App\Services\Supplier\SupplierFulfillmentFailureService::class),
+            app(\App\Services\Supplier\SupplierOrderEligibilityService::class),
         );
 
         $order->refresh();
@@ -256,7 +257,7 @@ class SupplierCodeFetchJobTest extends TestCase
             'customer_id' => $user->id,
             'payment_method' => 'pay_by_wallet',
             'payment_status' => 'paid',
-            'order_status' => 'delivered',
+            'order_status' => 'processing',
             'order_amount' => 10,
         ]);
 
@@ -297,7 +298,8 @@ class SupplierCodeFetchJobTest extends TestCase
 
         (new SupplierCodeFetchJob($order->id))->handle(
             $manager,
-            app(\App\Services\Supplier\SupplierFulfillmentFailureService::class)
+            app(\App\Services\Supplier\SupplierFulfillmentFailureService::class),
+            app(\App\Services\Supplier\SupplierOrderEligibilityService::class),
         );
 
         $user->refresh();

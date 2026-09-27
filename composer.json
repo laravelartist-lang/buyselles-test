@@ -134,7 +134,7 @@
         ],
         "test": [
             "@php artisan config:clear --quiet",
-            "@php artisan test"
+            "vendor/bin/phpunit --configuration phpunit.xml"
         ],
         "test:direct-topup": [
             "@php artisan config:clear --quiet",

@@ -3101,4 +3101,46 @@ class ProductManager
 
         return $startingPrice > 0 ? $startingPrice : null;
     }
+
+    /**
+     * @param  array{id?: int|string|null}|int|string|null  $product
+     * @return array{applied: bool, unit_price: float|null, discounted_unit_price: float|null}
+     */
+    public static function resolveMappedDisplayUnitPrice(array|int|string|null $product): array
+    {
+        $productId = is_array($product)
+            ? (int) ($product['id'] ?? 0)
+            : (int) $product;
+
+        if ($productId <= 0) {
+            return [
+                'applied' => false,
+                'unit_price' => null,
+                'discounted_unit_price' => null,
+            ];
+        }
+
+        $mapping = SupplierProductMapping::query()
+            ->where('product_id', $productId)
+            ->where('is_active', true)
+            ->whereHas('supplierApi', fn ($query) => $query->where('is_active', true))
+            ->orderBy('priority')
+            ->first();
+
+        if ($mapping === null) {
+            return [
+                'applied' => false,
+                'unit_price' => null,
+                'discounted_unit_price' => null,
+            ];
+        }
+
+        $sellPrice = $mapping->calculateSellPrice();
+
+        return [
+            'applied' => true,
+            'unit_price' => $sellPrice,
+            'discounted_unit_price' => $sellPrice,
+        ];
+    }
 }

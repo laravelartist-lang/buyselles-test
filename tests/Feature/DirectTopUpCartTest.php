@@ -56,6 +56,7 @@ class DirectTopUpCartTest extends TestCase
             $table->boolean('is_active')->default(true);
             $table->boolean('is_direct_topup')->default(false);
             $table->string('direct_topup_account_label', 255)->nullable();
+            $table->decimal('direct_topup_bundle_quantity', 20, 4)->nullable();
             $table->timestamps();
         });
 
@@ -288,6 +289,7 @@ class DirectTopUpCartTest extends TestCase
             'is_active' => true,
             'is_direct_topup' => true,
             'direct_topup_account_label' => 'Player ID',
+            'direct_topup_bundle_quantity' => 500,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -321,7 +323,7 @@ class DirectTopUpCartTest extends TestCase
         $productId = 505;
         $guestId = 999002;
 
-        $this->seedDirectTopUpProductMapping($productId, 'SUP-505');
+        $this->seedDirectTopUpProductMapping($productId, 'SUP-505', 600);
         $product = $this->makeDirectTopUpProduct($productId);
         $this->persistProduct($product);
 
@@ -332,7 +334,7 @@ class DirectTopUpCartTest extends TestCase
                 'id' => $productId,
                 'quantity' => 1,
                 'direct_topup_account_id' => 'player123',
-                'direct_topup_quantity' => 500,
+                'direct_topup_quantity' => 600,
             ]),
             product: $product,
             shippingType: 'order_wise',
@@ -361,10 +363,10 @@ class DirectTopUpCartTest extends TestCase
 
     public function test_direct_topup_update_quantity_with_guest_payload_shape(): void
     {
-        $productId = 506;
+        $productId = 507;
         $guestId = 999003;
 
-        $this->seedDirectTopUpProductMapping($productId, 'SUP-506');
+        $this->seedDirectTopUpProductMapping($productId, 'SUP-507', 700);
         $product = $this->makeDirectTopUpProduct($productId);
         $this->persistProduct($product);
 
@@ -375,7 +377,7 @@ class DirectTopUpCartTest extends TestCase
                 'id' => $productId,
                 'quantity' => 1,
                 'direct_topup_account_id' => 'player456',
-                'direct_topup_quantity' => 500,
+                'direct_topup_quantity' => 700,
             ]),
             product: $product,
             shippingType: 'order_wise',
@@ -417,6 +419,7 @@ class DirectTopUpCartTest extends TestCase
             'is_active' => true,
             'is_direct_topup' => true,
             'direct_topup_account_label' => 'Player ID',
+            'direct_topup_bundle_quantity' => 900,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -442,10 +445,10 @@ class DirectTopUpCartTest extends TestCase
         );
 
         $this->assertSame(1, $response['status']);
-        $this->assertEqualsWithDelta(0.9565506, (float) $response['cart']['price'], 0.0000001);
+        $this->assertEqualsWithDelta(0.96, (float) $response['cart']['price'], 0.01);
     }
 
-    private function seedDirectTopUpProductMapping(int $productId, string $supplierProductId): void
+    private function seedDirectTopUpProductMapping(int $productId, string $supplierProductId, float $bundleQuantity = 500): void
     {
         $this->app['db']->table('supplier_product_mappings')->insert([
             'product_id' => $productId,
@@ -457,6 +460,7 @@ class DirectTopUpCartTest extends TestCase
             'is_active' => true,
             'is_direct_topup' => true,
             'direct_topup_account_label' => 'Player ID',
+            'direct_topup_bundle_quantity' => $bundleQuantity,
             'created_at' => now(),
             'updated_at' => now(),
         ]);

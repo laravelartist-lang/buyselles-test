@@ -6,6 +6,7 @@ use App\Models\DigitalProductCode;
 use App\Models\Order;
 use App\Models\OrderDetail;
 use App\Models\SupplierOrder;
+use App\Services\Partner\PartnerOrderSettlementService;
 use App\Services\Supplier\SupplierOrderEligibilityService;
 use App\Utils\OrderManager;
 use Illuminate\Support\Facades\Schema;
@@ -211,6 +212,10 @@ class OrderFulfillmentStatusService
             $status,
             'admin',
         );
+
+        if ($status === 'delivered' && $order->payment_method === 'partner_wallet') {
+            app(PartnerOrderSettlementService::class)->finalizeSettlement($order->fresh());
+        }
 
         if ($status === 'delivered' && $order->payment_method !== 'partner_wallet') {
             OrderManager::getWalletManageOnOrderStatusChange($order->fresh(), 'admin');

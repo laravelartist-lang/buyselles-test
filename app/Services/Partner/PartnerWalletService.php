@@ -6,6 +6,7 @@ use App\Models\CustomerWallet;
 use App\Models\Order;
 use App\Models\ResellerApiKey;
 use App\Models\SellerWallet;
+use App\Models\SellerWalletHistory;
 use App\Models\User;
 use App\Models\WalletTransaction;
 use App\Utils\CustomerManager;
@@ -50,7 +51,7 @@ class PartnerWalletService
         }
 
         if ($key->seller_id) {
-            $this->debitVendorWallet($key->seller_id, $amount);
+            $this->debitVendorWallet($key->seller_id, $amount, $orderId);
 
             return;
         }
@@ -84,9 +85,32 @@ class PartnerWalletService
         }
 
         if ($order->seller_id) {
-            SellerWallet::query()
-                ->where('seller_id', $order->seller_id)
-                ->increment('total_earning', $amount);
+            DB::transaction(function () use ($order, $amount): void {
+                $sellerId = (int) $order->seller_id;
+
+                if ($this->vendorRefundHistoryExists($sellerId, (int) $order->id)) {
+                    return;
+                }
+
+                $wallet = SellerWallet::query()
+                    ->where('seller_id', $sellerId)
+                    ->lockForUpdate()
+                    ->first();
+
+                if (! $wallet) {
+                    throw new \RuntimeException('Vendor wallet not found.');
+                }
+
+                $wallet->increment('total_earning', $amount);
+
+                SellerWalletHistory::create([
+                    'seller_id' => $sellerId,
+                    'amount' => $amount,
+                    'order_id' => $order->id,
+                    'product_id' => null,
+                    'payment' => 'partner_api_order_refund',
+                ]);
+            });
 
             return;
         }
@@ -102,24 +126,43 @@ class PartnerWalletService
         }
     }
 
-    private function debitVendorWallet(int $sellerId, float $amount): void
+    public function vendorRefundHistoryExists(int $sellerId, int $orderId): bool
     {
-        $wallet = SellerWallet::query()
+        return SellerWalletHistory::query()
             ->where('seller_id', $sellerId)
-            ->lockForUpdate()
-            ->first();
+            ->where('order_id', $orderId)
+            ->where('payment', 'partner_api_order_refund')
+            ->exists();
+    }
 
-        if (! $wallet) {
-            throw new \RuntimeException('Vendor wallet not found.');
-        }
+    private function debitVendorWallet(int $sellerId, float $amount, ?int $orderId = null): void
+    {
+        DB::transaction(function () use ($sellerId, $amount, $orderId): void {
+            $wallet = SellerWallet::query()
+                ->where('seller_id', $sellerId)
+                ->lockForUpdate()
+                ->first();
 
-        $available = (float) $wallet->total_earning - (float) $wallet->pending_withdraw;
+            if (! $wallet) {
+                throw new \RuntimeException('Vendor wallet not found.');
+            }
 
-        if ($available < $amount) {
-            throw new \RuntimeException('Insufficient vendor wallet balance.');
-        }
+            $available = (float) $wallet->total_earning - (float) $wallet->pending_withdraw;
 
-        $wallet->decrement('total_earning', $amount);
+            if ($available < $amount) {
+                throw new \RuntimeException('Insufficient vendor wallet balance.');
+            }
+
+            $wallet->decrement('total_earning', $amount);
+
+            SellerWalletHistory::create([
+                'seller_id' => $sellerId,
+                'amount' => -$amount,
+                'order_id' => $orderId,
+                'product_id' => null,
+                'payment' => 'partner_api_order_debit',
+            ]);
+        });
     }
 
     private function debitCustomerWallet(int $userId, float $amount, ?int $orderId): void

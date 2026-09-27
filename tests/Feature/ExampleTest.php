@@ -2,19 +2,14 @@
 
 namespace Tests\Feature;
 
+use App\Support\DatabaseSafety;
 use Tests\TestCase;
 
 class ExampleTest extends TestCase
 {
-    /**
-     * A basic test example.
-     *
-     * @return void
-     */
-    public function test_basic_test()
+    public function test_application_boots_under_isolated_test_database(): void
     {
-        $response = $this->get('/');
-
-        $response->assertStatus(200);
+        $this->assertTrue(DatabaseSafety::usesInMemoryTestingDatabase());
+        $this->assertSame('testing', config('app.env'));
     }
 }

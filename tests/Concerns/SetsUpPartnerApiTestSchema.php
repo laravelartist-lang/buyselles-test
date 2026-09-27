@@ -476,6 +476,49 @@ trait SetsUpPartnerApiTestSchema
         ]);
     }
 
+    protected function seedVendorPartnerApiKey(int $sellerId, float $totalEarning = 1000): ResellerApiKey
+    {
+        if (! $this->app['db']->table('sellers')->where('id', $sellerId)->exists()) {
+            $this->app['db']->table('sellers')->insert([
+                'id' => $sellerId,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+
+        $this->app['db']->table('seller_wallets')->updateOrInsert(
+            ['seller_id' => $sellerId],
+            [
+                'total_earning' => $totalEarning,
+                'pending_balance' => 0,
+                'pending_withdraw' => 0,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        );
+
+        $userId = $this->app['db']->table('users')->insertGetId([
+            'f_name' => 'Vendor Partner',
+            'email' => 'vendor-partner-'.$sellerId.'@test.com',
+            'wallet_balance' => 0,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return ResellerApiKey::query()->create([
+            'user_id' => $userId,
+            'seller_id' => $sellerId,
+            'name' => 'Vendor Partner Key',
+            'api_key' => hash('sha256', $this->rawApiKey),
+            'api_secret' => hash('sha256', $this->rawApiSecret),
+            'permissions' => ['products.list', 'orders.create', 'orders.view', 'balance.view'],
+            'rate_limit_per_minute' => 60,
+            'is_active' => true,
+            'status' => 'active',
+            'wallet_balance' => 0,
+        ]);
+    }
+
     /**
      * @return array<string, string>
      */

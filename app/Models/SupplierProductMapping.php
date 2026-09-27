@@ -478,6 +478,12 @@ class SupplierProductMapping extends Model
     public function scopeStorefrontOnly($query)
     {
         return $query->whereHas('product', function ($productQuery): void {
+            $table = $productQuery->getModel()->getTable();
+
+            if (! \Illuminate\Support\Facades\Schema::hasColumn($table, 'partner_api_only')) {
+                return;
+            }
+
             $productQuery->where(function ($inner): void {
                 $inner->where('partner_api_only', false)
                     ->orWhereNull('partner_api_only');

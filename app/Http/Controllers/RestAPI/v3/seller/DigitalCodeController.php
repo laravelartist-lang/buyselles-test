@@ -298,7 +298,8 @@ class DigitalCodeController extends Controller
 
         return response()->json([
             'id' => $code->id,
-            'pin' => $plain,
+            'code' => $plain,
+            'pin' => $code->decryptPin(),
             'serial' => $code->serial_number,
         ]);
     }

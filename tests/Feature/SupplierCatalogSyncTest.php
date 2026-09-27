@@ -32,6 +32,13 @@ class SupplierCatalogSyncTest extends TestCase
             $table->boolean('is_active')->default(true);
             $table->timestamps();
         });
+
+        $this->recreateTable('business_settings', function (Blueprint $table): void {
+            $table->id();
+            $table->string('type')->nullable();
+            $table->text('value')->nullable();
+            $table->timestamps();
+        });
     }
 
     public function test_failed_page_is_saved_and_sync_can_resume_from_checkpoint(): void

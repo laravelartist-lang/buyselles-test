@@ -59,6 +59,22 @@ class OrderFulfillmentStatusServiceTest extends TestCase
             $table->text('cause')->nullable();
             $table->timestamps();
         });
+
+        $this->recreateTable('order_transactions', function (Blueprint $table): void {
+            $table->id();
+            $table->unsignedBigInteger('order_id')->nullable();
+            $table->decimal('admin_commission', 24, 4)->default(0);
+            $table->string('status')->nullable();
+            $table->string('payment_method')->nullable();
+            $table->timestamps();
+        });
+
+        $this->recreateTable('admin_wallets', function (Blueprint $table): void {
+            $table->id();
+            $table->unsignedBigInteger('admin_id')->default(1);
+            $table->decimal('commission_earned', 24, 4)->default(0);
+            $table->timestamps();
+        });
     }
 
     public function test_marks_paid_digital_order_delivered_when_all_codes_assigned(): void

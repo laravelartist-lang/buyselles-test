@@ -12,6 +12,8 @@ class DatabaseSafetyTest extends TestCase
         $this->assertTrue(DatabaseSafety::usesInMemoryTestingDatabase());
         $this->assertSame('sqlite', config('database.default'));
         $this->assertSame(':memory:', config('database.connections.sqlite.database'));
+        $this->assertSame('testing', config('app.env'));
+        $this->assertNotSame('mysql', config('database.default'));
     }
 
     public function test_destructive_database_commands_are_blocked_on_mysql_without_override(): void

@@ -113,6 +113,7 @@ class DirectTopUpWalletCheckoutTest extends TestCase
         $this->recreateTable('supplier_orders', function (Blueprint $table): void {
             $table->id();
             $table->unsignedBigInteger('order_id')->nullable();
+            $table->unsignedBigInteger('order_detail_id')->nullable();
             $table->string('status')->nullable();
             $table->timestamps();
         });
@@ -197,6 +198,7 @@ class DirectTopUpWalletCheckoutTest extends TestCase
         $this->recreateTable('supplier_orders', function (Blueprint $table): void {
             $table->id();
             $table->unsignedBigInteger('order_id')->nullable();
+            $table->unsignedBigInteger('order_detail_id')->nullable();
             $table->string('status')->nullable();
             $table->timestamps();
         });
@@ -322,7 +324,7 @@ class DirectTopUpWalletCheckoutTest extends TestCase
             'order_amount' => 25,
         ]);
 
-        OrderDetail::create([
+        $orderDetail = OrderDetail::create([
             'order_id' => $order->id,
             'product_id' => $product->id,
             'price' => 25,
@@ -333,6 +335,7 @@ class DirectTopUpWalletCheckoutTest extends TestCase
 
         $this->app['db']->table('supplier_orders')->insert([
             'order_id' => $order->id,
+            'order_detail_id' => $orderDetail->id,
             'status' => 'fulfilled',
             'created_at' => now(),
             'updated_at' => now(),

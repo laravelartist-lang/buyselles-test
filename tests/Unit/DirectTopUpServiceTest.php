@@ -30,10 +30,51 @@ class DirectTopUpServiceTest extends TestCase
             $table->timestamps();
         });
         $this->app['db']->table('business_settings')->insert([
-            'type' => 'language',
-            'value' => json_encode([
-                ['code' => 'en', 'name' => 'English', 'default' => true, 'direction' => 'ltr'],
-            ]),
+            [
+                'type' => 'language',
+                'value' => json_encode([
+                    ['code' => 'en', 'name' => 'English', 'default' => true, 'direction' => 'ltr'],
+                ]),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'type' => 'currency_model',
+                'value' => 'single_currency',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'type' => 'system_default_currency',
+                'value' => '1',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'type' => 'decimal_point_settings',
+                'value' => '2',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
+
+        $this->recreateTable('currencies', function (Blueprint $table): void {
+            $table->id();
+            $table->string('name')->nullable();
+            $table->string('symbol')->nullable();
+            $table->string('code')->nullable();
+            $table->decimal('exchange_rate', 24, 8)->default(1);
+            $table->boolean('status')->default(true);
+            $table->timestamps();
+        });
+
+        $this->app['db']->table('currencies')->insert([
+            'id' => 1,
+            'name' => 'US Dollar',
+            'symbol' => '$',
+            'code' => 'USD',
+            'exchange_rate' => 1,
+            'status' => true,
             'created_at' => now(),
             'updated_at' => now(),
         ]);

@@ -43,7 +43,7 @@ class PartnerOrderRefundService
     public function hasRefundForOrder(Order $order): bool
     {
         if ($order->seller_id !== null) {
-            return false;
+            return $this->partnerWallet->vendorRefundHistoryExists((int) $order->seller_id, (int) $order->id);
         }
 
         if ($order->customer_id === null) {

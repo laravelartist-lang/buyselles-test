@@ -83,12 +83,12 @@ class PartnerApiOrderSettlementTest extends TestCase
 
         $adminWallet = AdminWallet::query()->where('admin_id', 1)->first();
         $this->assertNotNull($adminWallet);
-        $this->assertSame(2.46, (float) $adminWallet->commission_earned);
+        $this->assertSame(0.0, (float) $adminWallet->commission_earned);
 
         $this->assertDatabaseHas('order_transactions', [
             'order_id' => $order->id,
             'payment_method' => 'partner_wallet',
-            'status' => 'disburse',
+            'status' => 'pending_disburse',
         ]);
 
         Bus::assertNotDispatched(ReleasePartnerEscrowJob::class);
@@ -114,6 +114,15 @@ class PartnerApiOrderSettlementTest extends TestCase
 
         $order = Order::query()->find($response->json('data.order_id'));
         $this->assertSame(10.0, (float) $order->admin_commission);
+
+        $adminWallet = AdminWallet::query()->where('admin_id', 1)->first();
+        $this->assertSame(10.0, (float) $adminWallet->commission_earned);
+
+        $this->assertDatabaseHas('order_transactions', [
+            'order_id' => $order->id,
+            'payment_method' => 'partner_wallet',
+            'status' => 'disburse',
+        ]);
     }
 
     public function test_supplier_failure_refunds_partner_wallet_and_reverses_admin_settlement(): void

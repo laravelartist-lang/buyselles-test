@@ -682,7 +682,11 @@ class Product extends Model
         });
 
         static::addGlobalScope(self::STOREFRONT_SCOPE, function (Builder $builder): void {
-            $builder->where($builder->getModel()->getTable().'.partner_api_only', false);
+            $table = $builder->getModel()->getTable();
+
+            if (\Illuminate\Support\Facades\Schema::hasColumn($table, 'partner_api_only')) {
+                $builder->where($table.'.partner_api_only', false);
+            }
         });
 
         static::addGlobalScope('translate', function (Builder $builder) {
@@ -714,7 +718,14 @@ class Product extends Model
      */
     public function scopePartnerApiOnly(Builder $query): Builder
     {
-        return $query->withoutGlobalScope(self::STOREFRONT_SCOPE)
-            ->where($query->getModel()->getTable().'.partner_api_only', true);
+        $table = $query->getModel()->getTable();
+
+        $query = $query->withoutGlobalScope(self::STOREFRONT_SCOPE);
+
+        if (\Illuminate\Support\Facades\Schema::hasColumn($table, 'partner_api_only')) {
+            $query->where($table.'.partner_api_only', true);
+        }
+
+        return $query;
     }
 }

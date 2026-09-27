@@ -386,9 +386,22 @@ class SellerController extends Controller
         }
 
         $seller = $request->seller;
+        $amountUsd = BackEndHelper::currency_to_usd($request['amount']);
 
-        $wallet = SellerWallet::where('seller_id', $seller['id'])->first();
-        if (($wallet->total_earning) >= Convert::usd($request['amount']) && $request['amount'] > 1) {
+        if ($request['amount'] <= 1) {
+            return response()->json(['message' => translate('Invalid_withdraw_request')], 403);
+        }
+
+        $created = DB::transaction(function () use ($seller, $request, $data, $amountUsd): bool {
+            $wallet = SellerWallet::query()
+                ->where('seller_id', $seller['id'])
+                ->lockForUpdate()
+                ->first();
+
+            if (! $wallet || (float) $wallet->total_earning < Convert::usd($request['amount'])) {
+                return false;
+            }
+
             DB::table('withdraw_requests')->insert([
                 'seller_id' => $seller['id'],
                 'amount' => Convert::usd($request['amount']),
@@ -399,10 +412,15 @@ class SellerController extends Controller
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
-            $wallet->total_earning -= BackEndHelper::currency_to_usd($request['amount']);
-            $wallet->pending_withdraw += BackEndHelper::currency_to_usd($request['amount']);
+
+            $wallet->total_earning -= $amountUsd;
+            $wallet->pending_withdraw += $amountUsd;
             $wallet->save();
 
+            return true;
+        });
+
+        if ($created) {
             return response()->json(translate('Withdraw request sent successfully!'), 200);
         }
 
@@ -413,15 +431,39 @@ class SellerController extends Controller
     {
         $seller = $request->seller;
 
-        $withdraw_request = WithdrawRequest::find($request['id']);
-        $wallet = SellerWallet::where('seller_id', $seller['id'])->first();
+        $closed = DB::transaction(function () use ($request, $seller): bool {
+            $withdrawRequest = WithdrawRequest::query()
+                ->whereKey($request['id'])
+                ->lockForUpdate()
+                ->first();
 
-        if (isset($withdraw_request) && $withdraw_request->approved == 0) {
-            $wallet->total_earning += BackEndHelper::currency_to_usd($withdraw_request['amount']);
-            $wallet->pending_withdraw -= BackEndHelper::currency_to_usd($request['amount']);
+            if ($withdrawRequest === null
+                || (int) $withdrawRequest->seller_id !== (int) $seller['id']
+                || (int) $withdrawRequest->approved !== 0) {
+                return false;
+            }
+
+            $wallet = SellerWallet::query()
+                ->where('seller_id', $seller['id'])
+                ->lockForUpdate()
+                ->first();
+
+            if ($wallet === null) {
+                return false;
+            }
+
+            $amountUsd = (float) $withdrawRequest->amount;
+
+            $wallet->total_earning += $amountUsd;
+            $wallet->pending_withdraw = max(0, (float) $wallet->pending_withdraw - $amountUsd);
             $wallet->save();
-            $withdraw_request->delete();
 
+            $withdrawRequest->delete();
+
+            return true;
+        });
+
+        if ($closed) {
             return response()->json(translate('Withdraw request has been closed successfully!'), 200);
         }
 
